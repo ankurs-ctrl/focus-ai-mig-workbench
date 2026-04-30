@@ -1,0 +1,125 @@
+1. Create the Snow connection
+If you already created client-spcs, skip this and go to step 2.
+
+snow connection add `
+  --connection-name client-spcs `
+  --account MHSUEJT-GD01711 `
+  --user ANKURSINHA `
+  --authenticator externalbrowser `
+  --role FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV `
+  --warehouse U_FFP_HDP_CRM_MIG_DB_ADHOC_XS_WH_DEV `
+  --database FFP_HDP_DLAB_DB_DEV `
+  --schema PUBLIC `
+  --default
+2. Test the connection
+
+snow connection test -c client-spcs
+3. Log Docker into Snowflake image registry
+
+snow spcs image-registry login -c client-spcs
+4. Set all deploy values in this PowerShell session
+
+$SNOWFLAKE_DATABASE = "FFP_HDP_DLAB_DB_DEV"
+$SNOWFLAKE_SCHEMA = "PUBLIC"
+$SNOWFLAKE_WAREHOUSE = "U_FFP_HDP_CRM_MIG_DB_ADHOC_XS_WH_DEV"
+$SNOWFLAKE_ROLE = "FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV"
+$SNOWFLAKE_COMPUTE_POOL = "AI_WORKBENCH_DEV_POOL"
+$WEBAPP_SERVICE_NAME = "AI_WORKBENCH_OKTA_WEBAPP_DEV_v3"
+$SNOWFLAKE_REGISTRY_HOST = "mhsuejt-gd01711.registry.snowflakecomputing.com"
+$SNOWFLAKE_IMAGE_REPOSITORY = "AI_WORKBENCH_DEV_IMAGES"
+
+$APP_NAME = "BBI AI Migration Workbench API"
+$APP_ENV = "client"
+$USERS_TABLE = "FFP_HDP_CRM_MIG_DB_DEV.SCH_STTM_METADATA.TBL_USERS"
+
+$APP_ROLE_ADMIN = "FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV"
+$APP_ROLE_PUBLISHER = "FFP_HDP_CRM_MIG_DB_READ_ROLE"
+$APP_ROLE_VIEWER = "PUBLIC"
+
+$SNOWFLAKE_STTM_BUILDER_AGENT = "YOUR_DB.YOUR_SCHEMA.STTM_BUILDER_AGENT"
+$SNOWFLAKE_AGENT_ORCHESTRATION_MODEL = "claude-sonnet-4"
+$CORS_ALLOWED_ORIGINS = ""
+
+$IMAGE_TAG = (git rev-parse --short HEAD).Trim()
+5. Build image path helpers
+
+$DB_LOWER = $SNOWFLAKE_DATABASE.ToLower()
+$SCHEMA_LOWER = $SNOWFLAKE_SCHEMA.ToLower()
+$REPO_LOWER = $SNOWFLAKE_IMAGE_REPOSITORY.ToLower()
+$REGISTRY_BASE = "$SNOWFLAKE_REGISTRY_HOST/$DB_LOWER/$SCHEMA_LOWER/$REPO_LOWER"
+6. Build and push backend image
+
+docker build --platform linux/amd64 -t "$REGISTRY_BASE/sttm-builder:$IMAGE_TAG" .\services\sttm-builder
+docker push "$REGISTRY_BASE/sttm-builder:$IMAGE_TAG"
+7. Build and push frontend image
+
+docker build --platform linux/amd64 -t "$REGISTRY_BASE/frontend:$IMAGE_TAG" .\frontend
+docker push "$REGISTRY_BASE/frontend:$IMAGE_TAG"
+8. Build and push nginx image
+
+docker build --platform linux/amd64 -t "$REGISTRY_BASE/nginx:$IMAGE_TAG" .\nginx
+docker push "$REGISTRY_BASE/nginx:$IMAGE_TAG"
+9. Export env vars for spec rendering
+
+$env:SNOWFLAKE_DATABASE_LOWER = $DB_LOWER
+$env:SNOWFLAKE_SCHEMA_LOWER = $SCHEMA_LOWER
+$env:SNOWFLAKE_IMAGE_REPOSITORY_LOWER = $REPO_LOWER
+$env:IMAGE_TAG = $IMAGE_TAG
+$env:APP_NAME = $APP_NAME
+$env:APP_ENV = $APP_ENV
+$env:USERS_TABLE = $USERS_TABLE
+$env:APP_ROLE_ADMIN = $APP_ROLE_ADMIN
+$env:APP_ROLE_PUBLISHER = $APP_ROLE_PUBLISHER
+$env:APP_ROLE_VIEWER = $APP_ROLE_VIEWER
+$env:SNOWFLAKE_WAREHOUSE = $SNOWFLAKE_WAREHOUSE
+$env:SNOWFLAKE_DATABASE = $SNOWFLAKE_DATABASE
+$env:SNOWFLAKE_SCHEMA = $SNOWFLAKE_SCHEMA
+$env:SNOWFLAKE_STTM_BUILDER_AGENT = $SNOWFLAKE_STTM_BUILDER_AGENT
+$env:SNOWFLAKE_AGENT_ORCHESTRATION_MODEL = $SNOWFLAKE_AGENT_ORCHESTRATION_MODEL
+$env:CORS_ALLOWED_ORIGINS = $CORS_ALLOWED_ORIGINS
+10. Render the service spec
+
+New-Item -ItemType Directory -Force -Path .\artifacts\client-spcs | Out-Null
+python .\scripts\render_spcs_spec.py --template .\infra\snowflake\service-specs\webapp.yaml.tmpl --output .\artifacts\client-spcs\webapp.yaml
+11. Create the service
+For today’s tables-only demo, try without EAI first:
+
+snow spcs service create $WEBAPP_SERVICE_NAME `
+  --connection client-spcs `
+  --database $SNOWFLAKE_DATABASE `
+  --schema $SNOWFLAKE_SCHEMA `
+  --role $SNOWFLAKE_ROLE `
+  --warehouse $SNOWFLAKE_WAREHOUSE `
+  --compute-pool $SNOWFLAKE_COMPUTE_POOL `
+  --spec-path .\artifacts\client-spcs\webapp.yaml `
+  --if-not-exists `
+  --format TABLE
+12. Upgrade the service
+
+snow spcs service upgrade $WEBAPP_SERVICE_NAME `
+  --connection client-spcs `
+  --database $SNOWFLAKE_DATABASE `
+  --schema $SNOWFLAKE_SCHEMA `
+  --role $SNOWFLAKE_ROLE `
+  --warehouse $SNOWFLAKE_WAREHOUSE `
+  --spec-path .\artifacts\client-spcs\webapp.yaml `
+  --format TABLE
+13. Get the public endpoint
+
+snow spcs service list-endpoints $WEBAPP_SERVICE_NAME `
+  --connection client-spcs `
+  --database $SNOWFLAKE_DATABASE `
+  --schema $SNOWFLAKE_SCHEMA `
+  --role $SNOWFLAKE_ROLE `
+  --warehouse $SNOWFLAKE_WAREHOUSE `
+  --format TABLE
+14. Optional status checks
+
+snow spcs service status $WEBAPP_SERVICE_NAME `
+  --connection client-spcs `
+  --database $SNOWFLAKE_DATABASE `
+  --schema $SNOWFLAKE_SCHEMA
+snow spcs service list-containers $WEBAPP_SERVICE_NAME `
+  --connection client-spcs `
+  --database $SNOWFLAKE_DATABASE `
+  --schema $SNOWFLAKE_SCHEMA
