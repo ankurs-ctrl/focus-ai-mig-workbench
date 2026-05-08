@@ -142,14 +142,64 @@ from app.core.snowflake import (
 )
 And in run_generation(...), use:
 
-if using_local_dev_auth(self._settings, user_token) and self._settings.local_dev_uses_externalbrowser:
-    sf_client = get_local_cached_client(self._settings)
-    should_close_client = False
-else:
-    sf_client = SnowflakeClient(settings=self._settings, user_token=user_token)
-    should_close_client = True
-and:
+def run_generation(
+    self,
+    job_id: str,
+    req: GenerateRequest,
+    user_token: str,
+) -> None:
+    job = _jobs[job_id]
+    job.status = "running"
 
-finally:
-    if should_close_client:
-        sf_client.close()
+    if using_local_dev_auth(self._settings, user_token) and self._settings.local_dev_uses_externalbrowser:
+        sf_client = get_local_cached_client(self._settings)
+        should_close_client = False
+    else:
+        sf_client = SnowflakeClient(settings=self._settings, user_token=user_token)
+        should_close_client = True
+
+    try:
+        session = sf_client.session
+        agent_client = self._build_agent_client(user_token)
+
+        for db, schema in _unique_schemas(req.tables):
+            _run_task(
+                job,
+                session,
+                agent_client,
+                self._table,
+                self._agent_name,
+                "SCHEMA",
+                db,
+                schema,
+                "",
+                req.force,
+            )
+
+        for tbl in req.tables:
+            for scope in ("TABLE", "ATTRIBUTE"):
+                _run_task(
+                    job,
+                    session,
+                    agent_client,
+                    self._table,
+                    self._agent_name,
+                    scope,
+                    tbl.database.upper(),
+                    tbl.schema.upper(),
+                    tbl.table.upper(),
+                    req.force,
+                )
+
+        job.status = "completed"
+        job.completed_at = datetime.now(timezone.utc)
+
+    except Exception as exc:
+        logger.exception("Semantic model batch failed for job %s", job_id)
+        job.status = "failed"
+        job.errors.append(str(exc))
+        job.completed_at = datetime.now(timezone.utc)
+    finally:
+        if should_close_client:
+            sf_client.close()
+
