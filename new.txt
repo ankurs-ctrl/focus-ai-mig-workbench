@@ -190,6 +190,134 @@ SNOWFLAKE_DERIVED_SOURCES_TABLE=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.TBL_DERIVE
 USERS_TABLE=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.TBL_USERS
 If it still fails after these 3 edits, paste the next exact PowerShell error from rerunning .\scripts\start_sttm_backend_local.ps1.
 
+1. Update services\sttm-builder\app\core\snowflake.py
+Open:
+
+services\sttm-builder\app\core\snowflake.py
+A. Add this import near the top
+Change:
+
+from dataclasses import dataclass
+from typing import Any, Optional
+to:
+
+from dataclasses import dataclass
+from threading import Lock
+from typing import Any, Optional
+B. Add this block under _SERVICE_TOKEN_PATH = "/snowflake/session/token"
+Add:
+
+_LOCAL_CLIENT_CACHE: dict[str, "SnowflakeClient"] = {}
+_LOCAL_CLIENT_LOCK = Lock()
+
+
+def _local_cache_key(settings: Settings, role: Optional[str] = None) -> str:
+    effective_role = role or settings.snowflake_role or ""
+    return "|".join(
+        [
+            settings.snowflake_account or "",
+            settings.snowflake_user or "",
+            effective_role,
+            settings.snowflake_warehouse or "",
+            settings.snowflake_database or "",
+            settings.snowflake_schema or "",
+            "externalbrowser" if settings.local_dev_uses_externalbrowser else "password",
+        ]
+    )
+C. Add this function above class SnowflakeClient:
+Add:
+
+def get_local_cached_client(
+    settings: Settings,
+    role: Optional[str] = None,
+) -> "SnowflakeClient":
+    key = _local_cache_key(settings, role)
+    with _LOCAL_CLIENT_LOCK:
+        client = _LOCAL_CLIENT_CACHE.get(key)
+        if client is not None:
+            return client
+
+        client = SnowflakeClient(
+            settings=settings,
+            user_token="",
+            role=role,
+        )
+        _LOCAL_CLIENT_CACHE[key] = client
+        return client
+2. Update services\sttm-builder\app\api\deps.py
+Open:
+
+services\sttm-builder\app\api\deps.py
+A. Change the import
+Change this:
+
+from app.core.snowflake import (
+    SnowflakeClient,
+    build_caller_token,
+    using_local_dev_auth,
+)
+to this:
+
+from app.core.snowflake import (
+    SnowflakeClient,
+    build_caller_token,
+    get_local_cached_client,
+    using_local_dev_auth,
+)
+B. Update get_snowflake_client()
+Replace the whole function:
+
+def get_snowflake_client(
+    request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+    role: Annotated[Optional[str], Query(description="Snowflake role to activate for this session")] = None,
+) -> Generator[SnowflakeClient, None, None]:
+    """
+    Opens a Snowflake session under the calling user's identity via SPCS caller's rights.
+    Requires the Sf-Context-Current-User-Token header injected by the SPCS ingress.
+    If `role` is provided it is activated on the session.
+    """
+    user_token = request.headers.get(_SPCS_USER_TOKEN_HEADER, "")
+    effective_role = role or _default_role_for_principal(request, settings)
+    client = SnowflakeClient(
+        settings=settings,
+        user_token=user_token,
+        role=effective_role,
+    )
+    try:
+        yield client
+    finally:
+        client.close()
+with this:
+
+def get_snowflake_client(
+    request: Request,
+    settings: Annotated[Settings, Depends(get_settings)],
+    role: Annotated[Optional[str], Query(description="Snowflake role to activate for this session")] = None,
+) -> Generator[SnowflakeClient, None, None]:
+    """
+    Opens a Snowflake session under the calling user's identity via SPCS caller's rights.
+    Requires the Sf-Context-Current-User-Token header injected by the SPCS ingress.
+    If `role` is provided it is activated on the session.
+    """
+    user_token = request.headers.get(_SPCS_USER_TOKEN_HEADER, "")
+    effective_role = role or _default_role_for_principal(request, settings)
+
+    if using_local_dev_auth(settings, user_token) and settings.local_dev_uses_externalbrowser:
+        client = get_local_cached_client(settings, effective_role)
+        yield client
+        return
+
+    client = SnowflakeClient(
+        settings=settings,
+        user_token=user_token,
+        role=effective_role,
+    )
+    try:
+        yield client
+    finally:
+        client.close()
+
 
 
 
