@@ -1,3 +1,102 @@
+Step 1: Update backend so it does not invent fake thread ids
+Open:
+
+services\sttm-builder\app\core\snowflake_agent.py
+Change 1
+Find:
+
+) -> tuple[str, str]:
+Change to:
+
+) -> tuple[str, str | None]:
+Change 2
+Find this block:
+
+        except json.JSONDecodeError as exc:
+            raw_text = response.text.strip()
+            if raw_text:
+                return raw_text, thread_id or str(uuid.uuid4())
+            raise SnowflakeAgentError(
+                f"Cortex Agent response is not valid JSON: {exc}"
+            ) from exc
+Replace with:
+
+        except json.JSONDecodeError as exc:
+            raw_text = response.text.strip()
+            if raw_text:
+                return raw_text, thread_id
+            raise SnowflakeAgentError(
+                f"Cortex Agent response is not valid JSON: {exc}"
+            ) from exc
+Change 3
+Find:
+
+    def _extract_text_and_thread(
+        data: dict[str, Any], fallback_thread_id: str | None
+    ) -> tuple[str, str]:
+        thread_id: str = (
+            data.get("thread_id")
+            or fallback_thread_id
+            or str(uuid.uuid4())
+        )
+Replace with:
+
+    def _extract_text_and_thread(
+        data: dict[str, Any], fallback_thread_id: str | None
+    ) -> tuple[str, str | None]:
+        thread_id: str | None = (
+            data.get("thread_id")
+            or fallback_thread_id
+        )
+Step 2: Allow thread_id to be null in backend response schema
+Open:
+
+services\sttm-builder\app\schema\sttm_builder.py
+Find:
+
+class STTMBuilderResponse(BaseModel):
+    thread_id: str = Field(
+        description="Cortex Agent thread ID — pass back on follow-up calls."
+    )
+Replace with:
+
+class STTMBuilderResponse(BaseModel):
+    thread_id: str | None = Field(
+        default=None,
+        description="Cortex Agent thread ID when available.",
+    )
+Step 3: Fix frontend chat so it does not send thread_id for follow-up chat
+Open:
+
+frontend\src\features\sttm\store\sttm-builder-slice.ts
+Find the whole sendChatMessage block and replace it fully.
+
+Replace this:
+export const sendChatMessage = createAsyncThunk(
+  "sttmBuilder/sendChatMessage",
+  async (message: string, { getState, rejectWithValue }) => {
+    const trimmed = message.trim();
+    if (!trimmed) return null;
+    const state = (getState() as { sttmBuilder: SttmBuilderState }).sttmBuilder;
+    try {
+      const response = await workbenchService.invoke({
+        interface: "CHAT",
+        thread_id: state.agentThreadId,
+        message: trimmed,
+        source_tables: state.sources
+          .filter((table) => table.isSelected)
+          .map((table) => makeTableRef(table.qualifiedName)),
+        driving_table: state.drivingTableId ? makeTableRef(state.drivingTableId) : null,
+        relationships: buildRelationshipPayload(state.relationships),
+        selected_columns_by_table: buildSelectedColumnsByTable(state.sourceAttributeGroups),
+      });
+      return { userMessage: trimmed, response };
+    } catch (err) {
+      return rejectWithValue(trimmed);
+    }
+  }
+);
+With this:
 export const sendChatMessage = createAsyncThunk(
   "sttmBuilder/sendChatMessage",
   async (message: string, { getState, rejectWithValue }) => {
@@ -34,3 +133,58 @@ export const sendChatMessage = createAsyncThunk(
     }
   }
 );
+Step 4: Small cleanup in reducer
+In the same file, find:
+
+state.agentThreadId = action.payload.response.thread_id;
+Change to:
+
+state.agentThreadId = action.payload.response.thread_id ?? null;
+And find:
+
+state.agentThreadId = response.thread_id;
+Change to:
+
+state.agentThreadId = response.thread_id ?? null;
+Step 5: Restart both
+Backend:
+
+.\scripts\start_sttm_backend_local.ps1
+Frontend:
+
+cd frontend
+npm run dev
+Expected result
+After this:
+
+first question should work
+second follow-up should also work
+third follow-up should work too
+Important:
+
+Snowflake monitoring may still show blank THREAD ID
+that is okay for now
+because this immediate fix is history-based chat, not true thread continuation
+Short summary
+Immediate fix = stop using Snowflake thread continuation in our app chat for now
+
+That’s all.
+
+If you want, after you do this, send me:
+
+“done”
+or the next exact error
+and then I’ll guide the long-term proper thread fix separately.
+
+
+
+
+
+20:22
+
+
+
+
+
+Default permissions
+
