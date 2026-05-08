@@ -123,3 +123,75 @@ snow spcs service list-containers $WEBAPP_SERVICE_NAME `
   --connection client-spcs `
   --database $SNOWFLAKE_DATABASE `
   --schema $SNOWFLAKE_SCHEMA
+
+
+Fix the bad $EnvFile: interpolation
+Change this block:
+
+if ($missing.Count -gt 0) {
+    Fail "Missing required local Snowflake settings in $EnvFile: $($missing -join ', ')"
+}
+to:
+
+if ($missing.Count -gt 0) {
+    Fail ("Missing required local Snowflake settings in {0}: {1}" -f $EnvFile, ($missing -join ', '))
+}
+That removes the :$ parsing problem.
+
+3. Remove ?? because Windows PowerShell doesn’t support it
+Change this:
+
+$enabled = ($envValues["LOCAL_DEV_AUTH_ENABLED"] ?? "").ToLowerInvariant()
+to:
+
+$enabled = ""
+if ($envValues.ContainsKey("LOCAL_DEV_AUTH_ENABLED") -and $null -ne $envValues["LOCAL_DEV_AUTH_ENABLED"]) {
+    $enabled = [string]$envValues["LOCAL_DEV_AUTH_ENABLED"]
+}
+$enabled = $enabled.ToLowerInvariant()
+And change this:
+
+$authenticator = ($envValues["SNOWFLAKE_AUTHENTICATOR"] ?? "").ToLowerInvariant()
+to:
+
+$authenticator = ""
+if ($envValues.ContainsKey("SNOWFLAKE_AUTHENTICATOR") -and $null -ne $envValues["SNOWFLAKE_AUTHENTICATOR"]) {
+    $authenticator = [string]$envValues["SNOWFLAKE_AUTHENTICATOR"]
+}
+$authenticator = $authenticator.ToLowerInvariant()
+4. Save the file and rerun
+From repo root:
+
+.\scripts\start_sttm_backend_local.ps1
+What should happen now
+it should create:
+services\sttm-builder\.venv
+install backend dependencies there
+start the backend on port 8000
+One more check
+Make sure your backend env file is here:
+
+services\sttm-builder\.env.local
+and has at least:
+
+LOCAL_DEV_AUTH_ENABLED=true
+SNOWFLAKE_AUTHENTICATOR=externalbrowser
+SNOWFLAKE_ACCOUNT=MHSUEJT-GD01711
+SNOWFLAKE_USER=ANKURSINHA
+SNOWFLAKE_ROLE=FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV
+SNOWFLAKE_WAREHOUSE=FFP_HDP_DLAB_DB_ADHOC_XS_WH_DEV
+SNOWFLAKE_DATABASE=FFP_HDP_DLAB_DB_DEV
+SNOWFLAKE_SCHEMA=SCH_STTM_METADATA
+SNOWFLAKE_STTM_BUILDER_AGENT=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_STTM_BUILDER
+SNOWFLAKE_SEMANTIC_MODEL_AGENT=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_SEMANTIC_MODEL
+SNOWFLAKE_RELATIONSHIPS_PROCEDURE=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.SP_GET_TABLE_RELATIONSHIPS
+SNOWFLAKE_SEMANTIC_MODEL_TABLE=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.TBL_SEMANTIC_MODELS
+SNOWFLAKE_DERIVED_SOURCES_TABLE=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.TBL_DERIVED_SOURCES
+USERS_TABLE=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.TBL_USERS
+If it still fails after these 3 edits, paste the next exact PowerShell error from rerunning .\scripts\start_sttm_backend_local.ps1.
+
+
+
+
+
+
