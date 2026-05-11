@@ -187,4 +187,164 @@ and then I’ll guide the long-term proper thread fix separately.
 
 
 Default permissions
-
+SELECT	'bbi' as partner		-- note this should be 'eloan', 'td', 'hsbc', 'pnc', 'regions' for apps for those respective partners OR whatever we decide represents them such as a 1 for bbi, 2 for Eloan, etc	
+	, v.id as verified_income_id			
+	,l.id as loan_id			
+	,v.object_uuid as loan_uuid			
+	,v.object_type			
+	,c.id as customer_id			
+	,v.customer_uuid			
+	,calc.vtl_id as vtl_id			
+	,l.customer_application_id as customer_application_id			
+	,v.customer_application_uuid			
+	,au.email as admin_user_email			
+	,au.admin_user_id			
+	,v.admin_user_uuid			
+	,v.total_amount_cents as total_amount_cents			
+	,tzcorrect(v.created_at) as verified_income_calculation_created_at			
+	,v.updated_at			
+	,v.outcome as outcome			
+	,v.claimed_income as claimed_income			
+	,v.auto_calculated			
+	,CASE WHEN (v.simulated_terms != '{}') OR (v.simulated_terms is not null) THEN TRUE ELSE FALSE END as simulated_terms_flag			
+	,v.similated_terms			
+	,v.simulated_terms_table			
+	,er.result as error_reason			
+	,CASE WHEN v.outcome = 'rejected' THEN TRUE ELSE FALSE END as rejected_flag			
+	,CASE WHEN er.result IS NOT NULL THEN TRUE ELSE FALSE END as error_reason_flag			
+	,CASE WHEN n.note_id IS NOT NULL THEN TRUE ELSE FALSE END as documentation_error_flag			
+	, calc.vt_name as verification_task_name			
+	,CASE WHEN au.id = 7 THEN 'system_calculation'			
+	WHEN calc.vt_name = 'team_lead_enter_net_inc' THEN 'tl_review'			
+	WHEN calc.vt_name = 'enter_net_inc' THEN 'specialist_calculation'			
+	ELSE NULL END as calculation_type			
+	,calc.reviewed_by as reviewed_by_calc_id			
+	,calc.reviewed as reviewed_calc_id			
+	,ird.ir_document			
+	,n_error.error_text as team_lead_income_discrepancy_error_note			
+	,CASE WHEN n.note_id is NOT NULL then nde.error_text_doc ELSE NULL END as documentation_error_note			
+	,v.original_apr_percentage			
+	,v.original_loan_amount_cents			
+	,v.original_term			
+	,v.data			
+				
+	FROM verified_incomes v			
+	LEFT JOIN loans l on l.uuid = cast(v.object_uuid as varchar) --and v.object_type = "loan"			
+	LEFT JOIN customers c on cast(v.customer_uuid as varchar) = c.uuid			
+	LEFT JOIN admin_users au on cast(v.admin_user_uuid as varchar) = au.uuid			
+				
+				
+				
+	LEFT JOIN (SELECT vtl.id as vtl_id			
+	,vi.id as vi_id			
+	,vt.name as vt_name			
+	, case when ((vt.name = 'enter_net_inc') and (lag(vt.name) OVER(PARTITION BY l.id order by vtl.created_at desc ) = 'team_lead_enter_net_inc')) then lag(vi.id) OVER(PARTITION BY l.id order by vtl.created_at desc ) else null end as reviewed_by			
+	, case when ((vt.name = 'team_lead_enter_net_inc') and (lead(vt.name)OVER(PARTITION BY l.id order by vtl.created_at desc) = 'enter_net_inc')) then lead(vi.id) OVER(PARTITION BY l.id order by vtl.created_at desc ) else null end as reviewed			
+	FROM verified_incomes vi			
+	join loans l on l.uuid = cast(vi.object_uuid as varchar)			
+	INNER JOIN admin_users au on au.uuid = cast(vi.admin_user_uuid as varchar)			
+	LEFT JOIN verification_task_logs vtl on vtl.id = (select vtl.id			
+	from verification_task_logs vtl			
+	join verification_tasks vt on vt.id = vtl.verification_task_id and vt.product_type = 'Loan'			
+	where vt.product_uuid = l.uuid			
+	and concat('admin_', au.id, ' ') = vtl.whodunnit			
+	and vtl.created_at >= vi.created_at			
+	and vtl.created_at <= (vi.created_at + interval '10 minutes')			
+	and split_part(vtl.whodunnit,'_', 1) = 'admin'			
+	order by vtl.created_at asc			
+	limit 1)			
+	INNER JOIN verification_tasks vt on vt.id = vtl.verification_task_id			
+	and (vt.name = 'enter_net_inc' OR vt.name = 'team_lead_enter_net_inc')			
+	WHERE vi.created_at > cast('2018-07-01' as date)) calc on calc.vi_id = v.id			
+				
+	LEFT JOIN (SELECT			
+	vtl.result as result			
+	, vi.id as vi_id			
+	FROM verified_incomes vi			
+	INNER JOIN admin_users au on au.uuid = cast(vi.admin_user_uuid as varchar)			
+	join loans l on l.uuid = cast(vi.object_uuid as varchar)			
+	inner JOIN verification_task_logs vtl on vtl.id = (select vtl.id			
+	from verification_task_logs vtl			
+	join verification_tasks vt on vt.id = vtl.verification_task_id and vt.product_type = 'Loan'			
+	where vt.product_uuid = l.uuid			
+	and concat('admin_', au.id, ' ') = vtl.whodunnit			
+	and vtl.created_at >= vi.created_at			
+	and vtl.created_at <= (vi.created_at + interval '10 minutes')			
+	and split_part(vtl.whodunnit,'_', 1) = 'admin'			
+	and vt.name = 'team_lead_identify_income_calculation_error' and vtl.result != ''			
+	order by vtl.created_at asc			
+	limit 1)			
+	Left JOIN verification_tasks vt on vt.id = vtl.verification_task_id			
+	WHERE vi.created_at > cast('2018-07-01' as date)			
+	) er on calc.reviewed_by = er.vi_id			
+				
+				
+Notes join	LEFT JOIN (SELECT vi.id as verified_income_id			
+	,n.id as note_id			
+	where created_at > cast('2018-07-01' as date)			
+	FROM (select id			
+	, created_at			
+	, lead(created_at) over (partition by object_uuid order by created_at) as next_vi_created_at			
+	, object_uuid			
+	from verified_incomes			
+	where created_at > cast('2018-07-01' as date)			
+	) vi			
+	JOIN loans l on l.uuid = cast(vi.object_uuid as varchar)			
+	JOIN notes n on n.notable_id = l.id			
+	AND n.notable_type = 'Loan'			
+	AND n.note_type = 'Verifications'			
+	AND n.note_action = 'Team Lead Review'			
+	AND n.note_activity = 'Income Amount'			
+	AND n.text like '%Existing documentation does not adequately verify income. Income capture tasks have been reset.%'			
+	AND n.created_at < coalesce(vi.next_vi_created_at, now())			
+	AND n.created_at >= vi.created_at			
+	) n on n.verified_income_id = v.id AND n.row_num=1			
+				
+Notes join	LEFT JOIN (SELECT vi.id as verified_income_id			
+	,n.id as note_id			
+	,n.text as error_text			
+	,row_number() OVER (PARTITION BY vi.id ORDER BY n.created_at asc) as row_num			
+	FROM (select id			
+	, created_at			
+	, lead(created_at) over (partition by object_uuid order by created_at) as next_vi_created_at			
+	, object_uuid			
+	from verified_incomes			
+	where created_at > cast('2018-07-01' as date)			
+	) vi			
+	JOIN loans l on l.uuid = cast(vi.object_uuid as varchar)			
+	JOIN notes n on n.notable_id = l.id			
+	AND n.notable_type = 'Loan'			
+	AND n.note_type = 'Verifications'			
+	AND n.note_activity = 'Team Lead Identify Income Calculation Error'			
+	AND n.created_at < coalesce(vi.next_vi_created_at, now())			
+	AND n.created_at >= vi.created_at			
+	) n_error on n_error.verified_income_id = calc.reviewed_by AND n_error.row_num=1			
+				
+	LEFT JOIN (SELECT lag(vt.name) over (partition by vt.product_uuid, vtl.whodunnit order by vtl.created_at) as ir_document			
+	, vtl.id as vtl_id			
+	FROM verification_task_logs vtl			
+	JOIN verification_tasks vt on vt.id = vtl.verification_task_id and vtl.whodunnit like '%admin%'			
+	and vt.name in ('enter_net_inc', 'team_lead_enter_net_inc', 'doc_bank_statement', 'yodlee_inc','doc_paystub','doc_tax_return','doc_bank_statement_and_benefits_letter')) ird on ird.vtl_id = calc.vtl_id			
+				
+Notes join	LEFT JOIN (SELECT vi.id as verified_income_id			
+	,n.id as note_id			
+	,n.text as error_text_doc			
+	,n.note_action as error_message			
+	,row_number() OVER (PARTITION BY vi.id ORDER BY n.created_at asc) as row_num			
+	FROM (select id			
+	, created_at			
+	, lead(created_at) over (partition by object_uuid order by created_at) as next_vi_created_at			
+	, object_uuid			
+	from verified_incomes			
+	where created_at > cast('2018-07-01' as date)			
+	) vi			
+	JOIN loans l on l.uuid = cast(vi.object_uuid as varchar)			
+	JOIN notes n on n.notable_id = l.id			
+	AND n.notable_type = 'Loan'			
+	AND n.note_type = 'Verifications'			
+	AND n.note_activity like '%Doc%'			
+	AND n.created_at < coalesce(vi.next_vi_created_at, now())			
+	AND n.created_at >= vi.created_at			
+	) nde on nde.verified_income_id = v.id AND nde.row_num=1			
+				
+	WHERE lower(v.object_type) = "loan"			
