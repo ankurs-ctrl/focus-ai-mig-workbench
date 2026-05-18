@@ -1,350 +1,329 @@
-Step 1: Update backend so it does not invent fake thread ids
-Open:
+[D] Do not run  [R] Run once  [S] Suspend  [?] Help (default is "D"): R
+Starting backend on http://127.0.0.1:8000
+Starting frontend on http://127.0.0.1:3000
 
-services\sttm-builder\app\core\snowflake_agent.py
-Change 1
-Find:
+> focus-ai-migration@0.1.0 dev
+> next dev
 
-) -> tuple[str, str]:
-Change to:
+▲ Next.js 16.2.2 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.40.0.28:3000
+✓ Ready in 4.6s
 
-) -> tuple[str, str | None]:
-Change 2
-Find this block:
+○ Compiling / ...
+ GET / 307 in 11.5s (next.js: 11.0s, application-code: 527ms)
+ GET /home 200 in 153ms (next.js: 43ms, application-code: 110ms)
+[browser] Image with src "http://localhost:3000/images/focus_home_logo.svg" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: "auto"' or 'height: "auto"' to maintain the aspect ratio.
+[browser] Global API Error: Network Error 
+    at <unknown> (src/api/axiosInstance.ts:33:13)
+    at async getApiData (src/api/axiosInstance.ts:79:20)
+  31 |   (response) => response,
+  32 |   (error) => {
+> 33 |     console.error('Global API Error:', error.response?.data || error.message);
+     |             ^
+  34 |     return Promise.reject(error);
+  35 |   }
+  36 | ); (src/api/axiosInstance.ts:33:13)
+PS C:\Users\ankur.sinha\Desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench> 
+                                                                                              ^C
+PS C:\Users\ankur.sinha\Desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench> ^C
+PS C:\Users\ankur.sinha\Desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench> .\scripts\run_client_spcs_browser_deploy.ps1
 
-        except json.JSONDecodeError as exc:
-            raw_text = response.text.strip()
-            if raw_text:
-                return raw_text, thread_id or str(uuid.uuid4())
-            raise SnowflakeAgentError(
-                f"Cortex Agent response is not valid JSON: {exc}"
-            ) from exc
-Replace with:
+Security warning
+Run only scripts that you trust. While scripts from the internet can be useful, this script can potentially harm your computer. If you trust this
+ script, use the Unblock-File cmdlet to allow the script to run without this warning message. Do you want to run
+C:\Users\ankur.sinha\Desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench\scripts\run_client_spcs_browser_deploy.ps1?
+[D] Do not run  [R] Run once  [S] Suspend  [?] Help (default is "D"): R
 
-        except json.JSONDecodeError as exc:
-            raw_text = response.text.strip()
-            if raw_text:
-                return raw_text, thread_id
-            raise SnowflakeAgentError(
-                f"Cortex Agent response is not valid JSON: {exc}"
-            ) from exc
-Change 3
-Find:
+Security warning
+Run only scripts that you trust. While scripts from the internet can be useful, this script can potentially harm your computer. If you trust this
+ script, use the Unblock-File cmdlet to allow the script to run without this warning message. Do you want to run
+C:\Users\ankur.sinha\Desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench\scripts\bootstrap_client_spcs_tools.ps1?
+[D] Do not run  [R] Run once  [S] Suspend  [?] Help (default is "D"): R
+Reusing tools virtualenv at C:\Users\ankur.sinha\Desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench\.client-tools-venv
+Upgrading pip tooling
+Requirement already satisfied: pip in c:\users\ankur.sinha\desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench\.client-tools-venv\lib\site-packages (25.3)
+Collecting pip
+  Using cached pip-26.1.1-py3-none-any.whl.metadata (4.6 kB)
+Requirement already satisfied: setuptools in c:\users\ankur.sinha\desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench\.client-tools-venv\lib\site-packages (80.8.0)
+Collecting setuptools
+  Using cached setuptools-82.0.1-py3-none-any.whl.metadata (6.5 kB)
+Requirement already satisfied: wheel in c:\users\ankur.sinha\desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench\.client-tools-venv\lib\site-packages (0.47.0)
+Requirement already satisfied: packaging>=24.0 in c:\users\ankur.sinha\desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench\.client-tools-venv\lib\site-packages (from wheel) (25.0)
+Using cached pip-26.1.1-py3-none-any.whl (1.8 MB)
+Using cached setuptools-82.0.1-py3-none-any.whl (1.0 MB)
+Installing collected packages: setuptools, pip
+  Attempting uninstall: setuptools
+    Found existing installation: setuptools 80.8.0
+    Uninstalling setuptools-80.8.0:
+      Successfully uninstalled setuptools-80.8.0
+  Attempting uninstall: pip
+    Found existing installation: pip 25.3
+    Uninstalling pip-25.3:
+      Successfully uninstalled pip-25.3
+ERROR: pip's dependency resolver does not currently take into account all the packages that are installed. This behaviour is the source of the following dependency conflicts.
+snowflake-cli 3.16.0 requires pip==25.3, but you have pip 26.1.1 which is incompatible.
+snowflake-cli 3.16.0 requires setuptools==80.8.0, but you have setuptools 82.0.1 which is incompatible.
+snowflake-cli 3.16.0 requires snowflake-connector-python[secure-local-storage]==3.18.0, but you have snowflake-connector-python 4.4.0 which is incompatible.
+Successfully installed pip-26.1.1 setuptools-82.0.1
+Installing latest snowflake-cli
+Requirement already satisfied: snowflake-cli in .\.client-tools-venv\Lib\site-packages (3.16.0)
+Collecting snowflake-cli
+  Downloading snowflake_cli-3.17.1-py3-none-any.whl.metadata (18 kB)
+Requirement already satisfied: click==8.1.8 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (8.1.8)
+Requirement already satisfied: gitpython==3.1.44 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (3.1.44)
+Requirement already satisfied: id==1.5.0 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (1.5.0)
+Requirement already satisfied: jinja2==3.1.6 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (3.1.6)
+Requirement already satisfied: packaging==25.0 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (25.0)
+Collecting pip==25.3 (from snowflake-cli)
+  Using cached pip-25.3-py3-none-any.whl.metadata (4.7 kB)
+Requirement already satisfied: pluggy==1.6.0 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (1.6.0)
+Requirement already satisfied: prompt-toolkit==3.0.51 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (3.0.51)
+Requirement already satisfied: protobuf<6,>=5.29.6 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (5.29.6)
+Requirement already satisfied: pydantic==2.12.5 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (2.12.5)
+Requirement already satisfied: pyyaml==6.0.2 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (6.0.2)
+Collecting requests==2.33.0 (from snowflake-cli)
+  Downloading requests-2.33.0-py3-none-any.whl.metadata (5.1 kB)
+Requirement already satisfied: requirements-parser==0.13.0 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (0.13.0)
+Requirement already satisfied: rich==14.0.0 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (14.0.0)
+Collecting setuptools==80.8.0 (from snowflake-cli)
+  Using cached setuptools-80.8.0-py3-none-any.whl.metadata (6.6 kB)
+Requirement already satisfied: snowflake-connector-python==4.4.0 in .\.client-tools-venv\Lib\site-packages (from snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (4.4.0)
+Requirement already satisfied: snowflake-core==1.10.0 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (1.10.0)
+Requirement already satisfied: snowflake-snowpark-python==1.41.0 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (1.41.0)
+Requirement already satisfied: tomlkit==0.13.3 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (0.13.3)
+Requirement already satisfied: typer==0.17.3 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (0.17.3)
+Requirement already satisfied: urllib3<3,>=2.6.3 in .\.client-tools-venv\Lib\site-packages (from snowflake-cli) (2.7.0)
+Requirement already satisfied: colorama in .\.client-tools-venv\Lib\site-packages (from click==8.1.8->snowflake-cli) (0.4.6)
+Requirement already satisfied: gitdb<5,>=4.0.1 in .\.client-tools-venv\Lib\site-packages (from gitpython==3.1.44->snowflake-cli) (4.0.12)
+Requirement already satisfied: MarkupSafe>=2.0 in .\.client-tools-venv\Lib\site-packages (from jinja2==3.1.6->snowflake-cli) (3.0.3)
+Requirement already satisfied: wcwidth in .\.client-tools-venv\Lib\site-packages (from prompt-toolkit==3.0.51->snowflake-cli) (0.7.0)
+Requirement already satisfied: annotated-types>=0.6.0 in .\.client-tools-venv\Lib\site-packages (from pydantic==2.12.5->snowflake-cli) (0.7.0)    
+Requirement already satisfied: pydantic-core==2.41.5 in .\.client-tools-venv\Lib\site-packages (from pydantic==2.12.5->snowflake-cli) (2.41.5)    
+Requirement already satisfied: typing-extensions>=4.14.1 in .\.client-tools-venv\Lib\site-packages (from pydantic==2.12.5->snowflake-cli) (4.15.0)
+Requirement already satisfied: typing-inspection>=0.4.2 in .\.client-tools-venv\Lib\site-packages (from pydantic==2.12.5->snowflake-cli) (0.4.2)  
+Requirement already satisfied: charset_normalizer<4,>=2 in .\.client-tools-venv\Lib\site-packages (from requests==2.33.0->snowflake-cli) (3.4.7)  
+Requirement already satisfied: idna<4,>=2.5 in .\.client-tools-venv\Lib\site-packages (from requests==2.33.0->snowflake-cli) (3.13)
+Requirement already satisfied: certifi>=2023.5.7 in .\.client-tools-venv\Lib\site-packages (from requests==2.33.0->snowflake-cli) (2026.4.22)     
+Requirement already satisfied: markdown-it-py>=2.2.0 in .\.client-tools-venv\Lib\site-packages (from rich==14.0.0->snowflake-cli) (4.2.0)
+Requirement already satisfied: pygments<3.0.0,>=2.13.0 in .\.client-tools-venv\Lib\site-packages (from rich==14.0.0->snowflake-cli) (2.20.0)      
+Requirement already satisfied: asn1crypto<2.0.0,>0.24.0 in .\.client-tools-venv\Lib\site-packages (from snowflake-connector-python==4.4.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (1.5.1)
+Requirement already satisfied: cryptography>=46.0.5 in .\.client-tools-venv\Lib\site-packages (from snowflake-connector-python==4.4.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (46.0.7)
+Requirement already satisfied: pyOpenSSL>=24.0.0 in .\.client-tools-venv\Lib\site-packages (from snowflake-connector-python==4.4.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (25.3.0)
+Requirement already satisfied: pyjwt<3.0.0,>=2.10.1 in .\.client-tools-venv\Lib\site-packages (from snowflake-connector-python==4.4.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (2.12.1)
+Requirement already satisfied: pytz in .\.client-tools-venv\Lib\site-packages (from snowflake-connector-python==4.4.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (2026.2)
+Requirement already satisfied: filelock<4,>=3.5 in .\.client-tools-venv\Lib\site-packages (from snowflake-connector-python==4.4.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (3.29.0)
+Requirement already satisfied: sortedcontainers>=2.4.0 in .\.client-tools-venv\Lib\site-packages (from snowflake-connector-python==4.4.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (2.4.0)
+Requirement already satisfied: platformdirs<5.0.0,>=2.6.0 in .\.client-tools-venv\Lib\site-packages (from snowflake-connector-python==4.4.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (4.9.6)
+Requirement already satisfied: boto3>=1.24 in .\.client-tools-venv\Lib\site-packages (from snowflake-connector-python==4.4.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (1.43.6)
+Requirement already satisfied: botocore>=1.24 in .\.client-tools-venv\Lib\site-packages (from snowflake-connector-python==4.4.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (1.43.6)
+Requirement already satisfied: keyring<26.0.0,>=23.1.0 in .\.client-tools-venv\Lib\site-packages (from snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (25.7.0)
+Requirement already satisfied: python-dateutil>=2.8.2 in .\.client-tools-venv\Lib\site-packages (from snowflake-core==1.10.0->snowflake-cli) (2.9.0.post0)
+Requirement already satisfied: wheel in .\.client-tools-venv\Lib\site-packages (from snowflake-snowpark-python==1.41.0->snowflake-cli) (0.47.0)
+Requirement already satisfied: cloudpickle!=2.1.0,!=2.2.0,<=3.1.1,>=1.6.0 in .\.client-tools-venv\Lib\site-packages (from snowflake-snowpark-python==1.41.0->snowflake-cli) (3.1.1)
+Requirement already satisfied: tzlocal in .\.client-tools-venv\Lib\site-packages (from snowflake-snowpark-python==1.41.0->snowflake-cli) (5.3.1)  
+Requirement already satisfied: shellingham>=1.3.0 in .\.client-tools-venv\Lib\site-packages (from typer==0.17.3->snowflake-cli) (1.5.4)
+Requirement already satisfied: smmap<6,>=3.0.1 in .\.client-tools-venv\Lib\site-packages (from gitdb<5,>=4.0.1->gitpython==3.1.44->snowflake-cli) (5.0.3)
+Requirement already satisfied: pywin32-ctypes>=0.2.0 in .\.client-tools-venv\Lib\site-packages (from keyring<26.0.0,>=23.1.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (0.2.3)
+Requirement already satisfied: importlib_metadata>=4.11.4 in .\.client-tools-venv\Lib\site-packages (from keyring<26.0.0,>=23.1.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (9.0.0)
+Requirement already satisfied: jaraco.classes in .\.client-tools-venv\Lib\site-packages (from keyring<26.0.0,>=23.1.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (3.4.0)
+Requirement already satisfied: jaraco.functools in .\.client-tools-venv\Lib\site-packages (from keyring<26.0.0,>=23.1.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (4.4.0)
+Requirement already satisfied: jaraco.context in .\.client-tools-venv\Lib\site-packages (from keyring<26.0.0,>=23.1.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (6.1.2)
+Requirement already satisfied: jmespath<2.0.0,>=0.7.1 in .\.client-tools-venv\Lib\site-packages (from boto3>=1.24->snowflake-connector-python==4.4.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (1.1.0)
+Requirement already satisfied: s3transfer<0.18.0,>=0.17.0 in .\.client-tools-venv\Lib\site-packages (from boto3>=1.24->snowflake-connector-python==4.4.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (0.17.0)
+Requirement already satisfied: six>=1.5 in .\.client-tools-venv\Lib\site-packages (from python-dateutil>=2.8.2->snowflake-core==1.10.0->snowflake-cli) (1.17.0)
+Requirement already satisfied: cffi>=2.0.0 in .\.client-tools-venv\Lib\site-packages (from cryptography>=46.0.5->snowflake-connector-python==4.4.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (2.0.0)
+Requirement already satisfied: pycparser in .\.client-tools-venv\Lib\site-packages (from cffi>=2.0.0->cryptography>=46.0.5->snowflake-connector-python==4.4.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (3.0)
+Requirement already satisfied: zipp>=3.20 in .\.client-tools-venv\Lib\site-packages (from importlib_metadata>=4.11.4->keyring<26.0.0,>=23.1.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (3.23.1)
+Requirement already satisfied: mdurl~=0.1 in .\.client-tools-venv\Lib\site-packages (from markdown-it-py>=2.2.0->rich==14.0.0->snowflake-cli) (0.1.2)
+Requirement already satisfied: more-itertools in .\.client-tools-venv\Lib\site-packages (from jaraco.classes->keyring<26.0.0,>=23.1.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (11.0.2)
+Requirement already satisfied: backports.tarfile in .\.client-tools-venv\Lib\site-packages (from jaraco.context->keyring<26.0.0,>=23.1.0->snowflake-connector-python[secure-local-storage]==4.4.0->snowflake-cli) (1.2.0)
+Requirement already satisfied: tzdata in .\.client-tools-venv\Lib\site-packages (from tzlocal->snowflake-snowpark-python==1.41.0->snowflake-cli) (2026.2)
+Downloading snowflake_cli-3.17.1-py3-none-any.whl (641 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 641.5/641.5 kB 11.9 MB/s  0:00:00
+Using cached pip-25.3-py3-none-any.whl (1.8 MB)
+Downloading requests-2.33.0-py3-none-any.whl (65 kB)
+Using cached setuptools-80.8.0-py3-none-any.whl (1.2 MB)
+Installing collected packages: setuptools, requests, pip, snowflake-cli
+  Attempting uninstall: setuptools
+    Found existing installation: setuptools 82.0.1
+    Uninstalling setuptools-82.0.1:
+      Successfully uninstalled setuptools-82.0.1
+  Attempting uninstall: requests
+    Found existing installation: requests 2.32.4
+    Uninstalling requests-2.32.4:
+      Successfully uninstalled requests-2.32.4
+  Attempting uninstall: pip
+    Found existing installation: pip 26.1.1
+    Uninstalling pip-26.1.1:
+      Successfully uninstalled pip-26.1.1
+  Attempting uninstall: snowflake-cli
+    Found existing installation: snowflake-cli 3.16.0
+    Uninstalling snowflake-cli-3.16.0:
+      Successfully uninstalled snowflake-cli-3.16.0
+Successfully installed pip-25.3 requests-2.33.0 setuptools-80.8.0 snowflake-cli-3.17.1                                                            
 
-    def _extract_text_and_thread(
-        data: dict[str, Any], fallback_thread_id: str | None
-    ) -> tuple[str, str]:
-        thread_id: str = (
-            data.get("thread_id")
-            or fallback_thread_id
-            or str(uuid.uuid4())
-        )
-Replace with:
+Snow CLI installed successfully.
+Snow binary: C:\Users\ankur.sinha\Desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench\.client-tools-venv\Scripts\snow.exe        
+Snowflake CLI version: 3.17.1
 
-    def _extract_text_and_thread(
-        data: dict[str, Any], fallback_thread_id: str | None
-    ) -> tuple[str, str | None]:
-        thread_id: str | None = (
-            data.get("thread_id")
-            or fallback_thread_id
-        )
-Step 2: Allow thread_id to be null in backend response schema
-Open:
+Next steps:
+  1. Copy infra/snowflake/env/client.env.example to infra/snowflake/env/client.env
+  2. Fill the client-specific values in that env file
+  3. Run .\scripts\configure_client_snow_connection.ps1
+  4. Run .\scripts\deploy_spcs_client_snow.ps1
 
-services\sttm-builder\app\schema\sttm_builder.py
-Find:
+Security warning
+Run only scripts that you trust. While scripts from the internet can be useful, this script can potentially harm your computer. If you trust this 
+ script, use the Unblock-File cmdlet to allow the script to run without this warning message. Do you want to run
+C:\Users\ankur.sinha\Desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench\scripts\configure_client_snow_connection.ps1?
+[D] Do not run  [R] Run once  [S] Suspend  [?] Help (default is "D"): R
+Creating Snow CLI connection 'client-spcs-v4'
+Initiating login request with your identity provider. Press CTRL+C to abort and try again...
+Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lZLdctowEIVfxaNe25IMaYgGyPBTGjokobFJk94ptiAqsuRqZUx4%2BsomdNKLZKZ3Gumc1bd7tn%2B5L1SwExak0QNEI4ICoTOTS70ZoFU6C3soAMd1zpXRYoBeBKDLYR94oUo2qtyzvhO%2FKwEu8IU0sPZhgCqrmeEggWleCGAuY8noesHiiLDSGmcyo9Aby8cODiCs84QnSw7S4z07VzKM67qO6k5k7AbHhBBMLrBXNZJPJ%2F3e9%2FSOnmLSbfRe4eXLV7ax1McRfIT1dBQBu0rTZbi8TVIUjE6oE6OhKoRNhN3JTKzuFkcA8ATXV8nqy7c0%2FDol9JzSCLSp14pvRWaKsnK%2BZuRPeC1yrMxG%2Brbn0wEqtzIXWTl7vLlYwOTxlh%2Be7g9qwn%2F0kmR%2FGJuHSeVG6Wpx6P7K4u8kQ8H9Kde4yXUOUIm5btJ0%2ForEn0NyFtJeSjuMdNlZJ%2BrE5CcKpj5NqblrnSfktckqKLl12teMzNbxFpGXJf5Lj8V%2BS3eb7bqMSe%2B8OyYPNO9hAIObiNFxa1iLYYf%2FN4s%2Bfut9Xb8bn8h8ujRKZi%2FBzNiCu%2FcDoxFtb2QerlspEwWXapTnVgD44JQy9cQK7vyWO1sJhIfHX%2F%2Fd8%2BEf&RelayState=ver%3A3-hint%3A405384796565514-ETMsDgAAAZ47MHpIABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEMmdZphqJqOUEFpAeHYSAwEAAACgMehRWYfywUjACU0JSeHHt6hwXRMN%2Bbt6PVyjdqfkkJtN8U03bThGZzQRgd2Tng%2BBN7tY9UGimdyPxnNwYUcWf1x74WpQUyZblsqSImuns9ku6dRHzqsUvhMoUFDo6dCPpW7s28Sr%2B6bNWUti2rI1UxCgJqg3n4cuUWkxwMI07p8CIX2Tt5ZJ8glGwEWImtNVfnxeGjA7L1mmfUcDpE68BQAUY7Ybbaq%2FVQCvw66v58guhryhZcU%3D to authenticate...  
+A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
+Enter password: 
+Enter schema:
+Enter host: 
+Enter port: 
+Enter region: 
+Enter workload identity provider: 
+Enter private key file: 
+Enter token file path: 
+Enter secondary roles: 
+Usage: snow connection add [OPTIONS]
+Try 'snow connection add --help' for help.
+╭─ Error ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ Connection client-spcs-v4 already exists                                                                                                       │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 
-class STTMBuilderResponse(BaseModel):
-    thread_id: str = Field(
-        description="Cortex Agent thread ID — pass back on follow-up calls."
-    )
-Replace with:
+Testing connection 'client-spcs-v4'
+Initiating login request with your identity provider. Press CTRL+C to abort and try again...
+Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lVLLbtswEPwVgT1LJBUncQjbgR%2B14yLxQ5aLtjdaohXCEqlyKcvJ15fyo0gOCZAbsZzZmd3Zzv2hyL29MCC16iIaEOQJlehUqqyL1vHYbyMPLFcpz7USXfQiAN33OsCLvGT9yj6rSPytBFjPNVLAmo8uqoximoMEpnghgNmErfpPjywMCOMAwlgnh86UFKTTera2ZBjXdR3UV4E2GQ4JIZjcYYdqIN%2FQG4nyc43SaKsTnV8oBzfTBxIUk1Yj4RBOYXEmDqQ6reAzlc0JBOwhjhf%2BYr6Kkde%2FTDfUCqpCmJUwe5mIdfR4MgDOwdPDav39R%2BxPRoTeUhqA0vU25zuR6KKsrOsZuBfeihTnOpNuU9NRF5U7mfLX35PJcikG4YyHg34xf42zrDUb3Qx5CybRMkqjzfiwmUeDJEHez0uuYZPrFKASU9WkaV2JhDc%2BufZpO6ZXjFwzGgZtEv5B3silKRW3R%2BbF8lYnFZTcWOV6Bnpn%2BdEiL0v83z0Whx3dZ7ttGZL2bWtAftG0jQE0biJDp6thRxum97VddPBb7vn8Zi6R6Wihc5m8eGNtCm4%2FDowG9FiRqb89QpkouMz7aWoEgAsuz3U9NIJbd%2BXWVALh3kn1%2FZ33%2FgE%3D&RelayState=ver%3A3-hint%3A405384796565514-ETMsDgAAAZ47MMZiABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEMJvfDq1m6skuVJ7wRY0WHwAAACgVxNmgzrjCj4Ru9DzkaBfzitFSjWzzIGSYZK9nBwhMPRGK801%2BVM%2BhEY1GxZLyyuycaQKlE9uJkmIOLikHI87hDpQCRdGfk6KDN5vWd9TukCWgx3%2B3kEbOdf2EnYsBb3GgNx8uMH2RmiAI1W2%2Bqj906V05y90jMA0XhC9CK%2F6%2FTEvBBUzni4gQywPpLDqOmE4FIBt9BcqrclnH%2B3vkwNp%2FAAUMW3bW6bSGC0yG7gvq%2FU0sqCIYpE%3D to authenticate...      
+A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
++----------------------------------------------------------+
+| key             | value                                  |
+|-----------------+----------------------------------------|
+| Connection name | client-spcs-v4                         |
+| Status          | OK                                     |
+| Host            | MHSUEJT-GD01711.snowflakecomputing.com |
+| Account         | MHSUEJT-GD01711                        |
+| User            | ANKURSINHA                             |
+| Role            | FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV        |
+| Database        | FFP_HDP_DLAB_DB_DEV                    |
+| Warehouse       | FFP_HDP_DLAB_DB_ADHOC_XS_WH_DEV        |
++----------------------------------------------------------+
 
-class STTMBuilderResponse(BaseModel):
-    thread_id: str | None = Field(
-        default=None,
-        description="Cortex Agent thread ID when available.",
-    )
-Step 3: Fix frontend chat so it does not send thread_id for follow-up chat
-Open:
+Connection configured successfully.
 
-frontend\src\features\sttm\store\sttm-builder-slice.ts
-Find the whole sendChatMessage block and replace it fully.
+Security warning
+Run only scripts that you trust. While scripts from the internet can be useful, this script can potentially harm your computer. If you trust this 
+ script, use the Unblock-File cmdlet to allow the script to run without this warning message. Do you want to run
+C:\Users\ankur.sinha\Desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench\scripts\bootstrap_sttm_metadata_infra.ps1?
+[D] Do not run  [R] Run once  [S] Suspend  [?] Help (default is "D"): R
+Bootstrapping STTM metadata infra into FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA
+usage: bootstrap_sttm_metadata_infra.py [-h] [--database DATABASE] [--schema SCHEMA] [--warehouse WAREHOUSE] [--role ROLE] [--account ACCOUNT]
+                                        [--user USER] [--password PASSWORD] [--authenticator AUTHENTICATOR] [--host HOST]
+bootstrap_sttm_metadata_infra.py: error: argument --password: expected one argument
 
-Replace this:
-export const sendChatMessage = createAsyncThunk(
-  "sttmBuilder/sendChatMessage",
-  async (message: string, { getState, rejectWithValue }) => {
-    const trimmed = message.trim();
-    if (!trimmed) return null;
-    const state = (getState() as { sttmBuilder: SttmBuilderState }).sttmBuilder;
-    try {
-      const response = await workbenchService.invoke({
-        interface: "CHAT",
-        thread_id: state.agentThreadId,
-        message: trimmed,
-        source_tables: state.sources
-          .filter((table) => table.isSelected)
-          .map((table) => makeTableRef(table.qualifiedName)),
-        driving_table: state.drivingTableId ? makeTableRef(state.drivingTableId) : null,
-        relationships: buildRelationshipPayload(state.relationships),
-        selected_columns_by_table: buildSelectedColumnsByTable(state.sourceAttributeGroups),
-      });
-      return { userMessage: trimmed, response };
-    } catch (err) {
-      return rejectWithValue(trimmed);
-    }
-  }
-);
-With this:
-export const sendChatMessage = createAsyncThunk(
-  "sttmBuilder/sendChatMessage",
-  async (message: string, { getState, rejectWithValue }) => {
-    const trimmed = message.trim();
-    if (!trimmed) return null;
+Security warning
+Run only scripts that you trust. While scripts from the internet can be useful, this script can potentially harm your computer. If you trust this
+ script, use the Unblock-File cmdlet to allow the script to run without this warning message. Do you want to run
+C:\Users\ankur.sinha\Desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench\scripts\deploy_spcs_client_snow.ps1?
+[D] Do not run  [R] Run once  [S] Suspend  [?] Help (default is "D"): R
+fatal: not a git repository (or any of the parent directories): .git
+Testing Snow CLI connection 'client-spcs-v4'
+Initiating login request with your identity provider. Press CTRL+C to abort and try again...
+Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lVJdT%2BMwEPwrke85sZ0WGqymqLSU9qBcRVOE7s0kbrCS2MHrNOXfn9OPE%2FcA0r1Z65md2Z0dXu%2Br0tsJA1KrGNGAIE%2BoVGdS5THaJDM%2FQh5YrjJeaiVi9CEAXY%2BGwKuyZuPGvqkn8d4IsJ5rpIB1HzFqjGKagwSmeCWA2ZStx8sHFgaEcQBhrJNDJ0oG0mm9WVszjNu2DdpeoE2OQ0IIJlfYoTrID%2FRJov5eozba6lSXZ8rezfSFBMWk30k4hFNYnYg3Uh1X8J3K6xEEbJ4kK3%2F1a50gb3yebqIVNJUwa2F2MhWbp4ejAXAOlvP15vZn4t9NCR1QGoDS7bbkhUh1VTfW9QzcC29FhkudS7epxTRGdSEzZ%2Fg%2Bf5%2Fv8%2F705S7sK74obgf38DwHeM176WwZjickqR8jHqXIez7nGna5LgAasVBdmtaVSHjpkwufRgntMXLBwqvgkg5%2BI2%2Fq0pSK2wPzbHmr0wZqbqxyPQNdWH6wyOsa%2F3WPxb6gu7zY1iGJBv0b8kKzCANo3EWGjlfDDjbM6P92McSfuafze3SJLKYrXcr0w5tpU3H7dWA0oIeKzPztAcpExWU5zjIjAFxwZanbiRHcuiu3phEIj46q%2F9756A8%3D&RelayState=ver%3A3-hint%3A405384796565514-ETMsDgAAAZ47MQgRABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEDh7ZqR%2FD0eGZrjJ5Oh%2B4poAAACgC6gVUoY9SxM4p%2FXGARm53lATf9dBdnQLU1P7CuPN%2BxVBg3ktUMeQtWaKEfzHjEeBO%2BJtCxR5i0my3qyn%2FezjKtiMYpd536GX3gp8oGNoNZWaj%2FJFZMnxhvB9PMxQ1aLvEcysXSNbElBRAKiasCrzpOeJEGmFHWR0DlmXKEemHQlIU7EY0UjFaY9RTRGysS4NSFAPN6BxujDHDRU0CKtr3AAUnZeEp307Y7ZL9%2F4IrAjFsNVit3M%3D to authenticate...    
+A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
++----------------------------------------------------------+
+| key             | value                                  |
+|-----------------+----------------------------------------|
+| Connection name | client-spcs-v4                         |
+| Status          | OK                                     |
+| Host            | MHSUEJT-GD01711.snowflakecomputing.com |
+| Account         | MHSUEJT-GD01711                        |
+| User            | ANKURSINHA                             |
+| Role            | FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV        |
+| Database        | FFP_HDP_DLAB_DB_DEV                    |
+| Warehouse       | FFP_HDP_DLAB_DB_ADHOC_XS_WH_DEV        |
++----------------------------------------------------------+
+Logging Docker into Snowflake image registry via Snow CLI
+Initiating login request with your identity provider. Press CTRL+C to abort and try again...
+Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lZLdctowEIVfxaNe25L4KUQDZAiUQJq0JDadDneKJYiwLTlaGcPbV5jQSS%2BSmd5ppHNW3%2B7ZwfWhyIO9tKCMHiIaERRInRqh9HaIVsks7KMAHNeC50bLITpKQNejAfAiL9m4ci%2F6Sb5WElzgC2lgzcMQVVYzw0EB07yQwFzK4vHDPWtFhJXWOJOaHL2zfO7gANI6T3ixCFAe78W5kmFc13VUtyNjt7hFCMHkCnvVSfLloj%2F4nj7QU0w6J71XePnyje1G6fMIPsN6PouAzZNkGS5%2FxgkKxhfUidFQFdLG0u5VKldP92cA8AQP83j17S4Jb6eE9iiNQJt6k%2FNMpqYoK%2BdrRv6EN1Lg3GyVb3sxHaIyU%2BI4OcZu%2Bpjx58dKFPv54zq9E7OrXaV3k9u%2BXRVzF7%2FW6%2B%2B9XSdFwa9Lrq1TrguASi70KU3nr0jra0i6Ie0ntM1Il7V7ESHdNQqmPk2luWucF%2BSNSSsouXXa14xM5niDyMsS%2F6XH8pDR%2FTbblC3S73VuyG8q%2BhjA4FPE6Lw1rMGwo%2F%2BbxQC%2F976t3w%2BfyGK6NLlKj8HM2IK7jwOjEW1ulAg3jZTJgqt8LISVAD64PDf1xEru%2FJY7W0mER%2Bdf%2F93z0R8%3D&RelayState=ver%3A3-hint%3A405384796565514-ETMsDgAAAZ47MSTtABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAELtiLWEnZUbQq9AUaiXb2aIAAACgm4%2BU%2F%2BWtja3BwTxjZMA2QvjSJBk3bh3iuodE6D%2B5wqjUhTHs%2F%2FnnQBLraQ5qL3N8Ej%2BMdm6cLcwhe00YCw8SF2pfpW90m3Hahw7r2yPlELMn2n2G3r8EtFKTgbBJzUNmB0KRvEP923v5SRwANM3oqyahAQCC2vW7KUyWdcfpsgt39AEsI%2FZ0o6LHmuuZSxLoIgvmjWAXn2XIKuUrVDrTHwAUbn0kOe2uJn4vUMIfcZkUZTitLjs%3D to authenticate...
+A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
+Login Succeeded
 
-    const state = (getState() as { sttmBuilder: SttmBuilderState }).sttmBuilder;
+Building sttm-builder -> mhsuejt-gd01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/sttm-builder:20260518080525
+ERROR: error during connect: Head "http://%2F%2F.%2Fpipe%2FdockerDesktopLinuxEngine/_ping": open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
+Pushing mhsuejt-gd01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/sttm-builder:20260518080525
+failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
 
-    const history = state.chatMessages
-      .filter((item) => item.role === "user" || item.role === "assistant")
-      .slice(-8)
-      .map((item) => `${item.role.toUpperCase()}: ${item.content}`)
-      .join("\n\n");
+Building frontend -> mhsuejt-gd01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/frontend:20260518080525
+ERROR: error during connect: Head "http://%2F%2F.%2Fpipe%2FdockerDesktopLinuxEngine/_ping": open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
+Pushing mhsuejt-gd01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/frontend:20260518080525
+failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
 
-    const combinedMessage = history
-      ? `Conversation so far:\n${history}\n\nFollow-up user question:\n${trimmed}`
-      : trimmed;
+Building nginx -> mhsuejt-gd01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/nginx:20260518080525
+ERROR: error during connect: Head "http://%2F%2F.%2Fpipe%2FdockerDesktopLinuxEngine/_ping": open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
+Pushing mhsuejt-gd01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/nginx:20260518080525
+failed to connect to the docker API at npipe:////./pipe/dockerDesktopLinuxEngine; check if the path is correct and if the daemon is running: open //./pipe/dockerDesktopLinuxEngine: The system cannot find the file specified.
 
-    try {
-      const response = await workbenchService.invoke({
-        interface: "CHAT",
-        thread_id: null,
-        message: combinedMessage,
-        source_tables: state.sources
-          .filter((table) => table.isSelected)
-          .map((table) => makeTableRef(table.qualifiedName)),
-        driving_table: state.drivingTableId ? makeTableRef(state.drivingTableId) : null,
-        relationships: buildRelationshipPayload(state.relationships),
-        selected_columns_by_table: buildSelectedColumnsByTable(state.sourceAttributeGroups),
-      });
-      return { userMessage: trimmed, response };
-    } catch (err) {
-      return rejectWithValue(trimmed);
-    }
-  }
-);
-Step 4: Small cleanup in reducer
-In the same file, find:
+Rendering service spec to C:\Users\ankur.sinha\Desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench\artifacts\client-spcs\webapp.20260518080525.yaml
 
-state.agentThreadId = action.payload.response.thread_id;
-Change to:
+Creating service 'AI_WORKBENCH_OKTA_WEBAPP_DEV_v4' if needed
+Initiating login request with your identity provider. Press CTRL+C to abort and try again...
+Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lVLLbtswEPwVgT1LJBXbsQnbgR95uEhaIaaTojdaohzCEqlwKcvJ15fyo0gPCdAbsZzZmd3Z4dW%2BLIKdtKCMHiEaERRInZpM6c0IrfhN2EcBOKEzURgtR%2BhNAroaD0GURcUmtXvRj%2FK1luAC30gDaz9GqLaaGQEKmBalBOZStpw83LM4IkwASOu8HDpRMlBe68W5imHcNE3UXETGbnBMCMFkgD2qhXxDHySqrzUqa5xJTXGm7P1Mn0hQTDqthEd4heREnCp9XMFXKusjCNgd50mY%2FFxyFEzO082MhrqUdintTqVy9Xh%2FNADewcPdcnX9nYe3c0IvKY1AmyYvxFampqxq53tG%2FoVzmeHCbJTf1GI%2BQtVWZc8Z5yCeEkF7sXXdwfvqWdDV65Tz2%2FVavee83l%2FPeuuCLDopCp7OucZtrguAWi50m6bzJRL3QtINaZ%2FTC0a6rDOIBiT%2BjYK5T1Np4Q7Ms%2BXcpDVUwjrte0Zm68TBoqgq%2FNc9lvst3W22eRWT%2FmVnSn7RrI8BDG4jQ8erYQcbdvx%2Fuxjij9zT%2Bf3wiSzmiSlU%2BhbcGFsK93lgNKKHisrC%2FABlshSqmGSZlQA%2BuKIwzcxK4fyVO1tLhMdH1X%2FvfPwH&RelayState=ver%3A3-hint%3A405384796565514-ETMsDgAAAZ47MVdOABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEMqrwyifwVKDwPDvN90Ub5MAAACgscyiPfHDRDbnXTqFiV9rWQ6tR4ffrj%2FiCYGm3%2F4aOVJioyPM7LmbCtOslqHZncSvF1oqClMhbTNcgRrdTi6k%2B13kBpc77inYkL6K4ef7EoqY19TTuoYARRFJH%2B7r%2Ba6W0IBq0kg7y1pZMOcfIrExtQ4BJ4%2FEm43CABRzaAxkaU2cc23QNV6WRugGU2vi8xCXysKh9p9hgA0DXrJvZoRq3gAU4FtKrluUY0TLXHLCuH74y8Xay%2Bk%3D to authenticate...
+A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
+╭─ Error ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ 002003 (02000): 01c47371-0003-95f0-0001-70b2405ad4ea: SQL compilation error:                                                                   │
+│ Compute pool 'AI_WORKBENCH_DEV_POOL' does not exist or not authorized.                                                                         │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 
-state.agentThreadId = action.payload.response.thread_id ?? null;
-And find:
+Upgrading service 'AI_WORKBENCH_OKTA_WEBAPP_DEV_v4' to the latest spec
+Initiating login request with your identity provider. Press CTRL+C to abort and try again...
+Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lVLbctowEP0Vj%2FpsSzLhUg2Q4VIaWkiZYErbN2ELokGWXK2MIV9fmUsnfUhm%2BqZZnbPn7J7t3h9zFRyEBWl0D9GIoEDo1GRS73polUzCDgrAcZ1xZbTooZMAdN%2FvAs9VwQale9ZP4ncpwAW%2BkQZWf%2FRQaTUzHCQwzXMBzKVsOZjPWBwRxgGEdV4OXSkZSK%2F17FzBMK6qKqoakbE7HBNCMPmIPaqGfECvJIr3NQprnEmNulGOfqY3JCgmd7WER3iFxZU4lPqygvdUNhcQsIckWYSLb8sEBYPbdCOjocyFXQp7kKlYPc0uBsA7mD8sV5%2B%2BJOHnMaFtSiPQptoqvhepyYvS%2BZ6Rf%2BGtyLAyO%2Bk3NR33ULGX2Qam5mUi2nzTbtjmOj498PlyzVX2otfDxog0dl8V%2FJxtHtNOioLvt1zjOtcpQCmmuk7T%2BRKJWyFphrST0AYjTdZsRa2Y%2FkLB2KcpNXdn5s3y1qQlFNw67XtGZu%2F42SIvCvzXPRbHPT3s9tsiJp323ZD8oFkHAxhcR4YuV8PONmz%2F%2F3bRxa%2B51%2FN79IlMxwujZHoKJsbm3L0dGI3ouSKzcHuGMpFzqQZZZgWAD04pU42s4M5fubOlQLh%2FUf33zvt%2FAA%3D%3D&RelayState=ver%3A3-hint%3A405384796565514-ETMsDgAAAZ47MXGNABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAECZSBpRVrBriVcjhnOl4xTkAAACgSJPmJlo3BaE9g4bKs5IfS27oR6Unod21aUlpBo9qpuWZ8MiX%2B%2FTa4oTL6pXGDSbKOTU5i8WkIrSKb9XxHu5syS8alX%2Fdckhv0TKj0qZbHJutPT7%2BV9D6edtAfYZ1lmiFkxNa2SEBnuW8D1ZY6WdiKbJSyyqhN7EWsed0tHbCSJUn79LnDBqCU8suMDCLZmz%2Fm4PN%2B0Gg%2BfKxMruT2Rc8ZQAUSzJQ5o8Pr4kCDsshorWlapGHaSY%3D to authenticate...
+A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
+╭─ Error ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ 002003 (02000): 01c47371-0003-9666-0001-70b2405a8e3a: SQL compilation error:                                                                   │
+│ Service 'FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AI_WORKBENCH_OKTA_WEBAPP_DEV_V4' does not exist or not authorized.                              │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 
-state.agentThreadId = response.thread_id;
-Change to:
+Listing service endpoints
+Initiating login request with your identity provider. Press CTRL+C to abort and try again...
+Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lZLdctowEIVfxaNe25KAEqIBMiSEn5ZQJpg24U7YgmiQJaOVMfTpK0zIJBfJTO800jmrb%2Fds%2B%2BaQqWAvLEijO4hGBAVCJyaVetNBi3gQtlAAjuuUK6NFBx0FoJtuG3imctYr3It%2BFLtCgAt8IQ2seuigwmpmOEhgmmcCmEvYvPcwYbWIsNwaZxKj0DvL1w4OIKzzhBdLCtLjvTiXM4zLsozKemTsBtcIIZhcY686Sb5d9Aff0yd6iknjpPcKL5%2B9st1KfR7BV1irswjYKI5n4ezXPEZB74J6ZzQUmbBzYfcyEYvHyRkAPMHDaL64%2FxGHwz6hV5RGoE25VnwrEpPlhfM1I3%2FCa5FiZTbStz3ud1C%2BlWn8czc8xo3Vard7tmV%2BD72RejL8ebo%2FZqv%2BUv8ZTjVfHiaDvyRBwe9LrrVTrmOAQoz1KU3nr0itGZLvIW3FtM5Ik5F61LyuL1HQ92lKzV3lvCCvTVJAzq3TvmZkto5XiDzP8Rs9Foct3W%2B267xGWleNW%2FJE0xYGMPgUMTpvDaswbPf%2FZtHG772v6zf1iYz7M6NkcgwGxmbcfR4YjWh1I9NwXUmZyLhUvTS1AsAHp5Qp76zgzm%2B5s4VAuHv%2B9eOed%2F8B&RelayState=ver%3A3-hint%3A405384796565514-ETMsDgAAAZ47MY0tABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEG%2FHCKL93wCWfOhcNHojT2AAAACgYC3Ujym1zWMYEE%2BalCsATuCwome0lPUUSehymBPdD3jXKwO4z4xoP0Er30E1zvlCXq1SGeCM7uVNQPL3ogDB4ouXhKoM3g6JlDs4iPpsJZfMWVnP%2Bi0JtO%2FrpcPuR2go40HjM8xNa7depX8Gc4etbsK8Z3Q03nBNrSsV2eOYAKJlr%2F22Ou4%2F1FyeFWJlHGi3bN2m5Hf1xAOaukFdeJZOkQAUsyARQ8OHr%2FtGnRQX2DAr2WUcqFQ%3D to authenticate...      
+A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
+╭─ Error ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ 002003 (02000): 01c47372-0003-9668-0001-70b2405ac74e: SQL compilation error:                                                                   │
+│ Service 'FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AI_WORKBENCH_OKTA_WEBAPP_DEV_V4' does not exist or not authorized.                              │
+╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 
-state.agentThreadId = response.thread_id ?? null;
-Step 5: Restart both
-Backend:
+Deployment complete.
+Rendered spec: C:\Users\ankur.sinha\Desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench\artifacts\client-spcs\webapp.20260518080525.yaml
+Next checks:
+  1. snow spcs service status AI_WORKBENCH_OKTA_WEBAPP_DEV_v4 -c client-spcs-v4 --database FFP_HDP_DLAB_DB_DEV --schema SCH_STTM_METADATA
+  2. snow spcs service list-containers AI_WORKBENCH_OKTA_WEBAPP_DEV_v4 -c client-spcs-v4 --database FFP_HDP_DLAB_DB_DEV --schema SCH_STTM_METADATA
+  3. Open the public endpoint from the command output and verify Snowflake/Okta sign-in
+PS C:\Users\ankur.sinha\Desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench> .\start-ai-workbench-dev.ps1
 
-.\scripts\start_sttm_backend_local.ps1
-Frontend:
+Security warning
+Run only scripts that you trust. While scripts from the internet can be useful, this script can potentially harm your computer. If you trust this
+ script, use the Unblock-File cmdlet to allow the script to run without this warning message. Do you want to run
+C:\Users\ankur.sinha\Desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench\start-ai-workbench-dev.ps1?
+[D] Do not run  [R] Run once  [S] Suspend  [?] Help (default is "D"): R
+Starting backend on http://127.0.0.1:8000
+Starting frontend on http://127.0.0.1:3000
 
-cd frontend
-npm run dev
-Expected result
-After this:
+> focus-ai-migration@0.1.0 dev
+> next dev
 
-first question should work
-second follow-up should also work
-third follow-up should work too
-Important:
+▲ Next.js 16.2.2 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://10.40.0.28:3000
+✓ Ready in 713ms
 
-Snowflake monitoring may still show blank THREAD ID
-that is okay for now
-because this immediate fix is history-based chat, not true thread continuation
-Short summary
-Immediate fix = stop using Snowflake thread continuation in our app chat for now
-
-That’s all.
-
-If you want, after you do this, send me:
-
-“done”
-or the next exact error
-and then I’ll guide the long-term proper thread fix separately.
-
-
-
-
-
-20:22
-
-
-
-
-
-Default permissions
-SELECT	'bbi' as partner		-- note this should be 'eloan', 'td', 'hsbc', 'pnc', 'regions' for apps for those respective partners OR whatever we decide represents them such as a 1 for bbi, 2 for Eloan, etc	
-	, v.id as verified_income_id			
-	,l.id as loan_id			
-	,v.object_uuid as loan_uuid			
-	,v.object_type			
-	,c.id as customer_id			
-	,v.customer_uuid			
-	,calc.vtl_id as vtl_id			
-	,l.customer_application_id as customer_application_id			
-	,v.customer_application_uuid			
-	,au.email as admin_user_email			
-	,au.admin_user_id			
-	,v.admin_user_uuid			
-	,v.total_amount_cents as total_amount_cents			
-	,tzcorrect(v.created_at) as verified_income_calculation_created_at			
-	,v.updated_at			
-	,v.outcome as outcome			
-	,v.claimed_income as claimed_income			
-	,v.auto_calculated			
-	,CASE WHEN (v.simulated_terms != '{}') OR (v.simulated_terms is not null) THEN TRUE ELSE FALSE END as simulated_terms_flag			
-	,v.similated_terms			
-	,v.simulated_terms_table			
-	,er.result as error_reason			
-	,CASE WHEN v.outcome = 'rejected' THEN TRUE ELSE FALSE END as rejected_flag			
-	,CASE WHEN er.result IS NOT NULL THEN TRUE ELSE FALSE END as error_reason_flag			
-	,CASE WHEN n.note_id IS NOT NULL THEN TRUE ELSE FALSE END as documentation_error_flag			
-	, calc.vt_name as verification_task_name			
-	,CASE WHEN au.id = 7 THEN 'system_calculation'			
-	WHEN calc.vt_name = 'team_lead_enter_net_inc' THEN 'tl_review'			
-	WHEN calc.vt_name = 'enter_net_inc' THEN 'specialist_calculation'			
-	ELSE NULL END as calculation_type			
-	,calc.reviewed_by as reviewed_by_calc_id			
-	,calc.reviewed as reviewed_calc_id			
-	,ird.ir_document			
-	,n_error.error_text as team_lead_income_discrepancy_error_note			
-	,CASE WHEN n.note_id is NOT NULL then nde.error_text_doc ELSE NULL END as documentation_error_note			
-	,v.original_apr_percentage			
-	,v.original_loan_amount_cents			
-	,v.original_term			
-	,v.data			
-				
-	FROM verified_incomes v			
-	LEFT JOIN loans l on l.uuid = cast(v.object_uuid as varchar) --and v.object_type = "loan"			
-	LEFT JOIN customers c on cast(v.customer_uuid as varchar) = c.uuid			
-	LEFT JOIN admin_users au on cast(v.admin_user_uuid as varchar) = au.uuid			
-				
-				
-				
-	LEFT JOIN (SELECT vtl.id as vtl_id			
-	,vi.id as vi_id			
-	,vt.name as vt_name			
-	, case when ((vt.name = 'enter_net_inc') and (lag(vt.name) OVER(PARTITION BY l.id order by vtl.created_at desc ) = 'team_lead_enter_net_inc')) then lag(vi.id) OVER(PARTITION BY l.id order by vtl.created_at desc ) else null end as reviewed_by			
-	, case when ((vt.name = 'team_lead_enter_net_inc') and (lead(vt.name)OVER(PARTITION BY l.id order by vtl.created_at desc) = 'enter_net_inc')) then lead(vi.id) OVER(PARTITION BY l.id order by vtl.created_at desc ) else null end as reviewed			
-	FROM verified_incomes vi			
-	join loans l on l.uuid = cast(vi.object_uuid as varchar)			
-	INNER JOIN admin_users au on au.uuid = cast(vi.admin_user_uuid as varchar)			
-	LEFT JOIN verification_task_logs vtl on vtl.id = (select vtl.id			
-	from verification_task_logs vtl			
-	join verification_tasks vt on vt.id = vtl.verification_task_id and vt.product_type = 'Loan'			
-	where vt.product_uuid = l.uuid			
-	and concat('admin_', au.id, ' ') = vtl.whodunnit			
-	and vtl.created_at >= vi.created_at			
-	and vtl.created_at <= (vi.created_at + interval '10 minutes')			
-	and split_part(vtl.whodunnit,'_', 1) = 'admin'			
-	order by vtl.created_at asc			
-	limit 1)			
-	INNER JOIN verification_tasks vt on vt.id = vtl.verification_task_id			
-	and (vt.name = 'enter_net_inc' OR vt.name = 'team_lead_enter_net_inc')			
-	WHERE vi.created_at > cast('2018-07-01' as date)) calc on calc.vi_id = v.id			
-				
-	LEFT JOIN (SELECT			
-	vtl.result as result			
-	, vi.id as vi_id			
-	FROM verified_incomes vi			
-	INNER JOIN admin_users au on au.uuid = cast(vi.admin_user_uuid as varchar)			
-	join loans l on l.uuid = cast(vi.object_uuid as varchar)			
-	inner JOIN verification_task_logs vtl on vtl.id = (select vtl.id			
-	from verification_task_logs vtl			
-	join verification_tasks vt on vt.id = vtl.verification_task_id and vt.product_type = 'Loan'			
-	where vt.product_uuid = l.uuid			
-	and concat('admin_', au.id, ' ') = vtl.whodunnit			
-	and vtl.created_at >= vi.created_at			
-	and vtl.created_at <= (vi.created_at + interval '10 minutes')			
-	and split_part(vtl.whodunnit,'_', 1) = 'admin'			
-	and vt.name = 'team_lead_identify_income_calculation_error' and vtl.result != ''			
-	order by vtl.created_at asc			
-	limit 1)			
-	Left JOIN verification_tasks vt on vt.id = vtl.verification_task_id			
-	WHERE vi.created_at > cast('2018-07-01' as date)			
-	) er on calc.reviewed_by = er.vi_id			
-				
-				
-Notes join	LEFT JOIN (SELECT vi.id as verified_income_id			
-	,n.id as note_id			
-	where created_at > cast('2018-07-01' as date)			
-	FROM (select id			
-	, created_at			
-	, lead(created_at) over (partition by object_uuid order by created_at) as next_vi_created_at			
-	, object_uuid			
-	from verified_incomes			
-	where created_at > cast('2018-07-01' as date)			
-	) vi			
-	JOIN loans l on l.uuid = cast(vi.object_uuid as varchar)			
-	JOIN notes n on n.notable_id = l.id			
-	AND n.notable_type = 'Loan'			
-	AND n.note_type = 'Verifications'			
-	AND n.note_action = 'Team Lead Review'			
-	AND n.note_activity = 'Income Amount'			
-	AND n.text like '%Existing documentation does not adequately verify income. Income capture tasks have been reset.%'			
-	AND n.created_at < coalesce(vi.next_vi_created_at, now())			
-	AND n.created_at >= vi.created_at			
-	) n on n.verified_income_id = v.id AND n.row_num=1			
-				
-Notes join	LEFT JOIN (SELECT vi.id as verified_income_id			
-	,n.id as note_id			
-	,n.text as error_text			
-	,row_number() OVER (PARTITION BY vi.id ORDER BY n.created_at asc) as row_num			
-	FROM (select id			
-	, created_at			
-	, lead(created_at) over (partition by object_uuid order by created_at) as next_vi_created_at			
-	, object_uuid			
-	from verified_incomes			
-	where created_at > cast('2018-07-01' as date)			
-	) vi			
-	JOIN loans l on l.uuid = cast(vi.object_uuid as varchar)			
-	JOIN notes n on n.notable_id = l.id			
-	AND n.notable_type = 'Loan'			
-	AND n.note_type = 'Verifications'			
-	AND n.note_activity = 'Team Lead Identify Income Calculation Error'			
-	AND n.created_at < coalesce(vi.next_vi_created_at, now())			
-	AND n.created_at >= vi.created_at			
-	) n_error on n_error.verified_income_id = calc.reviewed_by AND n_error.row_num=1			
-				
-	LEFT JOIN (SELECT lag(vt.name) over (partition by vt.product_uuid, vtl.whodunnit order by vtl.created_at) as ir_document			
-	, vtl.id as vtl_id			
-	FROM verification_task_logs vtl			
-	JOIN verification_tasks vt on vt.id = vtl.verification_task_id and vtl.whodunnit like '%admin%'			
-	and vt.name in ('enter_net_inc', 'team_lead_enter_net_inc', 'doc_bank_statement', 'yodlee_inc','doc_paystub','doc_tax_return','doc_bank_statement_and_benefits_letter')) ird on ird.vtl_id = calc.vtl_id			
-				
-Notes join	LEFT JOIN (SELECT vi.id as verified_income_id			
-	,n.id as note_id			
-	,n.text as error_text_doc			
-	,n.note_action as error_message			
-	,row_number() OVER (PARTITION BY vi.id ORDER BY n.created_at asc) as row_num			
-	FROM (select id			
-	, created_at			
-	, lead(created_at) over (partition by object_uuid order by created_at) as next_vi_created_at			
-	, object_uuid			
-	from verified_incomes			
-	where created_at > cast('2018-07-01' as date)			
-	) vi			
-	JOIN loans l on l.uuid = cast(vi.object_uuid as varchar)			
-	JOIN notes n on n.notable_id = l.id			
-	AND n.notable_type = 'Loan'			
-	AND n.note_type = 'Verifications'			
-	AND n.note_activity like '%Doc%'			
-	AND n.created_at < coalesce(vi.next_vi_created_at, now())			
-	AND n.created_at >= vi.created_at			
-	) nde on nde.verified_income_id = v.id AND nde.row_num=1			
-				
-	WHERE lower(v.object_type) = "loan"			
+ GET / 307 in 738ms (next.js: 242ms, application-code: 497ms)
+ GET /home 200 in 141ms (next.js: 46ms, application-code: 95ms)
+[browser] Image with src "http://localhost:3000/images/focus_home_logo.svg" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: "auto"' or 'height: "auto"' to maintain the aspect ratio.
+ GET /dashboard 200 in 109ms (next.js: 61ms, application-code: 49ms)
+ GET /sttm/builder/new 200 in 90ms (next.js: 55ms, application-code: 35ms)
