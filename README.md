@@ -4,280 +4,978 @@ Identify all attributes across STTM projects that use conditional transformation
 ALTER TABLE FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.TBL_SEMANTIC_BUNDLES
 ADD COLUMN IF NOT EXISTS ANALYST_TOOL_NAME STRING;
 
-kur.sinha\Desktop\bbi-workbench\bbi-workbench-latest-v1.2\bbi-mig-ai-workbench\start-ai-workbench-dev.ps1?
-[D] Do not run  [R] Run once  [S] Suspend  [?] Help (default is "D"): R
-Starting backend on http://127.0.0.1:8000
-Starting frontend on http://127.0.0.1:3000
+./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx:2:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { TableCell, Typography } from '@mui/material';
+> 2 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | type MappingRowIndexCellProps = {
+  5 |   index: number;
 
-> focus-ai-migration@0.1.0 dev
-> next dev --webpack
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).   
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-▲ Next.js 16.2.2 (webpack)
-- Local:         http://localhost:3000
-- Network:       http://10.40.0.28:3000
-✓ Ready in 1383ms
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx:6:1
+Export focusTableCellSx doesn't exist in target module
+  4 | import { FocusSelect } from '@/components/ui/focus-select';
+  5 | import { FocusButton } from '@/components/ui/focus-button';
+> 6 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  7 |
+  8 | type MappingRuleCellProps = {
+  9 |   value: string;
 
-○ Compiling / ...
- GET / 307 in 9.8s (next.js: 9.3s, application-code: 469ms)
-○ Compiling /home ...
- GET /home 200 in 4.6s (next.js: 4.2s, application-code: 434ms)
-[browser] Image with src "http://localhost:3000/images/focus/focus_home_logo.svg" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: "auto"' or 'height: "auto"' to maintain the aspect ratio.
- GET /dashboard 200 in 1475ms (next.js: 1424ms, application-code: 51ms)
-○ Compiling /sttm/builder/new ...
- GET /sttm/builder/new 200 in 4.2s (next.js: 4.1s, application-code: 77ms)
-⚠ ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx
-Attempted import error: 'focusTableCellSx' is not exported from '@/components/ui/focus-table' (imported as 'focusTableCellSx').
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-./src/features/sttm/mapping/cells/mapping-rule-cell.tsx
-Attempted import error: 'focusTableCellSx' is not exported from '@/components/ui/focus-table' (imported as 'focusTableCellSx').
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx:6:1
+Export focusTableCellSx doesn't exist in target module
+  4 | import { FocusSelect } from '@/components/ui/focus-select';
+  5 | import { FocusButton } from '@/components/ui/focus-button';
+> 6 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  7 |
+  8 | type MappingRuleCellProps = {
+  9 |   value: string;
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-rule-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).   
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx
-Attempted import error: 'focusTableCellSx' is not exported from '@/components/ui/focus-table' (imported as 'focusTableCellSx').
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx:3:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { Box, TableCell, Tooltip, Typography } from '@mui/material';
+  2 | import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+> 3 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { FocusAutocomplete } from '@/components/ui/focus-auto-complete';
+  5 | import type { FocusAutocompleteOption } from '@/components/ui/focus-auto-complete';
+  6 |
 
-./src/features/sttm/mapping/cells/mapping-status-cell.tsx
-Attempted import error: 'FocusChipCell' is not exported from '@/components/ui/focus-table' (imported as 'FocusChipCell'). 
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-status-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx
-Attempted import error: 'focusTableCellSx' is not exported from '@/components/ui/focus-table' (imported as 'focusTableCellSx').
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx:3:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { Box, TableCell, Tooltip, Typography } from '@mui/material';
+  2 | import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+> 3 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { FocusAutocomplete } from '@/components/ui/focus-auto-complete';
+  5 | import type { FocusAutocompleteOption } from '@/components/ui/focus-auto-complete';
+  6 |
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).   
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx
-Attempted import error: 'FocusChipCell' is not exported from '@/components/ui/focus-table' (imported as 'FocusChipCell'). 
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx:2:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { Box, TableCell, Typography } from '@mui/material';
+> 2 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | type MappingTargetColumnCellProps = {
+  5 |   name: string;
 
-./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx
-Attempted import error: 'FocusChipCell' is not exported from '@/components/ui/focus-table' (imported as 'FocusChipCell'). 
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-Attempted import error: 'FocusCheckboxCell' is not exported from '@/components/ui/focus-table' (imported as 'FocusCheckboxCell').
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx:2:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { Box, TableCell, Typography } from '@mui/material';
+> 2 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | type MappingTargetColumnCellProps = {
+  5 |   name: string;
 
-Import trace for requested module:
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).   
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-Attempted import error: 'FocusInputCell' is not exported from '@/components/ui/focus-table' (imported as 'FocusInputCell').
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-Import trace for requested module:
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/source-target-attribute-mapping.tsx:33:1
+Export FocusCheckboxCell doesn't exist in target module
+  31 | } from './mapping-utils';
+  32 | import { FocusCheckbox } from '@/components/ui/focus-checkbox';
+> 33 | import { FocusCheckboxCell, FocusInputCell } from '@/components/ui/focus-table';
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  34 | import {
+  35 |   MappingRowIndexCell,
+  36 |   MappingRuleCell,
 
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-Attempted import error: 'FocusInputCell' is not exported from '@/components/ui/focus-table' (imported as 'FocusInputCell').
+The export FocusCheckboxCell was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-Import trace for requested module:
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-Attempted import error: 'FocusInputCell' is not exported from '@/components/ui/focus-table' (imported as 'FocusInputCell').
+  Client Component SSR:
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/source-target-attribute-mapping.tsx:33:1
+Export FocusCheckboxCell doesn't exist in target module
+  31 | } from './mapping-utils';
+  32 | import { FocusCheckbox } from '@/components/ui/focus-checkbox';
+> 33 | import { FocusCheckboxCell, FocusInputCell } from '@/components/ui/focus-table';
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  34 | import {
+  35 |   MappingRowIndexCell,
+  36 |   MappingRuleCell,
 
-Import trace for requested module:
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+The export FocusCheckboxCell was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).  
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx
-Attempted import error: 'focusTableCellSx' is not exported from '@/components/ui/focus-table' (imported as 'focusTableCellSx').
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+  Client Component SSR:
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-status-cell.tsx:1:1
+Export FocusChipCell doesn't exist in target module
+> 1 | import { FocusChipCell } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  2 | import type { MappingStatus } from '@/features/sttm/types/sttm.types';
+  3 |
+  4 | type MappingStatusCellProps = {
 
-./src/features/sttm/mapping/cells/mapping-rule-cell.tsx
-Attempted import error: 'focusTableCellSx' is not exported from '@/components/ui/focus-table' (imported as 'focusTableCellSx').
+The export FocusChipCell was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).   
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-rule-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-status-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx
-Attempted import error: 'focusTableCellSx' is not exported from '@/components/ui/focus-table' (imported as 'focusTableCellSx').
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-status-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-status-cell.tsx:1:1
+Export FocusChipCell doesn't exist in target module
+> 1 | import { FocusChipCell } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  2 | import type { MappingStatus } from '@/features/sttm/types/sttm.types';
+  3 |
+  4 | type MappingStatusCellProps = {
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+The export FocusChipCell was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).      
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-./src/features/sttm/mapping/cells/mapping-status-cell.tsx
-Attempted import error: 'FocusChipCell' is not exported from '@/components/ui/focus-table' (imported as 'FocusChipCell'). 
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-status-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-status-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-status-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx:1:1
+Export FocusChipCell doesn't exist in target module
+> 1 | import { FocusChipCell } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  2 | import { formatSqlType, typeChipSx } from '../mapping-utils';
+  3 |
+  4 | type MappingTypePreviewCellProps = {
 
-./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx
-Attempted import error: 'focusTableCellSx' is not exported from '@/components/ui/focus-table' (imported as 'focusTableCellSx').
+The export FocusChipCell was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).   
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx
-Attempted import error: 'FocusChipCell' is not exported from '@/components/ui/focus-table' (imported as 'FocusChipCell'). 
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx:1:1
+Export FocusChipCell doesn't exist in target module
+> 1 | import { FocusChipCell } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  2 | import { formatSqlType, typeChipSx } from '../mapping-utils';
+  3 |
+  4 | type MappingTypePreviewCellProps = {
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+The export FocusChipCell was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).      
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx
-Attempted import error: 'FocusChipCell' is not exported from '@/components/ui/focus-table' (imported as 'FocusChipCell'). 
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/source-target-attribute-mapping.tsx:33:1
+Export FocusInputCell doesn't exist in target module
+  31 | } from './mapping-utils';
+  32 | import { FocusCheckbox } from '@/components/ui/focus-checkbox';
+> 33 | import { FocusCheckboxCell, FocusInputCell } from '@/components/ui/focus-table';
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  34 | import {
+  35 |   MappingRowIndexCell,
+  36 |   MappingRuleCell,
 
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-Attempted import error: 'FocusCheckboxCell' is not exported from '@/components/ui/focus-table' (imported as 'FocusCheckboxCell').
+The export FocusInputCell was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).  
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-Import trace for requested module:
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-Attempted import error: 'FocusInputCell' is not exported from '@/components/ui/focus-table' (imported as 'FocusInputCell').
+  Client Component SSR:
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/source-target-attribute-mapping.tsx:33:1
+Export FocusInputCell doesn't exist in target module
+  31 | } from './mapping-utils';
+  32 | import { FocusCheckbox } from '@/components/ui/focus-checkbox';
+> 33 | import { FocusCheckboxCell, FocusInputCell } from '@/components/ui/focus-table';
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  34 | import {
+  35 |   MappingRowIndexCell,
+  36 |   MappingRuleCell,
 
-Import trace for requested module:
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+The export FocusInputCell was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).     
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-Attempted import error: 'FocusInputCell' is not exported from '@/components/ui/focus-table' (imported as 'FocusInputCell').
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-Import trace for requested module:
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
+  Client Component SSR:
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx:2:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { TableCell, Typography } from '@mui/material';
+> 2 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | type MappingRowIndexCellProps = {
+  5 |   index: number;
 
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-Attempted import error: 'FocusInputCell' is not exported from '@/components/ui/focus-table' (imported as 'FocusInputCell').
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-Import trace for requested module:
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
-○ Compiling /sttm/builder/new/mapping ...
-[browser] ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx
-Attempted import error: 'focusTableCellSx' is not exported from '@/components/ui/focus-table' (imported as 'focusTableCellSx').
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
-[browser] ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx
-Attempted import error: 'focusTableCellSx' is not exported from '@/components/ui/focus-table' (imported as 'focusTableCellSx').
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx:2:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { TableCell, Typography } from '@mui/material';
+> 2 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | type MappingRowIndexCellProps = {
+  5 |   index: number;
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-rule-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
-[browser] ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx
-Attempted import error: 'focusTableCellSx' is not exported from '@/components/ui/focus-table' (imported as 'focusTableCellSx').
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).   
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
-[browser] ./src/features/sttm/mapping/cells/mapping-status-cell.tsx
-Attempted import error: 'FocusChipCell' is not exported from '@/components/ui/focus-table' (imported as 'FocusChipCell'). 
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-status-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
-[browser] ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx
-Attempted import error: 'focusTableCellSx' is not exported from '@/components/ui/focus-table' (imported as 'focusTableCellSx').
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx:6:1
+Export focusTableCellSx doesn't exist in target module
+  4 | import { FocusSelect } from '@/components/ui/focus-select';
+  5 | import { FocusButton } from '@/components/ui/focus-button';
+> 6 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  7 |
+  8 | type MappingRuleCellProps = {
+  9 |   value: string;
 
-Import trace for requested module:
-./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx
-./src/features/sttm/mapping/cells/index.ts
-./src/features/sttm/mapping/source-target-attribute-mapping.tsx
-./src/app/sttm/builder/new/mapping/page.tsx
-[browser] There were more warnings in other files.
-You can find a complete log in the terminal.
- GET /sttm/builder/new/mapping 200 in 3.1s (next.js: 3.0s, application-code: 95ms)
-[browser] Uncaught Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined. You likely forgot to export your component from the file it's defined in, or you might have mixed up default and named imports.
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
 
-Check the render method of `SourceTargetAttributeMapping`.
-    at MappingPage (src\app\sttm\builder\new\mapping\page.tsx:583:13)
-  581 |         {activeTab === 'mapping' ? (
-  582 |           <div className="min-w-0 flex-1 overflow-hidden">
-> 583 |             <SourceTargetAttributeMapping />
-      |             ^
-  584 |           </div>
-  585 |         ) : null}
-  586 |
- GET /sttm/builder/new/mapping 200 in 560ms (next.js: 5ms, application-code: 555ms)
-[browser] ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx
-Attempted import error: 'focusTableCellSx' is not exported from '@/components/ui/focus-table' (imported as 'focusTableCellSx').
-[browser] ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx
-Attempted import error: 'focusTableCellSx' is not exported from '@/components/ui/focus-table' (imported as 'focusTableCellSx').
-[browser] ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx
-Attempted import error: 'focusTableCellSx' is not exported from '@/components/ui/focus-table' (imported as 'focusTableCellSx').
-[browser] ./src/features/sttm/mapping/cells/mapping-status-cell.tsx
-Attempted import error: 'FocusChipCell' is not exported from '@/components/ui/focus-table' (imported as 'FocusChipCell'). 
-[browser] ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx
-Attempted import error: 'focusTableCellSx' is not exported from '@/components/ui/focus-table' (imported as 'focusTableCellSx').
-[browser] There were more warnings in other files.
-You can find a complete log in the terminal.
- GET /sttm/builder/new 200 in 82ms (next.js: 43ms, application-code: 39ms)
-[browser] Image with src "http://localhost:3000/images/focus/focus_home_logo.svg" has either width or height modified, but not the other. If you use CSS to change the size of your image, also include the styles 'width: "auto"' or 'height: "auto"' to maintain the aspect ratio.
- GET /sttm/builder/new/mapping 200 in 33ms (next.js: 5ms, application-code: 28ms)
-[browser] Uncaught Error: Element type is invalid: expected a string (for built-in components) or a class/function (for composite components) but got: undefined. You likely forgot to export your component from the file it's defined in, or you might have mixed up default and named imports.
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
 
-Check the render method of `SourceTargetAttributeMapping`.
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx:6:1
+Export focusTableCellSx doesn't exist in target module
+  4 | import { FocusSelect } from '@/components/ui/focus-select';
+  5 | import { FocusButton } from '@/components/ui/focus-button';
+> 6 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  7 |
+  8 | type MappingRuleCellProps = {
+  9 |   value: string;
+
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).   
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx:3:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { Box, TableCell, Tooltip, Typography } from '@mui/material';
+  2 | import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+> 3 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { FocusAutocomplete } from '@/components/ui/focus-auto-complete';
+  5 | import type { FocusAutocompleteOption } from '@/components/ui/focus-auto-complete';
+  6 |
+
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx:3:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { Box, TableCell, Tooltip, Typography } from '@mui/material';
+  2 | import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+> 3 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { FocusAutocomplete } from '@/components/ui/focus-auto-complete';
+  5 | import type { FocusAutocompleteOption } from '@/components/ui/focus-auto-complete';
+  6 |
+
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).   
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx:2:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { Box, TableCell, Typography } from '@mui/material';
+> 2 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | type MappingTargetColumnCellProps = {
+  5 |   name: string;
+
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx:2:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { Box, TableCell, Typography } from '@mui/material';
+> 2 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | type MappingTargetColumnCellProps = {
+  5 |   name: string;
+
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).   
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/source-target-attribute-mapping.tsx:33:1
+Export FocusCheckboxCell doesn't exist in target module
+  31 | } from './mapping-utils';
+  32 | import { FocusCheckbox } from '@/components/ui/focus-checkbox';
+> 33 | import { FocusCheckboxCell, FocusInputCell } from '@/components/ui/focus-table';
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  34 | import {
+  35 |   MappingRowIndexCell,
+  36 |   MappingRuleCell,
+
+The export FocusCheckboxCell was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/source-target-attribute-mapping.tsx:33:1
+Export FocusCheckboxCell doesn't exist in target module
+  31 | } from './mapping-utils';
+  32 | import { FocusCheckbox } from '@/components/ui/focus-checkbox';
+> 33 | import { FocusCheckboxCell, FocusInputCell } from '@/components/ui/focus-table';
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  34 | import {
+  35 |   MappingRowIndexCell,
+  36 |   MappingRuleCell,
+
+The export FocusCheckboxCell was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).  
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-status-cell.tsx:1:1
+Export FocusChipCell doesn't exist in target module
+> 1 | import { FocusChipCell } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  2 | import type { MappingStatus } from '@/features/sttm/types/sttm.types';
+  3 |
+  4 | type MappingStatusCellProps = {
+
+The export FocusChipCell was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).   
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-status-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-status-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-status-cell.tsx:1:1
+Export FocusChipCell doesn't exist in target module
+> 1 | import { FocusChipCell } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  2 | import type { MappingStatus } from '@/features/sttm/types/sttm.types';
+  3 |
+  4 | type MappingStatusCellProps = {
+
+The export FocusChipCell was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).      
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-status-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-status-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx:1:1
+Export FocusChipCell doesn't exist in target module
+> 1 | import { FocusChipCell } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  2 | import { formatSqlType, typeChipSx } from '../mapping-utils';
+  3 |
+  4 | type MappingTypePreviewCellProps = {
+
+The export FocusChipCell was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).   
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx:1:1
+Export FocusChipCell doesn't exist in target module
+> 1 | import { FocusChipCell } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  2 | import { formatSqlType, typeChipSx } from '../mapping-utils';
+  3 |
+  4 | type MappingTypePreviewCellProps = {
+
+The export FocusChipCell was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).      
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-type-preview-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/source-target-attribute-mapping.tsx:33:1
+Export FocusInputCell doesn't exist in target module
+  31 | } from './mapping-utils';
+  32 | import { FocusCheckbox } from '@/components/ui/focus-checkbox';
+> 33 | import { FocusCheckboxCell, FocusInputCell } from '@/components/ui/focus-table';
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  34 | import {
+  35 |   MappingRowIndexCell,
+  36 |   MappingRuleCell,
+
+The export FocusInputCell was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).  
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/source-target-attribute-mapping.tsx:33:1
+Export FocusInputCell doesn't exist in target module
+  31 | } from './mapping-utils';
+  32 | import { FocusCheckbox } from '@/components/ui/focus-checkbox';
+> 33 | import { FocusCheckboxCell, FocusInputCell } from '@/components/ui/focus-table';
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  34 | import {
+  35 |   MappingRowIndexCell,
+  36 |   MappingRuleCell,
+
+The export FocusInputCell was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).     
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx:2:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { TableCell, Typography } from '@mui/material';
+> 2 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | type MappingRowIndexCellProps = {
+  5 |   index: number;
+
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx:2:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { TableCell, Typography } from '@mui/material';
+> 2 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | type MappingRowIndexCellProps = {
+  5 |   index: number;
+
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).   
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-row-index-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx:6:1
+Export focusTableCellSx doesn't exist in target module
+  4 | import { FocusSelect } from '@/components/ui/focus-select';
+  5 | import { FocusButton } from '@/components/ui/focus-button';
+> 6 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  7 |
+  8 | type MappingRuleCellProps = {
+  9 |   value: string;
+
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx:6:1
+Export focusTableCellSx doesn't exist in target module
+  4 | import { FocusSelect } from '@/components/ui/focus-select';
+  5 | import { FocusButton } from '@/components/ui/focus-button';
+> 6 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  7 |
+  8 | type MappingRuleCellProps = {
+  9 |   value: string;
+
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).   
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-rule-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx:3:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { Box, TableCell, Tooltip, Typography } from '@mui/material';
+  2 | import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+> 3 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { FocusAutocomplete } from '@/components/ui/focus-auto-complete';
+  5 | import type { FocusAutocompleteOption } from '@/components/ui/focus-auto-complete';
+  6 |
+
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx:3:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { Box, TableCell, Tooltip, Typography } from '@mui/material';
+  2 | import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+> 3 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import { FocusAutocomplete } from '@/components/ui/focus-auto-complete';
+  5 | import type { FocusAutocompleteOption } from '@/components/ui/focus-auto-complete';
+  6 |
+
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).   
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx:2:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { Box, TableCell, Typography } from '@mui/material';
+> 2 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | type MappingTargetColumnCellProps = {
+  5 |   name: string;
+
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-client] (ecmascript).
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+[browser] ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx:2:1
+Export focusTableCellSx doesn't exist in target module
+  1 | import { Box, TableCell, Typography } from '@mui/material';
+> 2 | import { focusTableCellSx } from '@/components/ui/focus-table';
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | type MappingTargetColumnCellProps = {
+  5 |   name: string;
+
+The export focusTableCellSx was not found in module [project]/src/components/ui/focus-table.tsx [app-ssr] (ecmascript).   
+Did you mean to import FocusTable?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import traces:
+  Client Component Browser:
+    ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx [Client Component Browser]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component Browser]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/features/sttm/mapping/cells/mapping-target-column-cell.tsx [Client Component SSR]
+    ./src/features/sttm/mapping/source-target-attribute-mapping.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Client Component SSR]
+    ./src/app/sttm/builder/new/mapping/page.tsx [Server Component]
