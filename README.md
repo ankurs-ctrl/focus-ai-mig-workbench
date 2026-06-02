@@ -1,4 +1,8 @@
+cd .\bbi_migration\artifacts
+dir
 cmd /c "copy /b bbi-mig-ai-workbench-source.zip.part-00+bbi-mig-ai-workbench-source.zip.part-01+bbi-mig-ai-workbench-source.zip.part-02+bbi-mig-ai-workbench-source.zip.part-03 bbi-mig-ai-workbench-source.zip"
+Expand-Archive .\bbi-mig-ai-workbench-source.zip -DestinationPath .\bbi-mig-ai-workbench-source -Force
+cd .\bbi-mig-ai-workbench-source\bbi-mig-ai-workbench
 
 To rebuild the source zip from parts:
 
