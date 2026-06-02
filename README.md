@@ -1,3 +1,5 @@
+cmd /c "copy /b bbi-mig-ai-workbench-source.zip.part-00+bbi-mig-ai-workbench-source.zip.part-01+bbi-mig-ai-workbench-source.zip.part-02+bbi-mig-ai-workbench-source.zip.part-03 bbi-mig-ai-workbench-source.zip"
+
 To rebuild the source zip from parts:
 
 cmd /c copy /b bbi-mig-ai-workbench-source.zip.part-00+bbi-mig-ai-workbench-source.zip.part-01+bbi-mig-ai-workbench-source.zip.part-02+bbi-mig-ai-workbench-source.zip.part-03 bbi-mig-ai-workbench-source.zip
