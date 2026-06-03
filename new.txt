@@ -1,3 +1,9 @@
+.client-tools-venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
+.client-tools-venv\Scripts\python.exe -m pip install snowflake-cli
+dir .client-tools-venv\Scripts\snow*
+
+
+
 For local localhost run:
 unzip all 4 parts into one folder
 fill services\sttm-builder\.env.local
