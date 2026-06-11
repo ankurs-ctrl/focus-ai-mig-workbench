@@ -1,48 +1,84 @@
-.client-tools-venv\Scripts\python.exe -m pip install --upgrade pip setuptools wheel
-.client-tools-venv\Scripts\python.exe -m pip install snowflake-cli
-dir .client-tools-venv\Scripts\snow*
-
-
-
-For local localhost run:
-unzip all 4 parts into one folder
-fill services\sttm-builder\.env.local
-set at least:LOCAL_DEV_AUTH_ENABLED=true
-SNOWFLAKE_ACCOUNT
-SNOWFLAKE_USER
-SNOWFLAKE_ROLE
-SNOWFLAKE_WAREHOUSE
-SNOWFLAKE_DATABASE
-SNOWFLAKE_SCHEMA
-
-run:
-powershell
-
-
-
-.\start-ai-workbench.ps1
-
-For client Snowflake bootstrap and SPCS-ready setup:
-copy client.env.example to infra\snowflake\env\client.env
-fill the Snowflake values
-if you want AGT_DBT_CONVERSION fully usable, also fill:SNOWFLAKE_DBT_GIT_ALLOWED_PREFIX
-SNOWFLAKE_DBT_GIT_USERNAME
-SNOWFLAKE_DBT_GIT_PAT
-SNOWFLAKE_DBT_GIT_ORIGIN
-
-run:
-powershell
-
-
-
-.\scripts\bootstrap_client_spcs_tools.ps1
-.\scripts\configure_client_snow_connection.ps1
-.\scripts\bootstrap_dbt_repo_infra.ps1
-.\scripts\bootstrap_sttm_metadata_infra.ps1
-
-Full wrapper for client deploy:
-powershell
-
-
-
-.\scripts\run_client_spcs_browser_deploy.ps1
+1. Registry auth failure
+Since you already confirmed:
+image repository exists
+your role has ownership on it
+then the most likely causes are now:
+Docker is not actually logged in to the Snowflake registry session
+SNOWFLAKE_REGISTRY_HOST is wrong
+the connection/account used for snow spcs image-registry login does not match the registry host
+Docker is using stale credentials
+What to check
+In client.env, make sure this is exactly right:
+SNOWFLAKE_ACCOUNT=MHSUEJT-GD01711
+SNOWFLAKE_REGISTRY_HOST=mhsuejt-gd01711.registry.snowflakecomputing.com
+And these must align with the repo path you verified:
+SNOWFLAKE_DATABASE=...
+SNOWFLAKE_SCHEMA=...
+SNOWFLAKE_IMAGE_REPOSITORY=YOUR_IMAGE_REGISTRY
+Fix it step by step
+Use the venv Snow CLI, yes:
+.\.client-tools-venv\Scripts\snow.exe connection test -c client-spcsv1
+.\.client-tools-venv\Scripts\snow.exe spcs image-registry login -c client-spcsv1
+Then verify Docker auth manually:
+docker logout mhsuejt-gd01711.registry.snowflakecomputing.com
+.\.client-tools-venv\Scripts\snow.exe spcs image-registry login -c client-spcsv1
+Then test a Docker command against the registry path by rerunning deploy or doing a manual push if needed.
+Important
+This registry error is not caused by blank egress integration.
+2. MIN_INSTANCES syntax error
+This is not a grants problem.
+That error is coming during service creation, and on this branch the script is using:
+snow spcs service create ... --compute-pool ... --spec-path ... --eai-name ...
+So the likely causes are:
+Snow CLI version mismatch
+CLI generating SQL that this account/parser rejects
+less likely, Snowflake account feature mismatch
+What to do
+Check Snow CLI version
+Run:
+.\.client-tools-venv\Scripts\snow.exe --version
+My recommendation
+Pin the CLI instead of using “latest”.
+The repo’s own docs/examples reference a stable client-tools flow, and right now your error smells like a CLI compatibility issue. So reinstall the tools with a pinned version.
+Try:
+.\scripts\bootstrap_client_spcs_tools.ps1 -SnowflakeCliVersion 3.10.1
+Then confirm:
+.\.client-tools-venv\Scripts\snow.exe --version
+Then rerun:
+.\scripts\configure_client_snow_connection.ps1 -EnvFile .\infra\snowflake\env\client.env -ForceRecreate
+.\.client-tools-venv\Scripts\snow.exe spcs image-registry login -c client-spcsv1
+.\scripts\deploy_spcs_client_snow.ps1 -EnvFile .\infra\snowflake\env\client.env
+3. About the scripts and venv
+Yes, the scripts are already using the venv Snow CLI.
+They resolve:
+.\.client-tools-venv\Scripts\snow.exe
+So you do not need a global snow install.
+When you run manual commands, use that same path explicitly.
+4. Egress integration
+You should still set it now.
+Use:
+SNOWFLAKE_EGRESS_INTEGRATION=AI_WORKBENCH_EGRESS_INTEGRATION
+And create it if needed with:
+setup-egress.sql
+But again: this is needed for runtime, not the main cause of the MIN_INSTANCES parser error.
+5. Exact next steps
+Do these in order:
+.\scripts\bootstrap_client_spcs_tools.ps1 -SnowflakeCliVersion 3.10.1
+.\.client-tools-venv\Scripts\snow.exe --version
+.\scripts\configure_client_snow_connection.ps1 -EnvFile .\infra\snowflake\env\client.env -ForceRecreate
+.\.client-tools-venv\Scripts\snow.exe spcs image-registry login -c client-spcsv1
+docker logout mhsuejt-gd01711.registry.snowflakecomputing.com
+.\.client-tools-venv\Scripts\snow.exe spcs image-registry login -c client-spcsv1
+docker ps
+Then set in client.env:
+SNOWFLAKE_EGRESS_INTEGRATION=AI_WORKBENCH_EGRESS_INTEGRATION
+Then rerun:
+.\scripts\deploy_spcs_client_snow.ps1 -EnvFile .\infra\snowflake\env\client.env
+6. My best read
+Right now:
+registry auth failure: likely login/registry-host mismatch or stale Docker auth
+MIN_INSTANCES failure: likely Snow CLI version / generated service-create syntax mismatch
+egress integration: needed, but not the direct cause of the parser error
+If you send me the output of just these two, I can narrow it further immediately:
+.\.client-tools-venv\Scripts\snow.exe --version
+Get-Content .\infra\snowflake\env\client.env | Select-String "SNOWFLAKE_ACCOUNT|SNOWFLAKE_REGISTRY_HOST|SNOWFLAKE_IMAGE_REPOSITORY|SNOWFLAKE_EGRESS_INTEGRATION|SNOWFLAKE_DATABASE|SNOWFLAKE_SCHEMA"
