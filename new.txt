@@ -1,29 +1,58 @@
-What to change in snowflake.py
-1. Add this helper function
-Put it just above class SnowflakeClient:.
-def _quote_identifier(identifier: str) -> str:
-    return '"' + identifier.replace('"', '""') + '"'
+SPCS Restricted Caller's Rights — Team Summary
+The Problem We Hit
+When deploying a web app on Snowflake SPCS with executeAsCaller: true, users could only see their personal USER$ database — not the actual business databases. This is by design, not a bug.
 
+What executeAsCaller: true Does
+The service runs SQL on behalf of the logged-in user — their identity, their data access. But Snowflake adds a security layer called Restricted Caller's Rights that creates a two-key requirement for every database access:
 
-def _activate_session_role(session: Session, role: Optional[str]) -> None:
-    normalized_role = (role or "").strip()
-    if not normalized_role:
-        return
-    session.sql(f"USE ROLE {_quote_identifier(normalized_role)}").collect()
-    logger.info("Activated Snowflake session role: %s", normalized_role)
-2. Update the local-dev session path
-Inside SnowflakeClient.__init__, in this block:
-self._session = Session.builder.configs(config).create()
-return
-change it to:
-self._session = Session.builder.configs(config).create()
-_activate_session_role(self._session, role or settings.snowflake_role)
-return
-3. Update the SPCS caller-rights session path
-Inside this block:
-self._session = _create_session_with_attempts(attempts)
-return
-change it to:
-self._session = _create_session_with_attempts(attempts)
-_activate_session_role(self._session, role)
-return
+text
+Key 1 (User Key):    The logged-in user must have USAGE on the database
+Key 2 (Service Key): The service owner role must have CALLER USAGE on the database
+
+Both keys required → Access granted
+Only one key        → Access denied
+USAGE vs CALLER USAGE
+USAGE	CALLER USAGE
+Purpose	Grants access in direct Snowflake sessions (SQL worksheets, local dev, stored procedures)	Grants access specifically when an SPCS service acts on behalf of a caller
+Who needs it	Any role that directly queries Snowflake	The service owner role (the role used to deploy the SPCS service)
+Automatically inherited?	Yes — cascades through role hierarchy	No — must be explicitly granted, even if USAGE already exists
+Context	externalbrowser, password, key-pair auth	SPCS executeAsCaller: true only
+Why are they separate? A service owner role may have USAGE on 50 databases. Without CALLER USAGE being explicit, every SPCS service deployed with that role would automatically expose all 50 databases to callers — including sensitive ones the service was never meant to touch. CALLER USAGE forces an explicit opt-in per database.
+
+Why It Works Locally But Not in SPCS
+Local Dev	SPCS
+Auth method	externalbrowser → direct user session	SPCS OAuth → restricted caller's rights session
+Permission check	Only checks user's USAGE grants	Checks BOTH user's USAGE AND service owner's CALLER USAGE
+SHOW DATABASES result	All databases the user has USAGE on	Only databases where CALLER USAGE is granted to service owner role
+Same role used?	Yes	Yes — but CALLER USAGE was never needed before SPCS
+What Grants Are Needed
+Must be run by ACCOUNTADMIN:
+
+sql
+-- 1. Databases (for SHOW DATABASES and schema/table browsing to work)
+GRANT CALLER USAGE ON DATABASE FFP_HDP_DLAB_DB_DEV
+    TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
+
+GRANT CALLER USAGE ON DATABASE FFP_HDP_CRM_MIG_DB_DEV
+    TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
+
+-- 2. Cortex Agents (for agent REST API calls to work)
+GRANT USAGE ON AGENT FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_STTM_BUILDER
+    TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
+
+GRANT USAGE ON AGENT FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_SEMANTIC_MODEL
+    TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
+
+GRANT USAGE ON AGENT FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_DBT_CONVERSION
+    TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
+
+GRANT USAGE ON AGENT FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_SOURCE_MAPPING
+    TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
+
+GRANT USAGE ON AGENT FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_WORKBENCH_CONVERSATION
+    TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
+Why Agent USAGE Is Also Needed
+When a user calls a Cortex Agent via the REST API from inside SPCS, Snowflake checks: "Does the caller's active role have USAGE on this agent?" Without it, the API call returns 403 even if the role owns the agent's underlying objects. USAGE ON AGENT is the specific privilege that authorizes invoking the agent via REST/SQL in a caller's rights context.
+
+One-Line Summary for the Team
+In SPCS, the service owner role needs CALLER USAGE on every database (separate from regular USAGE) because Snowflake requires explicit whitelisting of what an SPCS service is allowed to touch on behalf of callers — local dev bypasses this entirely since it uses direct user sessions.
