@@ -1,4 +1,4 @@
-# Client SPCS CI/CD Handover
+# Focus SPCS CI/CD Handover
 
 This document describes the current deployment model for the BBI AI Migration Workbench into a client Snowflake account using Snowpark Container Services (SPCS), with the app deployed as a single public service containing three containers:
 
@@ -18,11 +18,11 @@ The deployed web application is a single SPCS service with:
 
 The service spec template is:
 
-- [infra/snowflake/service-specs/webapp.yaml.tmpl](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/infra/snowflake/service-specs/webapp.yaml.tmpl)
+- [infra/snowflake/service-specs/webapp.yaml.tmpl](/infra/snowflake/service-specs/webapp.yaml.tmpl)
 
 The deployment script for the Windows/client single-service flow is:
 
-- [scripts/deploy_spcs_client_snow_single_service.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/deploy_spcs_client_snow_single_service.ps1)
+- [scripts/deploy_spcs_client_snow_single_service.ps1](/scripts/deploy_spcs_client_snow_single_service.ps1)
 
 The service runs with:
 
@@ -44,7 +44,7 @@ These are tagged and pushed to the client Snowflake image registry repository un
 
 The build/push logic is in:
 
-- [scripts/deploy_spcs_client_snow_single_service.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/deploy_spcs_client_snow_single_service.ps1:203)
+- [scripts/deploy_spcs_client_snow_single_service.ps1](/scripts/deploy_spcs_client_snow_single_service.ps1:203)
 
 ## 3. Deployment prerequisites
 
@@ -119,7 +119,7 @@ For a Windows AVD or CI runner:
 
 Bootstrap script:
 
-- [scripts/bootstrap_client_spcs_tools.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/bootstrap_client_spcs_tools.ps1)
+- [scripts/bootstrap_client_spcs_tools.ps1](/scripts/bootstrap_client_spcs_tools.ps1)
 
 What it does:
 
@@ -142,11 +142,11 @@ In practice, for the client AVD deployment, some of the above may already exist 
 
 Metadata/bootstrap script:
 
-- [scripts/bootstrap_sttm_metadata_infra.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/bootstrap_sttm_metadata_infra.ps1)
+- [scripts/bootstrap_sttm_metadata_infra.ps1](/scripts/bootstrap_sttm_metadata_infra.ps1)
 
 This script calls:
 
-- [scripts/bootstrap_sttm_metadata_infra.py](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/bootstrap_sttm_metadata_infra.py)
+- [scripts/bootstrap_sttm_metadata_infra.py](/scripts/bootstrap_sttm_metadata_infra.py)
 
 to create/update Snowflake-side STTM metadata objects, agents, and procedures in the configured database/schema.
 
@@ -172,7 +172,7 @@ These are application persona roles, not just UI labels. They affect caller-righ
 
 The client deployment uses:
 
-- [infra/snowflake/env/client.env.example](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/infra/snowflake/env/client.env.example)
+- [infra/snowflake/env/client.env.example](/infra/snowflake/env/client.env.example)
 
 Copy it to:
 
@@ -204,7 +204,7 @@ At minimum, the single-service deploy script requires:
 
 Source:
 
-- [scripts/deploy_spcs_client_snow_single_service.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/deploy_spcs_client_snow_single_service.ps1:77)
+- [scripts/deploy_spcs_client_snow_single_service.ps1](/scripts/deploy_spcs_client_snow_single_service.ps1:77)
 
 ### 4.2 Important runtime values
 
@@ -279,7 +279,7 @@ Run:
 
 Source:
 
-- [scripts/configure_client_snow_connection.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/configure_client_snow_connection.ps1)
+- [scripts/configure_client_snow_connection.ps1](/scripts/configure_client_snow_connection.ps1)
 
 This adds or refreshes a Snow CLI named connection using values from `client.env`.
 
@@ -341,7 +341,7 @@ Optional switches:
 
 Source:
 
-- [scripts/deploy_spcs_client_snow_single_service.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/deploy_spcs_client_snow_single_service.ps1)
+- [scripts/deploy_spcs_client_snow_single_service.ps1](/scripts/deploy_spcs_client_snow_single_service.ps1)
 
 ### 6.0 Important deployment behavior for existing environments
 
@@ -378,21 +378,21 @@ The script:
 Key references:
 
 - compute pool creation:
-  [deploy_spcs_client_snow_single_service.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/deploy_spcs_client_snow_single_service.ps1:147)
+  [deploy_spcs_client_snow_single_service.ps1](/scripts/deploy_spcs_client_snow_single_service.ps1:147)
 - Docker login:
-  [deploy_spcs_client_snow_single_service.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/deploy_spcs_client_snow_single_service.ps1:150)
+  [deploy_spcs_client_snow_single_service.ps1](/scripts/deploy_spcs_client_snow_single_service.ps1:150)
 - image build/push:
-  [deploy_spcs_client_snow_single_service.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/deploy_spcs_client_snow_single_service.ps1:203)
+  [deploy_spcs_client_snow_single_service.ps1](/scripts/deploy_spcs_client_snow_single_service.ps1:203)
 - spec render:
-  [deploy_spcs_client_snow_single_service.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/deploy_spcs_client_snow_single_service.ps1:228)
+  [deploy_spcs_client_snow_single_service.ps1](/scripts/deploy_spcs_client_snow_single_service.ps1:228)
 - create/upgrade:
-  [deploy_spcs_client_snow_single_service.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/deploy_spcs_client_snow_single_service.ps1:233)
+  [deploy_spcs_client_snow_single_service.ps1](/scripts/deploy_spcs_client_snow_single_service.ps1:233)
 
 ## 7. Service spec rendering
 
 Template rendering is done by:
 
-- [scripts/render_spcs_spec.py](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/render_spcs_spec.py)
+- [scripts/render_spcs_spec.py](/scripts/render_spcs_spec.py)
 
 Important behavior:
 
@@ -554,7 +554,7 @@ The deploy script itself states:
 
 Source:
 
-- [scripts/deploy_spcs_client_snow_single_service.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/deploy_spcs_client_snow_single_service.ps1:270)
+- [scripts/deploy_spcs_client_snow_single_service.ps1](/scripts/deploy_spcs_client_snow_single_service.ps1:270)
 
 ## 12. Minimum handoff items DevOps needs
 
@@ -616,10 +616,10 @@ These are worth adding to the pipeline or scripts:
 
 ## 14. Primary files for DevOps reference
 
-- [scripts/bootstrap_client_spcs_tools.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/bootstrap_client_spcs_tools.ps1)
-- [scripts/configure_client_snow_connection.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/configure_client_snow_connection.ps1)
-- [scripts/bootstrap_sttm_metadata_infra.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/bootstrap_sttm_metadata_infra.ps1)
-- [scripts/deploy_spcs_client_snow_single_service.ps1](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/deploy_spcs_client_snow_single_service.ps1)
-- [scripts/render_spcs_spec.py](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/scripts/render_spcs_spec.py)
-- [infra/snowflake/env/client.env.example](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/infra/snowflake/env/client.env.example)
-- [infra/snowflake/service-specs/webapp.yaml.tmpl](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/infra/snowflake/service-specs/webapp.yaml.tmpl)
+- [scripts/bootstrap_client_spcs_tools.ps1](/scripts/bootstrap_client_spcs_tools.ps1)
+- [scripts/configure_client_snow_connection.ps1](/scripts/configure_client_snow_connection.ps1)
+- [scripts/bootstrap_sttm_metadata_infra.ps1](/scripts/bootstrap_sttm_metadata_infra.ps1)
+- [scripts/deploy_spcs_client_snow_single_service.ps1](/scripts/deploy_spcs_client_snow_single_service.ps1)
+- [scripts/render_spcs_spec.py](/scripts/render_spcs_spec.py)
+- [infra/snowflake/env/client.env.example](/infra/snowflake/env/client.env.example)
+- [infra/snowflake/service-specs/webapp.yaml.tmpl](/infra/snowflake/service-specs/webapp.yaml.tmpl)
