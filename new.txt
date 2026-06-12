@@ -1,24 +1,16 @@
-USE DATABASE FFP_HDP_DLAB_DB_DEV;
-USE SCHEMA SCH_STTM_METADATA;
+What to check next, exactly
+In your rendered service spec, verify the value:
+confirm APP_ROLE_ADMIN: FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV
 
-CREATE OR REPLACE SEQUENCE SEQ_TBL_USERS_USER_ID
-  START = 1
-  INCREMENT = 1;
+In backend logs or /api/v1/auth/snowflake-context, verify:
+CURRENT_ROLE()
+whether the app thinks you are ADMIN
 
-CREATE OR REPLACE TABLE TBL_USERS (
-    USER_ID                 VARCHAR(128)  NOT NULL
-                                DEFAULT TO_VARCHAR(SEQ_TBL_USERS_USER_ID.NEXTVAL),
-    OKTA_SUB                VARCHAR(255)  NOT NULL,
-    EMAIL                   VARCHAR(255)  NOT NULL,
-    DISPLAY_NAME            VARCHAR(255),
-    ROLE                    VARCHAR(50)   NOT NULL DEFAULT 'VIEWER',
-    IS_ACTIVE               BOOLEAN       NOT NULL DEFAULT TRUE,
-    CREATED_DATETIME        TIMESTAMP_NTZ NOT NULL DEFAULT CURRENT_TIMESTAMP(),
-    LAST_SEEN_DATETIME      TIMESTAMP_NTZ,
-    LAST_MODIFIED_DATETIME  TIMESTAMP_NTZ NOT NULL DEFAULT CURRENT_TIMESTAMP(),
+Most important Snowflake-side check:
+run this as the same logged-in user/session path if possible:
+SELECT
+  CURRENT_USER(),
+  CURRENT_ROLE(),
+  IS_ROLE_IN_SESSION('FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV');
 
-    CONSTRAINT PK_TBL_USERS PRIMARY KEY (USER_ID),
-    CONSTRAINT UQ_TBL_USERS_OKTA_SUB UNIQUE (OKTA_SUB),
-    CONSTRAINT UQ_TBL_USERS_EMAIL UNIQUE (EMAIL),
-    CONSTRAINT CHK_TBL_USERS_ROLE CHECK (ROLE IN ('ADMIN', 'PUBLISHER', 'VIEWER'))
-);
+If that last value is FALSE, then we found the real reason.
