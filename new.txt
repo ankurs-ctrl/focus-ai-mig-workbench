@@ -1,58 +1,43 @@
-SPCS Restricted Caller's Rights — Team Summary
-The Problem We Hit
-When deploying a web app on Snowflake SPCS with executeAsCaller: true, users could only see their personal USER$ database — not the actual business databases. This is by design, not a bug.
+Here's a full consolidated summary of FOCUS_ADMIN's access:
 
-What executeAsCaller: true Does
-The service runs SQL on behalf of the logged-in user — their identity, their data access. But Snowflake adds a security layer called Restricted Caller's Rights that creates a two-key requirement for every database access:
+FOCUS_ADMIN — Complete Access Summary
+Account-Level
+Privilege	Object
+BIND SERVICE ENDPOINT	Account (granted by ACCOUNTADMIN + SECURITYADMIN)
+USAGE on role	ACCOUNTADMIN ← inherits ALL account privileges
+Databases
+Database	Access
+AI_WORKBENCH_DEV	OWNERSHIP
+BBI_POC	OWNERSHIP
+BBI_PRODUCTION	OWNERSHIP
+BBI_STTM_TEST_DB	OWNERSHIP
+DB_TEST	OWNERSHIP
+FFP_HDP_CRM_MIG_DB_DEV	USAGE + CREATE SCHEMA
+FOCUS_DB	USAGE
+FOCUS_DB_2	USAGE + CREATE SCHEMA
+SNOWPARK_DB	USAGE
+Roles Owned
+FOCUS_DEVELOPER, WORKBENCH_ADMIN, WORKBENCH_AUTH_SERVICE, WORKBENCH_PUBLISHER, WORKBENCH_VIEWER, BBI_ADVISOR, BBI_AGENT_SERVICE, FOCUS_APP_USER, BBI_ADMIN
 
-text
-Key 1 (User Key):    The logged-in user must have USAGE on the database
-Key 2 (Service Key): The service owner role must have CALLER USAGE on the database
+Services — CALLER USAGE
+None — no CALLER USAGE grants exist on any service for this role (as confirmed earlier). The service WORKBENCH_WEBAPP_DEV has executeAsCaller: true in its spec but the CALLER USAGE privilege has not been explicitly granted to FOCUS_ADMIN.
 
-Both keys required → Access granted
-Only one key        → Access denied
-USAGE vs CALLER USAGE
-USAGE	CALLER USAGE
-Purpose	Grants access in direct Snowflake sessions (SQL worksheets, local dev, stored procedures)	Grants access specifically when an SPCS service acts on behalf of a caller
-Who needs it	Any role that directly queries Snowflake	The service owner role (the role used to deploy the SPCS service)
-Automatically inherited?	Yes — cascades through role hierarchy	No — must be explicitly granted, even if USAGE already exists
-Context	externalbrowser, password, key-pair auth	SPCS executeAsCaller: true only
-Why are they separate? A service owner role may have USAGE on 50 databases. Without CALLER USAGE being explicit, every SPCS service deployed with that role would automatically expose all 50 databases to callers — including sensitive ones the service was never meant to touch. CALLER USAGE forces an explicit opt-in per database.
+Cortex / AI
+Resource	Access
+Cortex Search Services (CSS)	OWNERSHIP on 10+ search services
+Agents	OWNERSHIP via AGT_* objects
+AI_WORKBENCH_EGRESS_INTEGRATION	USAGE
+External Access Integrations	OWNERSHIP + USAGE on FOCUS_EXTERNAL_ACCESS, MARKET_DATA_EAI
+Tables (in FFP_HDP_CRM_MIG_DB_DEV.SCH_STTM_METADATA)
+Full SELECT / INSERT / UPDATE / DELETE / TRUNCATE on all workbench tables (TBL_USERS, TBL_SEMANTIC_MODELS, TBL_WORKBENCH_*, TBL_STTM_*, TBL_DBT_*, etc.)
 
-Why It Works Locally But Not in SPCS
-Local Dev	SPCS
-Auth method	externalbrowser → direct user session	SPCS OAuth → restricted caller's rights session
-Permission check	Only checks user's USAGE grants	Checks BOTH user's USAGE AND service owner's CALLER USAGE
-SHOW DATABASES result	All databases the user has USAGE on	Only databases where CALLER USAGE is granted to service owner role
-Same role used?	Yes	Yes — but CALLER USAGE was never needed before SPCS
-What Grants Are Needed
-Must be run by ACCOUNTADMIN:
+Stages
+OWNERSHIP + READ + WRITE on AI_WORKBENCH_DEV_IMAGES, WORKBENCH_SPCS_DEPLOY_STAGE, STTM_AGENT_SKILLS, SEMANTIC_MODELS, QA_TEMP_STAGE, etc.
 
-sql
--- 1. Databases (for SHOW DATABASES and schema/table browsing to work)
-GRANT CALLER USAGE ON DATABASE FFP_HDP_DLAB_DB_DEV
-    TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
+Tasks
+OWNERSHIP on MONITOR_SERVICE_TASK, TASK_CRM_SYNC, TASK_BILLING_SYNC, TASK_CLIENT360_REFRESH, SEND_DAILY_COST_REPORT_TASK, etc.
 
-GRANT CALLER USAGE ON DATABASE FFP_HDP_CRM_MIG_DB_DEV
-    TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
+Users Managed
+OWNERSHIP of: SHARAONA, LOKESHM, BLESSONID, HARSHITHA, SMITS, AJITHB, KALYANIB, MOHITK, WORKBENCH_AUTH_SVC, VIVEK_NOTIFICATIONS
 
--- 2. Cortex Agents (for agent REST API calls to work)
-GRANT USAGE ON AGENT FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_STTM_BUILDER
-    TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
-
-GRANT USAGE ON AGENT FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_SEMANTIC_MODEL
-    TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
-
-GRANT USAGE ON AGENT FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_DBT_CONVERSION
-    TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
-
-GRANT USAGE ON AGENT FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_SOURCE_MAPPING
-    TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
-
-GRANT USAGE ON AGENT FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_WORKBENCH_CONVERSATION
-    TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
-Why Agent USAGE Is Also Needed
-When a user calls a Cortex Agent via the REST API from inside SPCS, Snowflake checks: "Does the caller's active role have USAGE on this agent?" Without it, the API call returns 403 even if the role owns the agent's underlying objects. USAGE ON AGENT is the specific privilege that authorizes invoking the agent via REST/SQL in a caller's rights context.
-
-One-Line Summary for the Team
-In SPCS, the service owner role needs CALLER USAGE on every database (separate from regular USAGE) because Snowflake requires explicit whitelisting of what an SPCS service is allowed to touch on behalf of callers — local dev bypasses this entirely since it uses direct user sessions.
+Key gap: CALLER USAGE on WORKBENCH_WEBAPP_DEV service is not granted to FOCUS_ADMIN. Want me to add that?
