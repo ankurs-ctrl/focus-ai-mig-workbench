@@ -1,28 +1,146 @@
-So the new patch did its job. We’re past the token problem. Now it’s an agent authorization / active-role problem.
-What this usually means:
-The SPCS session is running under a different Snowflake role than the one you granted on the agent.
-Or that role has USAGE on the DB/schema, but not USAGE ON AGENT.
-Or the user’s DEFAULT_ROLE is different, and Snowflake is evaluating the agent call with that role.
-Please check these exactly in client Snowflake:
-SHOW GRANTS ON AGENT FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_STTM_BUILDER;
-SHOW GRANTS TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
-Make sure this role has all three:
-GRANT USAGE ON DATABASE FFP_HDP_DLAB_DB_DEV TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
-GRANT USAGE ON SCHEMA FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
-GRANT USAGE ON AGENT FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_STTM_BUILDER TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
-Do the same for the other agents too:
-AGT_SOURCE_MAPPING
-AGT_WORKBENCH_CONVERSATION
-AGT_SEMANTIC_MODEL
-AGT_DBT_CONVERSION
-Then verify the user’s default role:
-DESC USER ANKURSINHA;
-If DEFAULT_ROLE is not FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV, set it:
-ALTER USER ANKURSINHA SET DEFAULT_ROLE = FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
-Why this changed:
-Before, the app was failing earlier on the bad token path.
-After the fix, it now uses the Snowflake session token correctly, so Snowflake is finally checking the real runtime role against the actual agent object. That’s why you now see “agent does not exist or not authorized for the current role.”
-So short version: this is most likely not a code bug anymore. It’s the active role used by the SPCS session not matching the role granted on the agent.
-If you send me the output of:
-SHOW GRANTS ON AGENT FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_STTM_BUILDER;
-DESC USER ANKURSINHA;
+i want you to search and tell me how do we call cortex agents using rest api inside personally deployed spcs webapp that creates session using sf-user-context?
+
+Thinking complete
+Ran 2 commands and ran 2 searches
+
+
+Let me read the key SPCS SQL execution doc which covers credential options:
+
+Read 1 file, ran 2 commands, and ran 1 search
+
+
+
+
+Now the key section on caller credentials — how to call APIs on behalf of the user:
+
+Ran 2 commands
+
+
+
+
+I now have complete, official evidence. Here's the definitive answer:
+
+How Cortex Agent REST API auth works from SPCS caller's-rights apps
+The Evidence (Official Snowflake SPCS docs)
+1. The combined token is ONLY for SQL/Snowpark connections — not REST APIs:
+
+From SPCS: SQL execution, the caller's-rights combined token <service-oauth-token>.<Sf-Context-Current-User-Token> is used exclusively to create a Snowpark session:
+
+python
+token = get_login_token() + "." + ingress_user_token
+connection_params = {"account":..., "host":..., "authenticator": "oauth", "token": token}
+Session.builder.configs(connection_params).create()  # ← SQL session only
+2. The service token explicitly cannot be used for REST API Bearer auth:
+
+"session/token. The container code uses these credentials to authenticate as the service user. This OAuth token can't be used outside Snowpark Container Services."
+
+3. For anything other than SQL, you need customer-provided credentials:
+
+"Use customer-provided credentials: In certain cases, you may want to connect to Snowflake using custom user-provided credentials (for example PAT, JWT, etc) instead of using the service user or caller credentials."
+
+What This Means For Your App
+Use case	Token to use	Works?
+SQL queries (SHOW DATABASES, SELECT, etc.)	Combined service.user token via authenticator=oauth	✅ (this is why your DB browsing works)
+Cortex Agent REST API (/api/v2/cortex/agent:run)	Combined token / session token	❌ Not supported
+Cortex Agent REST API	PAT or JWT key-pair	✅ Required
+Your two failed attempts are fully explained:
+
+Combined token → 403 (SPCS token not valid for REST API)
+Session token → 401 (_rest._token is the SPCS-internal token, also not valid for REST API)
+The Correct Solution: PAT
+Since the Cortex Agent REST API requires customer-managed credentials, you must use a Programmatic Access Token:
+
+1. Generate a PAT (scoped to the role that owns the agents):
+
+sql
+ALTER USER ANKURSINHA 
+    ADD PROGRAMMATIC ACCESS TOKEN AI_WORKBENCH_AGENT_PAT
+    ROLE_RESTRICTION = 'FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV'
+    DAYS_TO_EXPIRY = 90;
+2. Store as a secret and grant the SPCS service access to it.
+
+3. In code, for the Cortex Agent client (SPCS path), use the PAT as the Bearer token instead of the combined/session token.
+
+Important Trade-off
+A PAT authenticates as one fixed identity (the PAT owner + restricted role), not the per-request calling user. So all agent calls will run as that role — you lose true per-user caller's rights for the agent calls specifically. Since your agents are all owned by FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV and that's your app's admin role, this is acceptable for your setup. Your SQL queries still retain proper caller's rights.
+
+Want me to detail the exact code + service-spec changes to wire up the PAT secret?
+
+Sources:
+
+Snowpark Container Services: SQL execution
+Using PATs for REST API Authentication with Snowflake-Managed MCP Server
+Hmm so one more thing the cortext agents can only be called through rest api and not using the snowflake session created?
+
+Thinking complete
+Good question — let me verify whether agents can be invoked via SQL:
+
+Ran 2 commands
+
+
+
+Excellent news — YES, agents CAN be called via SQL! From the official docs:
+
+"Tip: You can also run agents using SQL with the DATA_AGENT_RUN function. The SQL function returns a non-streaming JSON response and doesn't require a REST client. For most use cases, Snowflake recommends the REST API."
+
+Let me get the exact SQL syntax:
+
+Ran 3 commands
+
+
+
+I have everything I need. Here's the answer:
+
+Yes — Cortex Agents CAN be called via SQL, not just REST API
+There's a SQL function SNOWFLAKE.CORTEX.DATA_AGENT_RUN that runs an agent object and returns JSON — no REST client, no token gymnastics. It runs through your existing Snowpark caller's-rights session that already works.
+
+Syntax
+sql
+SNOWFLAKE.CORTEX.DATA_AGENT_RUN(
+    '<database.schema.agent_name>',
+    '<request_body_json>'
+    [, <create_thread_if_not_present> ]
+)
+Example for your agent
+sql
+SELECT TRY_PARSE_JSON(
+    SNOWFLAKE.CORTEX.DATA_AGENT_RUN(
+        'FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_STTM_BUILDER',
+        $${
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        { "type": "text", "text": "generate a derived source joining the selected tables" }
+                    ]
+                }
+            ]
+        }$$,
+        TRUE
+    )
+) AS resp;
+Why this solves your entire problem
+REST API (/api/v2/cortex/agent:run)	SQL DATA_AGENT_RUN
+Token needed	PAT / OAuth (SPCS tokens rejected)	None — uses Snowpark session
+Works with caller's rights	❌ needs separate auth	✅ runs through existing session
+Per-user identity	Lost (PAT is fixed identity)	✅ True caller's rights preserved
+Streaming	Yes	No (non-streaming JSON only)
+Since your app already has a working caller's-rights Snowpark session (client.session), you can call agents via session.sql("SELECT SNOWFLAKE.CORTEX.DATA_AGENT_RUN(...)").collect() — completely bypassing the REST API token problem.
+
+The one trade-off
+DATA_AGENT_RUN returns a non-streaming JSON response only (the stream field is ignored). If your UI relies on streaming the agent's response token-by-token, you'd lose that — the response comes back all at once.
+
+Recommendation
+Change SnowflakeAgentClient to execute DATA_AGENT_RUN via the Snowpark session instead of making REST API calls. This:
+
+Eliminates the 401/403 token problem entirely
+Preserves true per-user caller's rights (no PAT needed)
+Uses grants you already have (USAGE ON AGENT + CORTEX_AGENT_USER via IMPORTED PRIVILEGES, both confirmed in place)
+Want me to draft the code change to switch the agent client from REST to DATA_AGENT_RUN SQL calls?
+
+Sources:
+
+DATA_AGENT_RUN (SNOWFLAKE.CORTEX)
+Cortex Agents Run API
+
+
