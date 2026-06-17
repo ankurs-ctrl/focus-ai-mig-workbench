@@ -1,43 +1,28 @@
-Here's a full consolidated summary of FOCUS_ADMIN's access:
-
-FOCUS_ADMIN — Complete Access Summary
-Account-Level
-Privilege	Object
-BIND SERVICE ENDPOINT	Account (granted by ACCOUNTADMIN + SECURITYADMIN)
-USAGE on role	ACCOUNTADMIN ← inherits ALL account privileges
-Databases
-Database	Access
-AI_WORKBENCH_DEV	OWNERSHIP
-BBI_POC	OWNERSHIP
-BBI_PRODUCTION	OWNERSHIP
-BBI_STTM_TEST_DB	OWNERSHIP
-DB_TEST	OWNERSHIP
-FFP_HDP_CRM_MIG_DB_DEV	USAGE + CREATE SCHEMA
-FOCUS_DB	USAGE
-FOCUS_DB_2	USAGE + CREATE SCHEMA
-SNOWPARK_DB	USAGE
-Roles Owned
-FOCUS_DEVELOPER, WORKBENCH_ADMIN, WORKBENCH_AUTH_SERVICE, WORKBENCH_PUBLISHER, WORKBENCH_VIEWER, BBI_ADVISOR, BBI_AGENT_SERVICE, FOCUS_APP_USER, BBI_ADMIN
-
-Services — CALLER USAGE
-None — no CALLER USAGE grants exist on any service for this role (as confirmed earlier). The service WORKBENCH_WEBAPP_DEV has executeAsCaller: true in its spec but the CALLER USAGE privilege has not been explicitly granted to FOCUS_ADMIN.
-
-Cortex / AI
-Resource	Access
-Cortex Search Services (CSS)	OWNERSHIP on 10+ search services
-Agents	OWNERSHIP via AGT_* objects
-AI_WORKBENCH_EGRESS_INTEGRATION	USAGE
-External Access Integrations	OWNERSHIP + USAGE on FOCUS_EXTERNAL_ACCESS, MARKET_DATA_EAI
-Tables (in FFP_HDP_CRM_MIG_DB_DEV.SCH_STTM_METADATA)
-Full SELECT / INSERT / UPDATE / DELETE / TRUNCATE on all workbench tables (TBL_USERS, TBL_SEMANTIC_MODELS, TBL_WORKBENCH_*, TBL_STTM_*, TBL_DBT_*, etc.)
-
-Stages
-OWNERSHIP + READ + WRITE on AI_WORKBENCH_DEV_IMAGES, WORKBENCH_SPCS_DEPLOY_STAGE, STTM_AGENT_SKILLS, SEMANTIC_MODELS, QA_TEMP_STAGE, etc.
-
-Tasks
-OWNERSHIP on MONITOR_SERVICE_TASK, TASK_CRM_SYNC, TASK_BILLING_SYNC, TASK_CLIENT360_REFRESH, SEND_DAILY_COST_REPORT_TASK, etc.
-
-Users Managed
-OWNERSHIP of: SHARAONA, LOKESHM, BLESSONID, HARSHITHA, SMITS, AJITHB, KALYANIB, MOHITK, WORKBENCH_AUTH_SVC, VIVEK_NOTIFICATIONS
-
-Key gap: CALLER USAGE on WORKBENCH_WEBAPP_DEV service is not granted to FOCUS_ADMIN. Want me to add that?
+So the new patch did its job. We’re past the token problem. Now it’s an agent authorization / active-role problem.
+What this usually means:
+The SPCS session is running under a different Snowflake role than the one you granted on the agent.
+Or that role has USAGE on the DB/schema, but not USAGE ON AGENT.
+Or the user’s DEFAULT_ROLE is different, and Snowflake is evaluating the agent call with that role.
+Please check these exactly in client Snowflake:
+SHOW GRANTS ON AGENT FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_STTM_BUILDER;
+SHOW GRANTS TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
+Make sure this role has all three:
+GRANT USAGE ON DATABASE FFP_HDP_DLAB_DB_DEV TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
+GRANT USAGE ON SCHEMA FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
+GRANT USAGE ON AGENT FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_STTM_BUILDER TO ROLE FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
+Do the same for the other agents too:
+AGT_SOURCE_MAPPING
+AGT_WORKBENCH_CONVERSATION
+AGT_SEMANTIC_MODEL
+AGT_DBT_CONVERSION
+Then verify the user’s default role:
+DESC USER ANKURSINHA;
+If DEFAULT_ROLE is not FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV, set it:
+ALTER USER ANKURSINHA SET DEFAULT_ROLE = FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV;
+Why this changed:
+Before, the app was failing earlier on the bad token path.
+After the fix, it now uses the Snowflake session token correctly, so Snowflake is finally checking the real runtime role against the actual agent object. That’s why you now see “agent does not exist or not authorized for the current role.”
+So short version: this is most likely not a code bug anymore. It’s the active role used by the SPCS session not matching the role granted on the agent.
+If you send me the output of:
+SHOW GRANTS ON AGENT FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_STTM_BUILDER;
+DESC USER ANKURSINHA;
