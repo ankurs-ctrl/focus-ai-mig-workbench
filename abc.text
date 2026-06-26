@@ -1,3 +1,7 @@
+cd .\services\sttm-builder
+.\.venv\Scripts\python.exe -c "from app.core.config import Settings; s=Settings(); print(s.auth_mode, s.uses_custom_oauth, s.local_dev_auth_enabled)"
+
+
 Hi Team, can you please help run the below Snowflake admin setup for our SPCS app?
 We need this because the app now uses Snowflake OAuth so signed-in users can securely call Cortex Agent/Analyst REST APIs from SPCS. The secrets are stored in Snowflake so no OAuth credentials are hardcoded in code or service specs.
 Please replace the placeholders before running.
