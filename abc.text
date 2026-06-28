@@ -1,563 +1,214 @@
-1. General capability prompt
-Use with AGT_STTM_BUILDER.
-{
-  "contract_version": "1.0",
-  "request_id": "demo-capabilities-001",
-  "operation": "sttm.chat",
-  "context": {
-    "surface": "SOURCE_SELECTION",
-    "routing_hint": "direct_answer",
-    "source_tables": [],
-    "target_table": null,
-    "relationships": [],
-    "semantic_context": []
-  },
-  "data": {
-    "intent": "CHAT",
-    "intent_route": "direct_answer",
-    "message": "Explain what you can do in the Source-to-Target Mapping workbench. Keep it practical and explain how you help with source preparation, derived sources, auto-mapping, transformation rules, SQL validation, dbt conversion, and test generation."
-  }
-}
-2. Selected table explanation
-Use with AGT_STTM_BUILDER.
-{
-  "contract_version": "1.0",
-  "request_id": "demo-table-explain-001",
-  "operation": "sttm.chat",
-  "context": {
-    "surface": "SOURCE_SELECTION",
-    "routing_hint": "direct_answer",
-    "source_tables": [
-      {
-        "database": "<SOURCE_DB>",
-        "schema": "<SOURCE_SCHEMA>",
-        "table": "<SOURCE_TABLE_1>",
-        "role": "driving_source",
-        "selected_columns": [
-          "<SOURCE_1_KEY_COLUMN>",
-          "<SOURCE_1_DATE_COLUMN>",
-          "<SOURCE_1_STATUS_COLUMN>",
-          "<SOURCE_1_AMOUNT_COLUMN>"
-        ]
-      },
-      {
-        "database": "<SOURCE_DB>",
-        "schema": "<SOURCE_SCHEMA>",
-        "table": "<SOURCE_TABLE_2>",
-        "role": "source",
-        "selected_columns": [
-          "<SOURCE_2_KEY_COLUMN>",
-          "<SOURCE_2_DATE_COLUMN>",
-          "<SOURCE_2_DESCRIPTION_COLUMN>"
-        ]
-      }
-    ],
-    "target_table": {
-      "database": "<TARGET_DB>",
-      "schema": "<TARGET_SCHEMA>",
-      "table": "<TARGET_TABLE>",
-      "role": "target"
-    },
-    "relationships": [
-      {
-        "left_table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_1>",
-        "left_column": "<SOURCE_1_KEY_COLUMN>",
-        "right_table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_2>",
-        "right_column": "<SOURCE_2_KEY_COLUMN>",
-        "join_type": "LEFT",
-        "business_meaning": "Join the secondary source records to the driving source records using the shared business key."
-      }
-    ],
-    "semantic_context": [
-      {
-        "table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_1>",
-        "role": "source",
-        "summary": "Driving source table containing the primary business record, status, timestamps, and measure fields."
-      },
-      {
-        "table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_2>",
-        "role": "source",
-        "summary": "Supporting source table containing descriptive or event-level details related to the driving source."
-      },
-      {
-        "table": "<TARGET_DB>.<TARGET_SCHEMA>.<TARGET_TABLE>",
-        "role": "target",
-        "summary": "Target table that will receive the finalized mapped attributes."
-      }
-    ]
-  },
-  "data": {
-    "intent": "CHAT",
-    "intent_route": "direct_answer",
-    "message": "Explain these selected source and target tables, how the sources relate to each other, and how they can be used for source preparation before mapping."
-  }
-}
-3. Derived source generation
-Use with AGT_STTM_BUILDER.
-{
-  "contract_version": "1.0",
-  "request_id": "demo-derived-source-001",
-  "operation": "sttm.chat",
-  "context": {
-    "surface": "SOURCE_SELECTION",
-    "routing_hint": "analyst_sql_or_derived_source",
-    "source_tables": [
-      {
-        "database": "<SOURCE_DB>",
-        "schema": "<SOURCE_SCHEMA>",
-        "table": "<DRIVING_SOURCE_TABLE>",
-        "role": "driving_source"
-      },
-      {
-        "database": "<SOURCE_DB>",
-        "schema": "<SOURCE_SCHEMA>",
-        "table": "<SUPPORTING_SOURCE_TABLE>",
-        "role": "source"
-      }
-    ],
-    "driving_table": {
-      "database": "<SOURCE_DB>",
-      "schema": "<SOURCE_SCHEMA>",
-      "table": "<DRIVING_SOURCE_TABLE>"
-    },
-    "target_table": {
-      "database": "<TARGET_DB>",
-      "schema": "<TARGET_SCHEMA>",
-      "table": "<TARGET_TABLE>",
-      "role": "target"
-    },
-    "relationships": [
-      {
-        "left_table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<DRIVING_SOURCE_TABLE>",
-        "left_column": "<DRIVING_TABLE_JOIN_KEY>",
-        "right_table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SUPPORTING_SOURCE_TABLE>",
-        "right_column": "<SUPPORTING_TABLE_JOIN_KEY>",
-        "join_type": "LEFT",
-        "business_meaning": "Attach the most relevant supporting record to each driving source record."
-      }
-    ],
-    "selected_columns_by_table": {
-      "<SOURCE_DB>.<SOURCE_SCHEMA>.<DRIVING_SOURCE_TABLE>": [
-        "<DRIVING_TABLE_JOIN_KEY>",
-        "<DRIVING_TABLE_DATE_COLUMN>",
-        "<DRIVING_TABLE_STATUS_COLUMN>",
-        "<DRIVING_TABLE_AMOUNT_COLUMN>"
-      ],
-      "<SOURCE_DB>.<SOURCE_SCHEMA>.<SUPPORTING_SOURCE_TABLE>": [
-        "<SUPPORTING_TABLE_JOIN_KEY>",
-        "<SUPPORTING_TABLE_DATE_COLUMN>",
-        "<SUPPORTING_TABLE_DESCRIPTION_COLUMN>"
-      ]
-    },
-    "filters": [],
-    "grouping": [],
-    "ordering": [
-      {
-        "table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SUPPORTING_SOURCE_TABLE>",
-        "column": "<SUPPORTING_TABLE_DATE_COLUMN>",
-        "direction": "DESC"
-      }
-    ],
-    "semantic_context": [
-      {
-        "table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<DRIVING_SOURCE_TABLE>",
-        "role": "source",
-        "summary": "Driving table with the primary record grain."
-      },
-      {
-        "table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SUPPORTING_SOURCE_TABLE>",
-        "role": "source",
-        "summary": "Supporting table with multiple records per business key. The latest record should be selected when relevant."
-      },
-      {
-        "table": "<TARGET_DB>.<TARGET_SCHEMA>.<TARGET_TABLE>",
-        "role": "target",
-        "summary": "Target table for STTM mapping."
-      }
-    ]
-  },
-  "data": {
-    "intent": "CHAT",
-    "intent_route": "analyst_sql_or_derived_source",
-    "message": "Generate a derived source draft that joins the driving source table with the supporting source table. For each driving record, keep the latest supporting record based on the supporting date column. Return the SQL, suggested derived source name, selected output columns, lineage, assumptions, and warnings."
-  }
-}
-4. Auto-mapping through STTM Builder
-Use with AGT_STTM_BUILDER.
-{
-  "contract_version": "1.0",
-  "request_id": "demo-auto-map-001",
-  "operation": "sttm.auto_map",
-  "context": {
-    "surface": "MAPPING",
-    "routing_hint": "source_mapping",
-    "source_tables": [
-      {
-        "database": "<SOURCE_DB>",
-        "schema": "<SOURCE_SCHEMA>",
-        "table": "<SOURCE_TABLE_1>",
-        "role": "source"
-      },
-      {
-        "database": "<SOURCE_DB>",
-        "schema": "<SOURCE_SCHEMA>",
-        "table": "<SOURCE_TABLE_2>",
-        "role": "source"
-      }
-    ],
-    "target_table": {
-      "database": "<TARGET_DB>",
-      "schema": "<TARGET_SCHEMA>",
-      "table": "<TARGET_TABLE>",
-      "role": "target"
-    },
-    "relationships": [
-      {
-        "left_table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_1>",
-        "left_column": "<SOURCE_1_JOIN_KEY>",
-        "right_table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_2>",
-        "right_column": "<SOURCE_2_JOIN_KEY>",
-        "join_type": "LEFT"
-      }
-    ],
-    "semantic_context": [
-      {
-        "table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_1>",
-        "role": "source",
-        "summary": "Primary source table containing the main business record."
-      },
-      {
-        "table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_2>",
-        "role": "source",
-        "summary": "Secondary source table containing supporting detail records."
-      },
-      {
-        "table": "<TARGET_DB>.<TARGET_SCHEMA>.<TARGET_TABLE>",
-        "role": "target",
-        "summary": "Target table requiring source-to-target mappings."
-      }
-    ],
-    "mapping_intent": {
-      "goal": "Map target attributes using the selected source tables and available semantic context.",
-      "rules": [
-        "Prefer exact business meaning over simple name similarity.",
-        "Use direct mapping when source and target types are compatible.",
-        "Suggest preprocessing when source and target types differ.",
-        "Return alternatives when confidence is not high."
-      ]
-    }
-  },
-  "data": {
-    "intent": "AUTO_MAP",
-    "intent_route": "source_mapping",
-    "attributes": [
-      {
-        "target_column": "<TARGET_COLUMN_1>",
-        "target_type": "<TARGET_TYPE_1>",
-        "description": "<TARGET_COLUMN_1_BUSINESS_DESCRIPTION>"
-      },
-      {
-        "target_column": "<TARGET_COLUMN_2>",
-        "target_type": "<TARGET_TYPE_2>",
-        "description": "<TARGET_COLUMN_2_BUSINESS_DESCRIPTION>"
-      },
-      {
-        "target_column": "<TARGET_COLUMN_3>",
-        "target_type": "<TARGET_TYPE_3>",
-        "description": "<TARGET_COLUMN_3_BUSINESS_DESCRIPTION>"
-      }
-    ],
-    "message": "Auto-map these target attributes to the best source columns. Return the selected source column, mapping type, preprocessing rule if needed, confidence score, confidence reason, alternatives, and any warnings."
-  }
-}
-5. Direct source mapping subagent
-Use directly with AGT_SOURCE_MAPPING.
-{
-  "contract_version": "1.0",
-  "request_id": "demo-source-mapping-direct-001",
-  "operation": "sttm.source_mapping",
-  "context": {
-    "source_tables": [
-      {
-        "fqn": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_1>",
-        "role": "source",
-        "columns": [
-          {
-            "name": "<SOURCE_COLUMN_1>",
-            "type": "<SOURCE_COLUMN_1_TYPE>",
-            "description": "<SOURCE_COLUMN_1_DESCRIPTION>"
-          },
-          {
-            "name": "<SOURCE_COLUMN_2>",
-            "type": "<SOURCE_COLUMN_2_TYPE>",
-            "description": "<SOURCE_COLUMN_2_DESCRIPTION>"
-          }
-        ]
-      },
-      {
-        "fqn": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_2>",
-        "role": "source",
-        "columns": [
-          {
-            "name": "<SOURCE_COLUMN_3>",
-            "type": "<SOURCE_COLUMN_3_TYPE>",
-            "description": "<SOURCE_COLUMN_3_DESCRIPTION>"
-          },
-          {
-            "name": "<SOURCE_COLUMN_4>",
-            "type": "<SOURCE_COLUMN_4_TYPE>",
-            "description": "<SOURCE_COLUMN_4_DESCRIPTION>"
-          }
-        ]
-      }
-    ],
-    "target_table": {
-      "fqn": "<TARGET_DB>.<TARGET_SCHEMA>.<TARGET_TABLE>"
-    },
-    "relationships": [
-      {
-        "left": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_1>.<SOURCE_1_JOIN_KEY>",
-        "right": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_2>.<SOURCE_2_JOIN_KEY>",
-        "join_type": "LEFT"
-      }
-    ]
-  },
-  "data": {
-    "target_attributes": [
-      {
-        "name": "<TARGET_COLUMN_1>",
-        "type": "<TARGET_TYPE_1>",
-        "description": "<TARGET_COLUMN_1_DESCRIPTION>"
-      },
-      {
-        "name": "<TARGET_COLUMN_2>",
-        "type": "<TARGET_TYPE_2>",
-        "description": "<TARGET_COLUMN_2_DESCRIPTION>"
-      }
-    ],
-    "instructions": "Map each target attribute to the best source attribute. Include source column, mapping type, preprocessing rule, confidence, confidence reason, alternatives, and warnings."
-  }
-}
-6. Transformation rule prompt
-Use with AGT_TRANSFORMATION_RULE.
-{
-  "contract_version": "1.0",
-  "request_id": "demo-transform-rule-001",
-  "operation": "sttm.transform",
-  "context": {
-    "surface": "MAPPING",
-    "target_table": {
-      "fqn": "<TARGET_DB>.<TARGET_SCHEMA>.<TARGET_TABLE>"
-    },
-    "checked_mapping_rows": [
-      {
-        "target_column": "<TARGET_COLUMN>",
-        "target_type": "<TARGET_COLUMN_TYPE>",
-        "target_description": "<TARGET_COLUMN_BUSINESS_DESCRIPTION>",
-        "current_source_column": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE>.<SOURCE_COLUMN>",
-        "source_type": "<SOURCE_COLUMN_TYPE>",
-        "source_description": "<SOURCE_COLUMN_BUSINESS_DESCRIPTION>",
-        "current_rule": null,
-        "confidence": 0.72,
-        "confidence_reason": "The business meaning appears aligned, but source and target data types differ."
-      }
-    ],
-    "semantic_context": [
-      {
-        "table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE>",
-        "role": "source",
-        "summary": "<SOURCE_TABLE_BUSINESS_SUMMARY>"
-      },
-      {
-        "table": "<TARGET_DB>.<TARGET_SCHEMA>.<TARGET_TABLE>",
-        "role": "target",
-        "summary": "<TARGET_TABLE_BUSINESS_SUMMARY>"
-      }
-    ]
-  },
-  "data": {
-    "intent": "TRANSFORM",
-    "message": "Generate a preprocessing rule for the checked mapping row. Return the SQL expression, transformation type, explanation, validation assumptions, edge cases, and warnings."
-  }
-}
-7. Ask why confidence is low
-Use with AGT_STTM_BUILDER.
-{
-  "contract_version": "1.0",
-  "request_id": "demo-confidence-explain-001",
-  "operation": "sttm.chat",
-  "context": {
-    "surface": "MAPPING",
-    "routing_hint": "source_mapping",
-    "target_table": {
-      "database": "<TARGET_DB>",
-      "schema": "<TARGET_SCHEMA>",
-      "table": "<TARGET_TABLE>",
-      "role": "target"
-    },
-    "checked_mapping_rows": [
-      {
-        "target_column": "<TARGET_COLUMN>",
-        "target_type": "<TARGET_COLUMN_TYPE>",
-        "target_description": "<TARGET_COLUMN_DESCRIPTION>",
-        "mapped_source_columns": [
-          {
-            "source_table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE>",
-            "source_column": "<SOURCE_COLUMN>",
-            "source_type": "<SOURCE_COLUMN_TYPE>",
-            "source_description": "<SOURCE_COLUMN_DESCRIPTION>"
-          }
-        ],
-        "mapping_type": "DIRECT",
-        "preprocessing_rule": null,
-        "confidence": 0.58,
-        "confidence_reason": "The source and target names are similar, but the source data type and business description do not fully confirm the mapping.",
-        "alternatives": [
-          {
-            "source_table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<ALTERNATIVE_SOURCE_TABLE>",
-            "source_column": "<ALTERNATIVE_SOURCE_COLUMN>",
-            "reason": "Alternative column has a closer semantic description."
-          }
-        ]
-      }
-    ],
-    "semantic_context": [
-      {
-        "table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE>",
-        "role": "source",
-        "summary": "<SOURCE_TABLE_SUMMARY>"
-      },
-      {
-        "table": "<TARGET_DB>.<TARGET_SCHEMA>.<TARGET_TABLE>",
-        "role": "target",
-        "summary": "<TARGET_TABLE_SUMMARY>"
-      }
-    ]
-  },
-  "data": {
-    "intent": "CHAT",
-    "intent_route": "source_mapping",
-    "message": "Why is the confidence low for the checked mapping row, and what should I review before accepting it?"
-  }
-}
-8. Previous learning / Cortex Search / FIR prompt
-Use with AGT_STTM_BUILDER.
-{
-  "contract_version": "1.0",
-  "request_id": "demo-learning-search-001",
-  "operation": "sttm.chat",
-  "context": {
-    "surface": "MAPPING",
-    "routing_hint": "rag_answer",
-    "source_tables": [
-      {
-        "database": "<SOURCE_DB>",
-        "schema": "<SOURCE_SCHEMA>",
-        "table": "<SOURCE_TABLE>",
-        "role": "source"
-      }
-    ],
-    "target_table": {
-      "database": "<TARGET_DB>",
-      "schema": "<TARGET_SCHEMA>",
-      "table": "<TARGET_TABLE>",
-      "role": "target"
-    },
-    "semantic_bundle_id": "<OPTIONAL_SEMANTIC_BUNDLE_ID>",
-    "mapping_intent": {
-      "goal": "Reuse prior approved mappings, historical SQL, user feedback, and recommendations when they are relevant to the current target."
-    }
-  },
-  "data": {
-    "intent": "CHAT",
-    "intent_route": "rag_answer",
-    "message": "Search previous mappings, approved SQL, user feedback, and recommendations for similar source-to-target mapping patterns. Summarize what we have learned before and recommend how to apply it to the current mapping."
-  }
-}
-9. Ask for relationship guidance
-Use with AGT_STTM_BUILDER.
-{
-  "contract_version": "1.0",
-  "request_id": "demo-relationship-guidance-001",
-  "operation": "sttm.chat",
-  "context": {
-    "surface": "SOURCE_SELECTION",
-    "routing_hint": "rag_answer",
-    "source_tables": [
-      {
-        "database": "<SOURCE_DB>",
-        "schema": "<SOURCE_SCHEMA>",
-        "table": "<SOURCE_TABLE_1>",
-        "role": "driving_source"
-      },
-      {
-        "database": "<SOURCE_DB>",
-        "schema": "<SOURCE_SCHEMA>",
-        "table": "<SOURCE_TABLE_2>",
-        "role": "source"
-      }
-    ],
-    "relationships": [
-      {
-        "left_table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_1>",
-        "left_column": "<SOURCE_1_JOIN_KEY>",
-        "right_table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_2>",
-        "right_column": "<SOURCE_2_JOIN_KEY>",
-        "join_type": "LEFT"
-      }
-    ],
-    "semantic_context": [
-      {
-        "table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_1>",
-        "role": "source",
-        "summary": "<SOURCE_TABLE_1_SUMMARY>"
-      },
-      {
-        "table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_2>",
-        "role": "source",
-        "summary": "<SOURCE_TABLE_2_SUMMARY>"
-      }
-    ]
-  },
-  "data": {
-    "intent": "CHAT",
-    "intent_route": "rag_answer",
-    "message": "Explain the relationship between these selected source tables. Tell me which table should be the driving table, which join type is safest, and what data-quality checks should be done before using this relationship in source preparation."
-  }
-}
-10. SQL validation / review prompt
-Use with AGT_STTM_BUILDER.
-{
-  "contract_version": "1.0",
-  "request_id": "demo-sql-review-001",
-  "operation": "sttm.chat",
-  "context": {
-    "surface": "SQL_PREVIEW",
-    "routing_hint": "analyst_sql_or_derived_source",
-    "target_table": {
-      "database": "<TARGET_DB>",
-      "schema": "<TARGET_SCHEMA>",
-      "table": "<TARGET_TABLE>",
-      "role": "target"
-    },
-    "source_prep_sql": "<LOWEST_LEVEL_SOURCE_PREP_SQL>",
-    "mapping_select_sql": "<FINAL_MAPPING_SELECT_SQL>",
-    "semantic_context": [
-      {
-        "table": "<SOURCE_DB>.<SOURCE_SCHEMA>.<SOURCE_TABLE_1>",
-        "role": "source",
-        "summary": "<SOURCE_TABLE_1_SUMMARY>"
-      },
-      {
-        "table": "<TARGET_DB>.<TARGET_SCHEMA>.<TARGET_TABLE>",
-        "role": "target",
-        "summary": "<TARGET_TABLE_SUMMARY>"
-      }
-    ]
-  },
-  "data": {
-    "intent": "CHAT",
-    "intent_route": "analyst_sql_or_derived_source",
-    "message": "Review this generated STTM SQL. Check whether the source preparation, joins, transformations, and target column mappings are logically consistent. Return validation findings, possible issues, and suggested fixes."
-  }
-}
+Yes — now that OAuth is created, your next steps are basically:
+
+1. update `client.env`
+2. rerun bootstrap for metadata/agents
+3. deploy/upgrade SPCS app + Auto-map worker
+4. confirm OAuth callback URL
+5. smoke test login, session, agent, automap
+
+Also: `AGT_SOURCE_MAPPING` not showing tools is expected. That agent is a specialist mapping LLM agent and currently has no own tools. The tool wiring is:
+
+`AGT_STTM_BUILDER` → procedure tool `SP_SUBAGT_SOURCE_MAPPING` → calls `AGT_SOURCE_MAPPING`
+
+And the Auto-map worker calls `AGT_SOURCE_MAPPING` directly.
+
+So if you inspect `AGT_SOURCE_MAPPING` in Snowsight and see no tools, that alone is not a problem.
+
+## Step 1 — Update `client.env`
+
+Open:
+
+```powershell
+.\infra\snowflake\env\client.env
+```
+
+Make sure these are correct:
+
+```env
+AUTH_MODE=custom_oauth
+SPCS_EXECUTE_AS_CALLER_ENABLED=true
+SPCS_ENABLE_CUSTOM_CREDENTIALS=true
+
+SNOWFLAKE_OAUTH_CLIENT_SECRET_OBJECT=FFP_HDP_OPS_DB_DEV.SCH_HDP_ADMIN.STTM_BUILDER_OAUTH_CLIENT_CREDENTIALS
+SNOWFLAKE_OAUTH_SESSION_SECRET_OBJECT=FFP_HDP_OPS_DB_DEV.SCH_HDP_ADMIN.STTM_BUILDER_OAUTH_SESSION_KEYS
+
+SNOWFLAKE_OAUTH_AUTHORIZE_URL=https://<client_account>.snowflakecomputing.com/oauth/authorize
+SNOWFLAKE_OAUTH_TOKEN_URL=https://<client_account>.snowflakecomputing.com/oauth/token-request
+SNOWFLAKE_OAUTH_REDIRECT_URI=https://<client_spcs_app_host>/api/v1/auth/callback
+SNOWFLAKE_OAUTH_SCOPE=session:role-any
+```
+
+Important: since IT created the secrets in `FFP_HDP_OPS_DB_DEV.SCH_HDP_ADMIN`, use those fully-qualified secret names exactly.
+
+Also make sure:
+
+```env
+SNOWFLAKE_STTM_BUILDER_AGENT=<APP_DB>.<APP_SCHEMA>.AGT_STTM_BUILDER
+SNOWFLAKE_SOURCE_MAPPING_AGENT=<APP_DB>.<APP_SCHEMA>.AGT_SOURCE_MAPPING
+```
+
+And if you want the split Auto-map service:
+
+```env
+AUTO_MAPPING_COMPUTE_POOL=<existing_or_new_pool>
+AUTO_MAPPING_SERVICE_NAME=<automap_service_name>
+```
+
+You can use the same compute pool as the app, but I’d prefer a separate Auto-map compute pool if the client allows it.
+
+## Step 2 — Re-run metadata + agent bootstrap
+
+Run this from repo root:
+
+```powershell
+.\scripts\bootstrap_sttm_metadata_infra.ps1 -EnvFile ".\infra\snowflake\env\client.env"
+```
+
+This updates:
+
+- metadata tables
+- helper procedures
+- `AGT_SOURCE_MAPPING`
+- `AGT_TRANSFORMATION_RULE`
+- `AGT_STTM_BUILDER`
+- dbt/test agents
+- RAG-related metadata
+
+It should not update `AGT_SEMANTIC_MODEL_V2`.
+
+Do not run:
+
+```powershell
+.\scripts\rebind_semantic_model_v2_registry.py
+```
+
+unless you intentionally want to modify V2 binding.
+
+## Step 3 — Confirm agent wiring
+
+In Snowsight, check:
+
+```sql
+SHOW AGENTS LIKE 'AGT_STTM_BUILDER' IN SCHEMA <APP_DB>.<APP_SCHEMA>;
+SHOW AGENTS LIKE 'AGT_SOURCE_MAPPING' IN SCHEMA <APP_DB>.<APP_SCHEMA>;
+SHOW PROCEDURES LIKE 'SP_SUBAGT_SOURCE_MAPPING' IN SCHEMA <APP_DB>.<APP_SCHEMA>;
+SHOW PROCEDURES LIKE 'SP_SUBAGT_TRANSFORMATION_RULE' IN SCHEMA <APP_DB>.<APP_SCHEMA>;
+```
+
+Expected:
+
+- `AGT_STTM_BUILDER` should show tools:
+  - `SearchWorkbenchRag`
+  - `AGT_SOURCE_MAPPING`
+  - `AGT_TRANSFORMATION_RULE`
+
+- `AGT_SOURCE_MAPPING` may show no tools. That is okay.
+
+## Step 4 — Deploy SPCS app + Auto-map worker
+
+Run:
+
+```powershell
+.\scripts\deploy_spcs_client_snow.ps1 -EnvFile ".\infra\snowflake\env\client.env"
+```
+
+This script handles both:
+
+- main web app service
+- separate Auto-map worker service
+
+It builds and pushes:
+
+- `sttm-builder`
+- `sttm-automap-worker`
+- `frontend`
+- `nginx`
+
+Then it creates/upgrades:
+
+- `WEBAPP_SERVICE_NAME`
+- `AUTO_MAPPING_SERVICE_NAME`
+
+If images are already pushed and you only want to re-render/redeploy specs:
+
+```powershell
+.\scripts\deploy_spcs_client_snow.ps1 -EnvFile ".\infra\snowflake\env\client.env" -SkipBuild
+```
+
+## Step 5 — Confirm OAuth redirect URL
+
+After deployment, get the public endpoint from:
+
+```powershell
+snow spcs service list-endpoints <WEBAPP_SERVICE_NAME> `
+  -c <SNOWFLAKE_CONNECTION> `
+  --database <APP_DB> `
+  --schema <APP_SCHEMA>
+```
+
+Your OAuth redirect URI must exactly be:
+
+```text
+https://<public_service_host>/api/v1/auth/callback
+```
+
+If the host is different from what IT used while creating OAuth, ask IT to update the security integration redirect URI.
+
+## Step 6 — Smoke test
+
+Open the public SPCS app URL.
+
+Test in order:
+
+1. Login with Snowflake.
+2. Confirm `/api/v1/auth/session` returns signed-in user.
+3. Select source/target tables.
+4. Ask assistant “hello”.
+5. Ask table/context question.
+6. Try derived-source generation.
+7. Go to mapping page.
+8. Click Auto.
+9. Check Auto-map worker logs if Auto-map stalls.
+
+For logs:
+
+```powershell
+snow spcs service logs <WEBAPP_SERVICE_NAME> `
+  -c <SNOWFLAKE_CONNECTION> `
+  --database <APP_DB> `
+  --schema <APP_SCHEMA>
+```
+
+And:
+
+```powershell
+snow spcs service logs <AUTO_MAPPING_SERVICE_NAME> `
+  -c <SNOWFLAKE_CONNECTION> `
+  --database <APP_DB> `
+  --schema <APP_SCHEMA>
+```
+
+## Key answer on Auto-map tools
+
+No, `AGT_SOURCE_MAPPING` itself does not need tools added.
+
+It works like this:
+
+```text
+Auto button
+  → Main backend
+  → Auto-map worker service
+  → AGT_SOURCE_MAPPING
+  → structured mappings returned to UI
+```
+
+For chat/manual orchestration:
+
+```text
+AI Assistant
+  → AGT_STTM_BUILDER
+  → SP_SUBAGT_SOURCE_MAPPING
+  → AGT_SOURCE_MAPPING
+```
+
+So the place where tools matter is mostly `AGT_STTM_BUILDER`, not `AGT_SOURCE_MAPPING`.
