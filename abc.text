@@ -1,121 +1,37 @@
-Yes — but the fix is not “use local Python 3.11 directly.” The Docker build is failing while pulling the container base image from `public.ecr.aws`.
+Yes — for local OAuth you must configure these in:
 
-Since your backend supports Python `>=3.11`, we can change the deploy script to use Docker Hub base images instead:
+`services/sttm-builder/.env.local`
 
-```text
-python:3.11-slim
-node:22-alpine
-nginx:1.27-alpine
+not only `infra/snowflake/env/client.env`.
+
+Add/fill:
+
+```env
+AUTH_SESSION_SECRET=<strong-random-string>
+AUTH_SESSION_ENCRYPTION_KEY=<fernet-style-or-random-key>
 ```
 
-instead of:
-
-```text
-public.ecr.aws/docker/library/python:3.12-slim
-public.ecr.aws/docker/library/node:22-alpine
-public.ecr.aws/nginx/nginx:1.27-alpine
-```
-
-## Update your safe script
-
-In `deploy_spcs_client_snow_safe.ps1`, replace your `Build-AndPushImage` function with this:
+Fast way on the client AVD PowerShell:
 
 ```powershell
-function Build-AndPushImage {
-    param(
-        [string]$Name,
-        [string]$ContextDir,
-        [string]$RemoteImage,
-        [string[]]$BuildArgs = @()
-    )
-
-    $dockerArgs = @(
-        "build",
-        "--platform", "linux/amd64"
-    )
-
-    foreach ($arg in $BuildArgs) {
-        $dockerArgs += "--build-arg"
-        $dockerArgs += $arg
-    }
-
-    $dockerArgs += "-t"
-    $dockerArgs += $RemoteImage
-    $dockerArgs += $ContextDir
-
-    Invoke-Checked -Description "Building Docker image $Name -> $RemoteImage" -Command {
-        docker @dockerArgs
-    }
-
-    Invoke-Checked -Description "Pushing Docker image $RemoteImage" -Command {
-        docker push $RemoteImage
-    }
-}
+python -c "import secrets; print('AUTH_SESSION_SECRET=' + secrets.token_urlsafe(64))"
+python -c "from cryptography.fernet import Fernet; print('AUTH_SESSION_ENCRYPTION_KEY=' + Fernet.generate_key().decode())"
 ```
 
-Then replace the build section:
+If `cryptography` is not available, this is also okay:
 
 ```powershell
-if (-not $SkipBuild) {
-    Build-AndPushImage -Name "sttm-builder" -ContextDir (Join-Path $RootDir "services\sttm-builder") -RemoteImage $sttmBuilderImage
-
-    if ($deployAutomap) {
-        Build-AndPushImage -Name "sttm-automap-worker" -ContextDir (Join-Path $RootDir "services\sttm-builder") -RemoteImage $automapImage
-    }
-
-    Build-AndPushImage -Name "frontend" -ContextDir (Join-Path $RootDir "frontend") -RemoteImage $frontendImage
-    Build-AndPushImage -Name "nginx" -ContextDir (Join-Path $RootDir "nginx") -RemoteImage $nginxImage
-}
+python -c "import secrets; print('AUTH_SESSION_SECRET=' + secrets.token_urlsafe(64)); print('AUTH_SESSION_ENCRYPTION_KEY=' + secrets.token_urlsafe(48))"
 ```
 
-with this:
+Then restart the local backend/frontend completely.
 
-```powershell
-if (-not $SkipBuild) {
-    Build-AndPushImage `
-        -Name "sttm-builder" `
-        -ContextDir (Join-Path $RootDir "services\sttm-builder") `
-        -RemoteImage $sttmBuilderImage `
-        -BuildArgs @("PYTHON_BASE_IMAGE=python:3.11-slim")
+For SPCS/client deployment, you should prefer the Snowflake secret:
 
-    if ($deployAutomap) {
-        Build-AndPushImage `
-            -Name "sttm-automap-worker" `
-            -ContextDir (Join-Path $RootDir "services\sttm-builder") `
-            -RemoteImage $automapImage `
-            -BuildArgs @("PYTHON_BASE_IMAGE=python:3.11-slim")
-    }
-
-    Build-AndPushImage `
-        -Name "frontend" `
-        -ContextDir (Join-Path $RootDir "frontend") `
-        -RemoteImage $frontendImage `
-        -BuildArgs @("NODE_BASE_IMAGE=node:22-alpine")
-
-    Build-AndPushImage `
-        -Name "nginx" `
-        -ContextDir (Join-Path $RootDir "nginx") `
-        -RemoteImage $nginxImage `
-        -BuildArgs @("NGINX_BASE_IMAGE=nginx:1.27-alpine")
-}
+```env
+SNOWFLAKE_OAUTH_SESSION_SECRET_OBJECT=FFP_HDP_OPS_DB_DEV.SCH_HDP_ADMIN.STTM_BUILDER_OAUTH_SESSION_KEYS
 ```
 
-## Then test manually first
+In SPCS, the deploy spec maps that Snowflake secret into `AUTH_SESSION_SECRET` and `AUTH_SESSION_ENCRYPTION_KEY`, so you do not need to hardcode those values in code.
 
-Run:
-
-```powershell
-docker pull python:3.11-slim
-docker pull node:22-alpine
-docker pull nginx:1.27-alpine
-```
-
-If these work, rerun:
-
-```powershell
-.\scripts\deploy_spcs_client_snow_safe.ps1 -EnvFile ".\infra\snowflake\env\client.env"
-```
-
-If Docker Hub is also blocked, then the only real option is to build on another machine and transfer `docker save` `.tar` files to the client AVD.
-
-But based on the error, this updated script is the correct next try.
+One important thing: these values are not your Snowflake password. They are just app-side keys used to sign OAuth state cookies and encrypt the app’s session token storage.
