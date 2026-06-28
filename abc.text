@@ -1,299 +1,483 @@
-S C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench> .\scripts\deploy_spcs_client_snow.ps1 -EnvFile ".\infra\snowflake\env\client.env"
+param(
+    [string]$EnvFile = "",
+    [string]$ImageTag = "",
+    [switch]$SkipBuild,
+    [switch]$SkipLogin,
+    [switch]$EnsureComputePools
+)
 
-Security warning
-Run only scripts that you trust. While scripts from the internet can be useful, this script can potentially harm your computer. If you trust this script, use the Unblock-File cmdlet to 
-allow the script to run without this warning message. Do you want to run C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\scripts\deploy_spcs_client_snow.ps1?
-[D] Do not run  [R] Run once  [S] Suspend  [?] Help (default is "D"): R
-Testing Snow CLI connection 'client-spcsv1'
-Initiating login request with your identity provider. Press CTRL+C to abort and try again...
-Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lZLdbuIwEIVfJfJeJ7ZTRFMLqPgpbbrQjSC0aO%2B8iaEWiR08DqFvXxPKqnvRSntn2eeMv5kzvdtjWXgHYUBq1Uc0IMgTKtO5VNs%2BWqVTP0IeWK5yXmgl%2BuhNALod9ICXRcWGtX1VC7GvBVjPFVLA2oc%2Bqo1imoMEpngpgNmMLYfzGQsDwiqjrc50gT5ZvndwAGGsI7xYcpAO79XaimHcNE3QXAXabHFICMHkBjvVSfLjoj%2B6nr7QU0w6J71TOHnywTaS6jyC77D%2BnEXAHtI08ZNfyxR5wwvqWCuoS2GWwhxkJlaL2RkAHMH8Ybm6e0z9%2Bwmh15QGoHSzKfhOZLqsautqBu6ENyLHhd5K13Y86aNqJ%2FPjKN%2BPxs8L8XIPyxm%2Fa%2BIoefn5dOjO15NOHI%2F5dLRP1o%2F7zp5kyHu%2B5Bqeco0BahGrU5rWXZGw65OuH0YpuWHkioU0CGn0G3kTl6ZU3LbOC%2FJGZzVU3FjlagZ6Z3mLyKsK%2F6XH4rijh%2B1uU4Ukuu6MyJrmEQbQ%2BBQxOm8NazHM4P9m0cOfvR%2Fr9%2BQSiSeJLmT25k21Kbn9OjAa0PZG5v6mlTJRclkM89wIABdcUehmbAS3bsutqQXCg%2FOv%2F%2B754B0%3D&RelayState=ver%3A3-hint%3A405384797536278-ETMsDgAAAZ8NeBSCABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEJjOHUi3C60GvCEKMiNAGSwAAACgykrbAaKNr5%2BsfPeCFVzdqxuAehQTqEb7%2FJuZuY8E4L4v%2BHlhiWO7EcrYKQA88hutr8us0USJ9tGmHd3AitKHGFJIxuxMOqdQBW1mjyEphuD1THN2PfHkRP7VgJyzgf9XTOt7xLFlKxdJpmWb6SLwdB3ywv%2BWuGJSdV3jOEPD2fzNRHpz8NJwFZ3x%2FxhpDVJz%2F6m2dQ9evHk2khHp1Q4y%2BwAUp3Kbs980BIPqLIngSSaas6rZO3c%3D to authenticate...
-A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
-+----------------------------------------------------------+
-| key             | value                                  |
-|-----------------+----------------------------------------|
-| Connection name | client-spcsv1                          |
-| Status          | OK                                     |
-| Host            | MHSUEJT-GD01711.snowflakecomputing.com |
-| Account         | MHSUEJT-GD01711                        |
-| User            | ANKURSINHA                             |
-| Role            | FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV        |
-| Database        | FFP_HDP_DLAB_DB_DEV                    |
-| Warehouse       | FFP_HDP_DLAB_DB_ADHOC_XS_WH_DEV        |
-+----------------------------------------------------------+
+$ErrorActionPreference = "Stop"
 
-Ensuring compute pool 'WORKBENCH_COMPUTE_POOL_DEV' exists
-Initiating login request with your identity provider. Press CTRL+C to abort and try again...
-Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lZJBc9owEIX%2Fikc925JNQkADZEgMhSY0DJik05uwBVGQJVUrY%2FLvK0zopIdkJjeN9N7q233buz6UMthzC0KrPoojggKucl0Ite2jVTYOOygAx1TBpFa8j145oOtBD1gpDR1W7lkt%2BJ%2BKgwt8IQW0eeijyiqqGQigipUcqMvpcji7p0lEqLHa6VxL9M7yuYMBcOs84dlSgPB4z84ZinFd11HdirTd4oQQgkkXe9VR8u2sP%2FiePtDHmFwc9V7h5fM3thuhTiP4DGt9EgGdZNk8nD8sMxQMz6i3WkFVcrvkdi9yvlrcnwDAE8wmy9XoRxZ%2BT0l8FccRKF1vJNvxXJemcr5m5E94wwss9Vb4tqdpH5mdKMyTuasek3gslqPMrIvLlkhf5ORhOlvvJ4sF8JdRKnRbjOM8R8HjOdfkmOsUoOJTdUzT%2BSuStEPSDpNORrqUtGjSjdqX5DcKUp%2BmUMw1zjPyRucVGGad8jUjvXOsQWTG4H%2F0mB928X6725iEdK4ubsivuOhgAI2PEaPT1tAGww6%2BNosefu99W7%2BfPpFpOtdS5K%2FBWNuSuY8Di6O4uRFFuGmklJdMyGFRWA7gg5NS17eWM%2Be33NmKIzw4%2Ffr%2Fng%2F%2BAg%3D%3D&RelayState=ver%3A3-hint%3A405384797536278-ETMsDgAAAZ8NeDVyABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEDB2DyZSEBb%2FzQrxXUcMSU8AAACgBoAKz43xLICAtwslAEXQM2HBFaLhAS1cI9WN5Mbzh0Dcfj2JngaumuTTECazdld7BHzVG2fVFIWW6V6LQFeC9O%2BVYYbaREal3dXa9LUviU2wf2SAIReB4LF2%2B5OVpjEsWp1BnVfShxFpbOvAvgYKLQzEfzX5axMC2DL9uJ4QGVbTz5oWdknEO2x2S%2BLQrMIDnPVB%2F2Ll86kBzc%2BRyp%2FNpgAUM6sSNJTA4BJ3IlBrPKfPpEb6ldE%3D to authenticate...
-A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
-CREATE COMPUTE POOL IF NOT EXISTS WORKBENCH_COMPUTE_POOL_DEV MIN_NODES = 1 MAX_NODES = 1 INSTANCE_FAMILY = CPU_X64_S AUTO_RESUME = TRUE AUTO_SUSPEND_SECS = 3600;
-╭─ Error ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ 003001 (42501): 01c5591f-0004-6b75-0001-70b2473ef902: SQL access control error:                                                                                                            │
-│ Insufficient privileges to operate on account 'LF17586'. Your primary role FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV must have CREATE COMPUTE POOL granted on ACCOUNT LF17586.                       │
-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+$RootDir = Split-Path -Parent $PSScriptRoot
+if (-not $EnvFile) {
+    $EnvFile = Join-Path $RootDir "infra\snowflake\env\client.env"
+}
 
-Ensuring compute pool 'WORKBENCH_COMPUTE_POOL_DEV' exists
-Initiating login request with your identity provider. Press CTRL+C to abort and try again...
-Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lZJfb9owFMW%2FSuQ9J3YCg2ABFTTjz1Q2BmGq9uYlBqwktufrELpPPxPK1D60Ut8s%2B5zr373nDu%2FOVemduAGh5AiFAUEel5nKhTyM0C6d%2BTHywDKZs1JJPkJPHNDdeAisKjWd1PYoN%2FxPzcF6rpAE2j6MUG0kVQwEUMkqDtRmdDtZPdAoIFQbZVWmSvTC8r6DAXBjHeHNkoNweEdrNcW4aZqg6QTKHHBECMFkgJ3qIvl0059dT2%2FoQ0y6F71TOPn6mW0q5HUE72H9voqALtJ07a%2B%2Fb1PkTW6o90pCXXGz5eYkMr7bPFwBwBGsFtvdl6%2BpP09I2A%2FDAKRq9iUreKYqXVtXM3AnvOc5LtVBuLaXyQjpQuRx9sP0iv7u1H08xkT%2F7WzmKUwTO5jN6xKOx2Qn9ecVX6TVKkPez1uu0SXXJUDNl%2FKSpnVXJOr5pOdHcUoGlHRoJw6iePALeYlLU0hmW%2BcNea%2ByGjQzVrqagSosaxGZ1vg%2FPebnIjwdir2OSNzvTsljmMcYQOFLxOi6NbTFMOOPzWKIX3qf1%2B%2BbS2SZrFUpsidvpkzF7NuBhUHY3ojc37dSyismykmeGw7ggitL1dwbzqzbcmtqjvD4%2BuvrPR%2F%2FAw%3D%3D&RelayState=ver%3A3-hint%3A405384797536278-ETMsDgAAAZ8NeFcwABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEPuIaIOCBywpRfPB4NUJDIoAAACgilGRYA%2FgDuV%2F7bNCWGvi5KlFsdtEU2SjGs6i2fUaU82F0cE9t4NrmsIDskdWOW8ugdg6dHExj0vE4E9MSyJMybIh8UObUubiNeG70bDqzH8ALmoB9kwLTDHoyf3z6eJdPIngvexQFvdKZc8DC0BPyfItoDP7HQmwBRNsKJ41rnHALWYHfBfF1Y7WDfeIpAxWrtrERN9FRxXqO5gXjMhkEAAU4ZmtJ47epVes%2BgGFfdpCJOBjB18%3D to authenticate...
-A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
-CREATE COMPUTE POOL IF NOT EXISTS WORKBENCH_COMPUTE_POOL_DEV MIN_NODES = 2 MAX_NODES = 2 INSTANCE_FAMILY = CPU_X64_S AUTO_RESUME = TRUE AUTO_SUSPEND_SECS = 3600;
-╭─ Error ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ 003001 (42501): 01c5591f-0004-6b71-0001-70b2473eccfa: SQL access control error:                                                                                                            │
-│ Insufficient privileges to operate on account 'LF17586'. Your primary role FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV must have CREATE COMPUTE POOL granted on ACCOUNT LF17586.                       │
-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-Logging Docker into Snowflake image registry via Snow CLI
-Initiating login request with your identity provider. Press CTRL+C to abort and try again...
-Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lZLdctowEIVfxaNe25INBaLBZExoGvLTMGBT2jthy0TFllytjMnbV9ghk1wkM73TSOesvt2z48tjWTgHrkEoGSLfI8jhMlWZkLsQJfG1O0IOGCYzVijJQ%2FTMAV1OxsDKoqJRbZ7kkv%2BtORjHFpJA24cQ1VpSxUAAlazkQE1KV9HDPQ08QiutjEpVgd5YPncwAK6NJTxbMhAW78mYimLcNI3X9DyldzgghGByga3qJPly1h9tTx%2FofUz6J71VWPnihW0qZDeCz7C2nQjoTRwv3MXjKkZOdEa9UhLqkusV1weR8mR53wGAJXi4WSXfbmP3%2B4z4Q9%2F3QKomL9iep6qsamNrevaEc57hQu2EbXs%2BC1G1F1nDWPKHkMdmXU%2B%2F%2FkqTZcDicp1t2VwnP6XIN9Pb7d0m2uSmnyJnfc41OOU6B6j5XJ7SNPaKBAOXDNxgFJMLSnq0P%2FB6Q%2F83cmY2TSGZaZ1n5FylNVRMG2lrempvWIvIqgq%2F0mN%2B3PuH3T6vAjIa9qdk42cjDKDwKWLUbQ1tMfTk%2F2Yxxm%2B9L%2Bv3wyYyny1UIdJn51rpkpmPA%2FM9v70RmZu3UspLJoooyzQHsMEVhWquNGfGbrnRNUd40v36fs8n%2FwA%3D&RelayState=ver%3A3-hint%3A405384797536278-ETMsDgAAAZ8NeHbDABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEHgHuz9KZFXXDLq%2Fq7un7IQAAACg%2FTss6HKqawePZ%2BMunYei3r%2F2NR6N%2F4TDOLRwRXa5kV9pn37BSO%2F8xCpgVnzMY71iN4on0qArlm4A46OAo1xUvnBYux05q7uWVg5Coxcuyu108QuZx%2FueEDj7FRxe7o8RtM5jFTJAdD9bUS0asb5sEvBQXD%2FPQsjCc%2BzAgdkdAF0yRPJzfa5TarHUr9KJv%2BeiSboWLEqXdH2aCqEDNw02jAAUUv9YooIX4h%2FXTtGvxyOPR1WYxwI%3D to authenticate...
-A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
-Login Succeeded
+$ToolsVenv = Join-Path $RootDir ".client-tools-venv"
+$RenderScript = Join-Path $PSScriptRoot "render_spcs_spec.py"
+$SpecTemplate = Join-Path $RootDir "infra\snowflake\service-specs\webapp.yaml.tmpl"
+$AutomapSpecTemplate = Join-Path $RootDir "infra\snowflake\service-specs\automap-worker.yaml.tmpl"
+$ArtifactsDir = Join-Path $RootDir "artifacts\client-spcs"
 
-Building sttm-builder -> MHSUEJT-GD01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/sttm-builder:474aed7
-[+] Building 60.4s (7/14)                                                                                                                                                docker:desktop-linux
- => [internal] load build definition from Dockerfile                                                                                                                                     0.1s
- => => transferring dockerfile: 932B                                                                                                                                                     0.1s 
- => [internal] load metadata for ghcr.io/astral-sh/uv:latest                                                                                                                             1.4s
- => [internal] load metadata for public.ecr.aws/docker/library/python:3.12-slim                                                                                                          1.6s 
- => [internal] load .dockerignore                                                                                                                                                        0.1s
- => => transferring context: 96B                                                                                                                                                         0.0s 
- => ERROR [base 1/8] FROM public.ecr.aws/docker/library/python:3.12-slim@sha256:6c4dd321d176d61ea848dc8c73a4f7dbae8f70e0ee48bb411ea2f045b599fa8e                                        58.2s 
- => => resolve public.ecr.aws/docker/library/python:3.12-slim@sha256:6c4dd321d176d61ea848dc8c73a4f7dbae8f70e0ee48bb411ea2f045b599fa8e                                                    0.7s 
- => => sha256:6c4dd321d176d61ea848dc8c73a4f7dbae8f70e0ee48bb411ea2f045b599fa8e 10.37kB / 10.37kB                                                                                         0.0s 
- => => sha256:86d3e4424d5e963e60594a3a6b4d597cc4d41f5152fe67a97a40dca9ea092475 1.75kB / 1.75kB                                                                                           0.0s 
- => => sha256:9cbfea842643d1cf45df5d841ac78e8cc1a8bfbcc36934a9d31fdc964fcc5917 5.66kB / 5.66kB                                                                                           0.0s 
- => => sha256:aff2d9f8dc87f4c10bbb7f438f3a325169379776bdfad5c49e4be5acc3c2f192 0B / 1.29MB                                                                                              57.3s 
- => => sha256:df79d931cd67092e2b8e48d8f6369922571efe4ee0f9af71636ce36600481492 12.11MB / 12.11MB                                                                                        15.8s
- => => sha256:e95a6c7ea7d49b37920899b023ecd0e32796c976c1748491f76cae53ba86d13a 29.79MB / 29.79MB                                                                                        19.3s 
- => => sha256:b32430367bf08f32c23778909985ac645d1794f0aeef670aa796a50c8751527d 248B / 248B                                                                                              16.0s
- => => extracting sha256:e95a6c7ea7d49b37920899b023ecd0e32796c976c1748491f76cae53ba86d13a                                                                                                6.0s 
- => FROM ghcr.io/astral-sh/uv:latest@sha256:1e3808aa9023d0980e7c15b1fa7c1ac16ff35925780cf5c459858b2d693f01a9                                                                            29.4s 
- => => resolve ghcr.io/astral-sh/uv:latest@sha256:1e3808aa9023d0980e7c15b1fa7c1ac16ff35925780cf5c459858b2d693f01a9                                                                       0.6s
- => => sha256:1e3808aa9023d0980e7c15b1fa7c1ac16ff35925780cf5c459858b2d693f01a9 2.20kB / 2.20kB                                                                                           0.0s
- => => sha256:bb38f0ebd7d5d42c60d46a72cc8dbf2ed66c7263212f3b94a8ddfe2b60f7f8ca 669B / 669B                                                                                               0.0s 
- => => sha256:f1e6769a5f1df26e513b799a2dd1905933bde4d2e99e69912d03a1c8b414fc71 1.30kB / 1.30kB                                                                                           0.0s
- => => sha256:71d9661d038b64f3d25ad8110766a3bdc60f9e46806a809b234107b4e778cb83 26.66MB / 26.66MB                                                                                        26.8s 
- => => sha256:f26421b0b0e23c8b41130a684bbc0d47c7de94a2e3a0f022b0da6b61752e1c95 96B / 96B                                                                                                19.7s 
- => => extracting sha256:71d9661d038b64f3d25ad8110766a3bdc60f9e46806a809b234107b4e778cb83                                                                                                1.0s 
- => => extracting sha256:f26421b0b0e23c8b41130a684bbc0d47c7de94a2e3a0f022b0da6b61752e1c95                                                                                                0.0s 
- => [internal] load build context                                                                                                                                                        1.4s 
- => => transferring context: 2.80MB                                                                                                                                                      1.2s 
-------
- > [base 1/8] FROM public.ecr.aws/docker/library/python:3.12-slim@sha256:6c4dd321d176d61ea848dc8c73a4f7dbae8f70e0ee48bb411ea2f045b599fa8e:
-------
-Dockerfile:2
---------------------
-   1 |     ARG PYTHON_BASE_IMAGE=public.ecr.aws/docker/library/python:3.12-slim
-   2 | >>> FROM ${PYTHON_BASE_IMAGE} AS base
-   3 |
-   4 |     ENV PYTHONDONTWRITEBYTECODE=1 \
---------------------
-ERROR: failed to build: failed to solve: failed to copy: httpReadSeeker: failed open: unexpected status from GET request to https://d2glxqk2uabbnd.cloudfront.net/v2/30e75d-985539785177-6ebe5bc4-5030-ceae-78a3-298a01058994/4b34c292-79f1-47b2-9f71-8943b7b8b141?Encoded=cmlkPTZlYmU1YmM0LTUwMzAtY2VhZS03OGEzLTI5OGEwMTA1ODk5NCZYLUFtei1TZWN1cml0eS1Ub2tlbj1JUW9KYjNKcFoybHVYMlZqRU1qJTJGJTJGJTJGJTJGJTJGJTJGJTJGJTJGJTJGJTJGd0VhQ1hWekxXVmhjM1F0TVNKSE1FVUNJUURyS3RieFVQT2dDRW9TdjNVNGclMkJ0YWYlMkI0cm12Y2JTbkxiZHBJUmlHUk9Vd0lnUTdrMXRPdmtSZHVMd2UlMkJpSnViM1M3dTFMN2xYSmE2STNJRlRoYlkzMDVNcXpBTUlrZiUyRiUyRiUyRiUyRiUyRiUyRiUyRiUyRiUyRiUyRkFSQUZHZ3cxT1RFeE1EVTVNVFE1TlRJaURKcXFUWGtkTmpHNWQ0WEw1Q3FnQTRORndYZlIzZVBMeiUyQkFSJTJCMnBGa1lyMFpkYTBkanJrdzU4JTJCcW9McUROYSUyRk8wbEJ4QjMlMkZrJTJGQiUyQmJxYmZpeXJRaEwyVUkzc0s4VmxjNThaMXRqdUwzSFUxcklNMURpb3l5dWRwUFNRQ05RdGlnTzg5NEV3Z2pKb1cwbU1HMEhMQ3Q1a25ha0pFaU9kYlZGZTROTm14ZnN5V0JvUkdXOWE0SWhvcW43Zzdlb2slMkJ4dzAwWDhnS3J3WmxKWFRlekZLeWQ1RjlCUno5MzhTUVolMkZzUTFQZktaRXRUWmZQbmJFckQ5Q2NMbDFEZzhmaXA0TjZaRTNERHRPVFZIMjdLMmVZazFSZjkyTEEzbG1XZ3hReWtOMmlQYTJSTndLajhJWXJMN0Q4ZCUyQnNDYUlxb09zSDdTaE5xYjlxNEtGVnRtVkpDWEs4QW9RQlpyN1lJOHM3ZXNJbWUxNjdpUEtsJTJGUmI0aWpoWVU1SXlJT0FDTDlMcXd4Z1p5a1JHcCUyQmlZQTh5RjR2dFNweFNuQUNUVmJyZlM0ZHNyTWtpYkMlMkJ5dzNTTlJhb0w5ZjBNNkNNSENGRjh1biUyQkgxUjFMZkg1UG5DbHElMkZ1bUlENUw3VEc0cEtEaTBrcnJOcWdVZW5LN2ozZnNDb0JnVlRtTGhPNEZqU3lMekgwSiUyQmR6SEJnVGtjc3V2STROQzIlMkZRMTJaZEpSbllHRXluMyUyQk4yS2NaMUw1cnJsYTFpeEpnVTJCaDd4YUZNZU1MS3FnOUlHT3FFQllUSzJTUzdRVHZkekVMJTJCUDN6akNzSFZ6U1gzZzE0SHRFWkpDRCUyRjByWnFXZHg2TjR4Mk16Qk1NTGtoeEUzTU8yckxzMnFrZHlHM1VKUHhkcGd1WWtobjZNd2E1Z2lTb3JndGF3bzYzbXMwOHNndkpISVBkRnB3N3VQZ1hIanlTVndvQ1JXZXVmdmJidjVaWUdRNSUyQlpMSVNmbkxjJTJCOGNSSVJLQjNWTkV4YiUyQk0yU0NzWmlzekdDZXIlMkJ2dTNOWEJRMGFiJTJGeEUlMkZoWUVKWkI1a3hpUTlHZXZYNCUzRCZYLUFtei1BbGdvcml0aG09QVdTNC1ITUFDLVNIQTI1NiZYLUFtei1EYXRlPTIwMjYwNjI4VDA5MDQwNlomWC1BbXotU2lnbmVkSGVhZGVycz1ob3N0JlgtQW16LUV4cGlyZXM9MzYwMCZYLUFtei1DcmVkZW50aWFsPUFTSUFZVElGSVBCRUZGSUNQUzVDJTJGMjAyNjA2MjglMkZ1cy1lYXN0LTElMkZzMyUyRmF3czRfcmVxdWVzdCZYLUFtei1TaWduYXR1cmU9M2JjOGEyYzAxYjE2ZDRjOTc1NmNjMjJjYmU5YzFjOWE0MWQxZDcwZWY0MTNkNzYxNWVmYzMxYmMyYjc0OGJjMw==&Expires=1782641093&Signature=q3a4Ndd9mbqtEwwNWW1dxkrUmgKkZsbtBreuFvjtrcrBCf9SLiTXg9f7m9z1LNKxQNgdlWVZphOIILZKAvl7lfK3cvqu0pbS9yaU7e87225s0fMw4URC1~V7xn5awGxXvt--joIj9E1wEpkFuj-akzu~yhaOragpJeGVUzVvRko9cXneOh~UM1LpCpeaWmsXfZqfbpsN25gAD4rPGHnJ1wne5iBe0lsMa4mE~je0z88XZn-B8wLt6NB8Ged3awps4ihoXARhHRKj7pBm6mAZxS40uY1KgQavuz0caXa4Z-UxHH4hipYE~mHb115595Su~IY8NdLxiZ137DZ~j5jZww__&Key-Pair-Id=KSPLJWGOARK62: 403 Forbidden
-Pushing MHSUEJT-GD01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/sttm-builder:474aed7
-The push refers to repository [MHSUEJT-GD01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/sttm-builder]
-d8fe74d271ad: Preparing
-ec30d87f51c1: Preparing                                                                                                                                                                       
-5def1bf3ad5c: Preparing                                                                                                                                                                       
-8376abb38375: Preparing                                                                                                                                                                       
-aaa74a0a5eb1: Preparing                                                                                                                                                                       
-74975aa7a061: Waiting                                                                                                                                                                         
-4a4c29065f7e: Waiting                                                                                                                                                                         
-6745e6c94581: Waiting                                                                                                                                                                         
-f4f8b983b714: Waiting                                                                                                                                                                         
-unauthorized: {"errors":[{"code":"UNAUTHORIZED_AUTHZ_HEADER_ABSENT","message":"Authorization Failure: Make sure the request contains a valid authorization header","detail":"requestId: dc99e168-84d9-4544-8539-6a0ed8a796f3; category: customer_error"}]}
+function Invoke-Checked {
+    param(
+        [scriptblock]$Command,
+        [string]$Description
+    )
 
-Building sttm-automap-worker -> MHSUEJT-GD01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/sttm-automap-worker:474aed7
-[+] Building 59.2s (7/14)                                                                                                                                                docker:desktop-linux
- => [internal] load build definition from Dockerfile                                                                                                                                     0.1s
- => => transferring dockerfile: 932B                                                                                                                                                     0.1s 
- => [internal] load metadata for ghcr.io/astral-sh/uv:latest                                                                                                                             0.7s
- => [internal] load metadata for public.ecr.aws/docker/library/python:3.12-slim                                                                                                          0.2s 
- => [internal] load .dockerignore                                                                                                                                                        0.0s
- => => transferring context: 96B                                                                                                                                                         0.0s 
- => [internal] load build context                                                                                                                                                        0.1s 
- => => transferring context: 15.04kB                                                                                                                                                     0.0s 
- => ERROR [base 1/8] FROM public.ecr.aws/docker/library/python:3.12-slim@sha256:6c4dd321d176d61ea848dc8c73a4f7dbae8f70e0ee48bb411ea2f045b599fa8e                                        58.1s 
- => => resolve public.ecr.aws/docker/library/python:3.12-slim@sha256:6c4dd321d176d61ea848dc8c73a4f7dbae8f70e0ee48bb411ea2f045b599fa8e                                                    0.1s 
- => => sha256:6c4dd321d176d61ea848dc8c73a4f7dbae8f70e0ee48bb411ea2f045b599fa8e 10.37kB / 10.37kB                                                                                         0.0s 
- => => sha256:86d3e4424d5e963e60594a3a6b4d597cc4d41f5152fe67a97a40dca9ea092475 1.75kB / 1.75kB                                                                                           0.0s
- => => sha256:9cbfea842643d1cf45df5d841ac78e8cc1a8bfbcc36934a9d31fdc964fcc5917 5.66kB / 5.66kB                                                                                           0.0s 
- => => sha256:e95a6c7ea7d49b37920899b023ecd0e32796c976c1748491f76cae53ba86d13a 29.79MB / 29.79MB                                                                                        18.4s 
- => => sha256:aff2d9f8dc87f4c10bbb7f438f3a325169379776bdfad5c49e4be5acc3c2f192 0B / 1.29MB                                                                                              58.2s 
- => => sha256:df79d931cd67092e2b8e48d8f6369922571efe4ee0f9af71636ce36600481492 12.11MB / 12.11MB                                                                                        15.2s
- => => sha256:b32430367bf08f32c23778909985ac645d1794f0aeef670aa796a50c8751527d 248B / 248B                                                                                              15.3s 
- => => extracting sha256:e95a6c7ea7d49b37920899b023ecd0e32796c976c1748491f76cae53ba86d13a                                                                                                3.5s
- => CACHED FROM ghcr.io/astral-sh/uv:latest@sha256:1e3808aa9023d0980e7c15b1fa7c1ac16ff35925780cf5c459858b2d693f01a9                                                                      0.0s
-------
- > [base 1/8] FROM public.ecr.aws/docker/library/python:3.12-slim@sha256:6c4dd321d176d61ea848dc8c73a4f7dbae8f70e0ee48bb411ea2f045b599fa8e:
-------
-Dockerfile:2
---------------------
-   1 |     ARG PYTHON_BASE_IMAGE=public.ecr.aws/docker/library/python:3.12-slim
-   2 | >>> FROM ${PYTHON_BASE_IMAGE} AS base
-   3 |     
-   4 |     ENV PYTHONDONTWRITEBYTECODE=1 \
---------------------
-ERROR: failed to build: failed to solve: failed to copy: httpReadSeeker: failed open: unexpected status from GET request to https://d2glxqk2uabbnd.cloudfront.net/v2/30e75d-985539785177-6ebe5bc4-5030-ceae-78a3-298a01058994/4b34c292-79f1-47b2-9f71-8943b7b8b141?Encoded=cmlkPTZlYmU1YmM0LTUwMzAtY2VhZS03OGEzLTI5OGEwMTA1ODk5NCZYLUFtei1TZWN1cml0eS1Ub2tlbj1JUW9KYjNKcFoybHVYMlZqRU1uJTJGJTJGJTJGJTJGJTJGJTJGJTJGJTJGJTJGJTJGd0VhQ1hWekxXVmhjM1F0TVNKSE1FVUNJUUM2Y3N3dVQzRVRVckFBOHB6TFBIWWV6N2traGJsd2dycGl4Vm0wdnhCUk1RSWdKcU90ZW9KYlp1S3ZaUDNEJTJGcGlybGtqeTNDUW5teXd0TW1YJTJGWUdlbWlDY3F5QU1Ja3YlMkYlMkYlMkYlMkYlMkYlMkYlMkYlMkYlMkYlMkZBUkFGR2d3MU9URXhNRFU1TVRRNU5USWlET096Qlc1anhqbTdETjlkZUNxY0E2QzFKeCUyRjlacVhaUURkM05ldTR1anpSSXR0RDFXaVphbGVCMVJpSlVqR0NCbnZJZXhuSmp3RTZTVWRUQjRlQjRNcmRicFMzUVRxc0hJZkdpWEtjd2gzdVBCVmslMkZqWTZZZjd4TEVXRWhldUpPJTJCZU5SUEIlMkZRZmslMkJRNGdqR0N5M2ZYTGU0UU4wZUdMTGplM3JabVJ5ZFRrczVsN0hsVXE0Y1B2aHhCNVJWT1dSTmY0NjJteUZzd0JZb1BDcDdhYUV5ZEhOdXlxMGdydVZ2S2VjRXFhajklMkZzeW5aZk5pOE5YVEFVMVElMkZucThlMlBacjRQQjkzZU1NNWUyYVNISnVnTEpkWW1lV2ZkcHkxQWVDMDZ4SHpOaFJBSDJ2dDdodU5RY2VPejhMJTJCRCUyRkhvWSUyQldZQVJWdXhCT3owSWZ4Q3c4R3U3OHZwOWclMkIlMkJFSFdTU01WJTJCRFdZemxRRVNycHRKV2VVVU0lMkZEd3JrODl5ek8lMkI2YnExWTVhNTFhUE1yNzNodzUlMkZFSFElMkJrcVVqY1NBQWIlMkY4cDgzbEpLTHRDV2pwUEFIN0NEN00lMkJVVndUZ0VMNXBaTjBUaHl2OWpBMUY1WWFtRnFCVkFkJTJGNzc3Y1ZtQmZpQXlKSHAzaGRpbW56SW1IMXhCeUlKWWc5a1Z4ckQlMkJ6eSUyQmhZT1o2U3g5RDh0dFpXSWIlMkJEJTJGUFhzJTJCdGpjS0JraDhta2g3eExDckMwYUVUR0V4VU9KUkhZUUxPJTJCMHd2TFNEMGdZNm9RRllOOExXZzFHM0ZTd21ZbEJvZTR3YjRDSnNCUTdpZWNPRDlPWE5EaW0lMkY2dEhtV0VhOWpGYUxSRGlpMFlFcVZidTVCVHBCR3BGZDBaMFVURG84bldvckQxQmoxVHlXc2ZDbGNKT1JYVzc2cjJ4dm81YW83M3hOV3FDcEdrd05ZMGwlMkZvODIlMkJvZnIzYTY3Sjhmb1lsOVlRblJOanN2V3VNMTBBOTNOMHB4VDBhOTdzOU9ZVlNtYzNoWUttelMlMkI2QUtTSUx1JTJGbyUyQmVaYXowSUMlMkY3dVo5YmdWdnclM0QlM0QmWC1BbXotQWxnb3JpdGhtPUFXUzQtSE1BQy1TSEEyNTYmWC1BbXotRGF0ZT0yMDI2MDYyOFQwOTA1NDBaJlgtQW16LVNpZ25lZEhlYWRlcnM9aG9zdCZYLUFtei1FeHBpcmVzPTM2MDAmWC1BbXotQ3JlZGVudGlhbD1BU0lBWVRJRklQQkVCQVVSNkFPQiUyRjIwMjYwNjI4JTJGdXMtZWFzdC0xJTJGczMlMkZhd3M0X3JlcXVlc3QmWC1BbXotU2lnbmF0dXJlPWM3MmY1MTkyYzM1OWNlZjU2OGI1OThmYWNmNTcwNzQ2OTVjZDJjZWFhZTQ1YTQwYTUyMmFiM2NiODAxMTRhZDU=&Expires=1782641154&Signature=rwyGn3PE5oTBTv6giZLsB03skdR8uamIFXGDNVojH79Wkt~q4QNkFyXKC-mBwP9Mw7d-uv73siMPhBMfuLubBKbxE0N0U6AsvTDUDclTtIGsIBbImbxnMuRXGxUYu-8GJ6yyyFwLEvXab9FUu6wC3lZjAj5SgbI-BmL8Z9I6wbEIQKFIUtx-DgQ~8U3J28Sk0drlB62LU46KaYhzvMoUhhGcxsW9afvgkuNz1sHySoFY0i0QBHa6HVF0clCwkmgqeN21W3tBKhezRJRFBhMv1Tf91Vs-DcVLnZhmlCVE5wDVPVxw82Koy93V9y4m-GnYwoxbIDnamnJcUWOEtd5DVw__&Key-Pair-Id=KSPLJWGOARK62: 403 Forbidden
-Pushing MHSUEJT-GD01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/sttm-automap-worker:474aed7
-The push refers to repository [MHSUEJT-GD01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/sttm-automap-worker]
-An image does not exist locally with the tag: MHSUEJT-GD01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/sttm-automap-worker
+    Write-Host ""
+    Write-Host "==> $Description"
+    & $Command
+    $exitCode = $LASTEXITCODE
 
-Building frontend -> MHSUEJT-GD01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/frontend:474aed7
-[+] Building 53.9s (5/14)                                                                                                                                                docker:desktop-linux
- => [internal] load build definition from Dockerfile                                                                                                                                     0.1s
- => => transferring dockerfile: 556B                                                                                                                                                     0.0s 
- => [internal] load metadata for public.ecr.aws/docker/library/node:22-alpine                                                                                                            1.5s 
- => [internal] load .dockerignore                                                                                                                                                        0.1s
- => => transferring context: 108B                                                                                                                                                        0.0s 
- => [internal] load build context                                                                                                                                                        1.5s
- => => transferring context: 4.80MB                                                                                                                                                      1.4s 
- => ERROR [deps 1/4] FROM public.ecr.aws/docker/library/node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2                                          51.9s 
- => => resolve public.ecr.aws/docker/library/node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2                                                      0.1s 
- => => sha256:bd168dc5d9d77ba5687dc7a31cc0f507c35b66c1d6af5f910154d3881df7c0ee 6.52kB / 6.52kB                                                                                           0.0s
- => => sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 6.41kB / 6.41kB                                                                                           0.0s 
- => => sha256:b74031e546d7f4faf561d797ac1b76beccac856a042815ca77db4fd047581605 1.72kB / 1.72kB                                                                                           0.0s 
- => => sha256:3f4c164634d251a8b256151a9e1c1d3e5c5b21f1974f00a213875e66e3fa0801 52.31MB / 52.31MB                                                                                        22.2s
- => => sha256:d10ff586f6bdbdd6000a70a914e56bf05bedc78de3311d08a953643982d84e23 0B / 446B                                                                                                52.0s
- => => sha256:1d4d101ceaad39fb56dcac0bb6cc291e6cdec3b711786f0c82b050b5b5b85690 0B / 1.26MB                                                                                              52.0s
- => => extracting sha256:3f4c164634d251a8b256151a9e1c1d3e5c5b21f1974f00a213875e66e3fa0801                                                                                                4.3s
-------
- > [deps 1/4] FROM public.ecr.aws/docker/library/node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2:
-------
-Dockerfile:2
---------------------
-   1 |     ARG NODE_BASE_IMAGE=public.ecr.aws/docker/library/node:22-alpine
-   2 | >>> FROM ${NODE_BASE_IMAGE} AS deps
-   3 |
-   4 |     WORKDIR /app
---------------------
-Dockerfile:15
---------------------
-  13 |     RUN npm run build
-  14 |
-  15 | >>> FROM ${NODE_BASE_IMAGE} AS runner
-  16 |
-  17 |     WORKDIR /app
---------------------
-ERROR: failed to build: failed to solve: failed to copy: httpReadSeeker: failed open: unexpected status from GET request to https://d2glxqk2uabbnd.cloudfront.net/v2/814e42-985539785177-febe5bc4-51ed-c6fb-e028-9449267842e2/0032f5d4-c53e-445a-9fc6-a788fed576a9?Encoded=cmlkPWZlYmU1YmM0LTUxZWQtYzZmYi1lMDI4LTk0NDkyNjc4NDJlMiZYLUFtei1TZWN1cml0eS1Ub2tlbj1JUW9KYjNKcFoybHVYMlZqRU1uJTJGJTJGJTJGJTJGJTJGJTJGJTJGJTJGJTJGJTJGd0VhQ1hWekxXVmhjM1F0TVNKSE1FVUNJQ3pIQm5GYUhTTGUlMkIxWnQ4V0lCTHJXTmk0Nm1OWVhvOXNKVm90ajZEUzBYQWlFQXVzbnZPUjdkWGtXbnZRWXJ0TjlkMFpMUzBQdUhxQVJneSUyQmtob1NLcVRWQXF5QU1Ja3YlMkYlMkYlMkYlMkYlMkYlMkYlMkYlMkYlMkYlMkZBUkFGR2d3MU9URXhNRFU1TVRRNU5USWlEQ0xic1BZNWVNZThRM2EwY1NxY0F6RzBSRW1PWUJRRndFTkZqeEkwRVo0aHRXN3I3TFpPMUNocTJKUDVYQnFOdTdWaGVSUVc0UUFqek83ell6cmJ0eXpsa3V5emh2aTdmdU9MWkVQQllWSFhKZTg4T2NyQ0dXTlFRNEFoa3dQTlVMcFQ3cTU1VDFMVkRERWdXYVklMkJkJTJGYnBCekl2JTJGJTJCV0FYZkt6czVvdSUyRjFaTTVXRlZjdURVM1gzUWJpaDNUcVg2aWh3S3FvNGNZJTJCa3JzVGlkQ21DdE9FYWlDSmF4d0pqZGc5cmo0NWFxQkRhTE1ITWtRRURmNWUwQnFSWVhSMmxpRk9KQlNRWDZjaGM3QTZRWXNJT0V1Y0NDZHpNNDNsREolMkIlMkJpQ1lpJTJCTGE0M3AxOTBMZWV3MW81JTJCMFV3QkRpQmglMkJLT0Q2N1ZFRWJlb1A3eWxTTXpOYUhpOUFwJTJGbFNtVVRLNDJtU1o3SFlMcjZKcFdQN0hhcWdRR1o5ZmdjMkRuSUtvb0RGSThkRUpPOHhxallCb0VyVXBjSVQ3cnVTejBUeG54T2pCb3JWR1dxWkslMkZiRnBXVWkxOTMlMkIxUG1XcUFWVVVNUWUxdEh2RSUyQjlaN1RsS2tzeDNGTWtKJTJCTEdOZzAzSU5IQWhpUllCY2hzaE8yYkFWQjgwTk5ON0RKSDZhQ2hMS1JxWTFYdU9QJTJGaGpzTTlWYVhCNEtrdGJoYnBZSExaRUlKTlprc0M5aXYwZXlMYkhMcDdHamRuJTJGQ0V3dzFiT0QwZ1k2b1FHb3l4NFRidzJBNGMyZUluT1lDVHElMkJpSExzSHQ5ODBmSEZWQk1EN2xFMFRZTTRjU3ZjWmh3TDBLZkMybmJ0V2plbE5iQ0NwUm9hTlJlQ3UlMkJjTjB3UW9jdzNjUUwySlNpMGQxamdiWGFXRk44V3RXT1RzJTJCM3ZLeUp3Rzd0ZFR0M2FkT0FBZ1F5VXpRZkl2Q0xEM1JReXgyYUtQbmZwa3BwTzdOJTJGVEFGeExDOEVJRW1MN0wwcXp6N2RmOCUyRnZZSzJkNm5ZS2lDWE5KM25QTjR4ZkVvbnBMQ0N3JTNEJTNEJlgtQW16LUFsZ29yaXRobT1BV1M0LUhNQUMtU0hBMjU2JlgtQW16LURhdGU9MjAyNjA2MjhUMDkwNjUyWiZYLUFtei1TaWduZWRIZWFkZXJzPWhvc3QmWC1BbXotRXhwaXJlcz0zNjAwJlgtQW16LUNyZWRlbnRpYWw9QVNJQVlUSUZJUEJFRUVNVDVGRlAlMkYyMDI2MDYyOCUyRnVzLWVhc3QtMSUyRnMzJTJGYXdzNF9yZXF1ZXN0JlgtQW16LVNpZ25hdHVyZT00YThiZjA3Zjk3YTE5YTJkNmYzNzExMTNlZjljYTEyZmM2OTUwNzg1ZTBhYjRkMDM1NTY5YmQ4MTViY2E2Mzhi&Expires=1782641212&Signature=SbsVRkKVmC3~w1bN4o9c1ABGllkUQJDt3rroINQuWhaRiugC9xlfBel~zlMFB7MC7TMCwRyoh2D~EkJK3RUk~RXctRuc80RxEWNDAm3ADXdcRzwihgucE~HwBU0veL6gBeh2gBEFWgCj-PC3mjHdX8Mxof08grhFk8cK3w~wiZvX3D2bWA1xsiH9v9s-Gl6j~9ad3emmqnXUqjXtnrOXdlZ0lVvC6j18yKgNWr6tT0AVo8-2ubZrRnK3OFTwca~dMP0TzQqM7oYmSz34c9a1gCcRLc7ula84HWnTzDYvV9ViVl6gQ1nGuEsTn83fb6Jy~qyAVYHE4c8aANXt64bfjw__&Key-Pair-Id=KSPLJWGOARK62: 403 Forbidden
-Pushing MHSUEJT-GD01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/frontend:474aed7
-The push refers to repository [MHSUEJT-GD01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/frontend]
-f88942c5053e: Preparing
-0760f7d9f870: Preparing                                                                                                                                                                       
-b68db4d7f583: Preparing                                                                                                                                                                       
-bd111ad49bab: Preparing                                                                                                                                                                       
-63f343529eba: Preparing                                                                                                                                                                       
-12eb2dad5114: Waiting                                                                                                                                                                         
-da5bb52b6bf9: Waiting                                                                                                                                                                         
-34884abbe928: Waiting                                                                                                                                                                         
-unauthorized: {"errors":[{"code":"UNAUTHORIZED_AUTHZ_HEADER_ABSENT","message":"Authorization Failure: Make sure the request contains a valid authorization header","detail":"requestId: b897bbdc-82c7-4c6e-8519-1b43436c3d39; category: customer_error"}]}
+    if ($null -ne $exitCode -and $exitCode -ne 0) {
+        throw "$Description failed with exit code $exitCode"
+    }
+}
 
-Building nginx -> MHSUEJT-GD01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/nginx:474aed7
-[+] Building 2.6s (8/8) FINISHED                                                                                                                                         docker:desktop-linux
- => [internal] load build definition from Dockerfile                                                                                                                                     0.1s
- => => transferring dockerfile: 244B                                                                                                                                                     0.0s 
- => [internal] load metadata for public.ecr.aws/nginx/nginx:1.27-alpine                                                                                                                  0.7s
- => [internal] load .dockerignore                                                                                                                                                        0.1s
- => => transferring context: 50B                                                                                                                                                         0.0s 
- => CACHED [1/3] FROM public.ecr.aws/nginx/nginx:1.27-alpine@sha256:8f755514b13901f9dc92627c363552ecfedc2e7e13fa36471e5bf0d4188cf21c                                                     0.0s
- => [internal] load build context                                                                                                                                                        0.1s 
- => => transferring context: 1.91kB                                                                                                                                                      0.0s 
- => [2/3] COPY nginx.conf /etc/nginx/nginx.conf                                                                                                                                          0.4s
- => [3/3] COPY conf.d/default.conf /etc/nginx/templates/default.conf.template                                                                                                            0.3s
- => exporting to image                                                                                                                                                                   0.3s
- => => exporting layers                                                                                                                                                                  0.2s 
- => => writing image sha256:b95dfea151c987c9c0925460c54952d091b5af3715e002945064af4d4edd1f2f                                                                                             0.0s
- => => naming to MHSUEJT-GD01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/nginx:474aed7                                             0.0s 
-Pushing MHSUEJT-GD01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/nginx:474aed7
-The push refers to repository [MHSUEJT-GD01711.registry.snowflakecomputing.com/ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/nginx]
-34785ba6fe23: Preparing
-21530be34aff: Preparing                                                                                                                                                                       
-0d853d50b128: Preparing                                                                                                                                                                       
-947e805a4ac7: Preparing                                                                                                                                                                       
-811a4dbbf4a5: Preparing                                                                                                                                                                       
-b8d7d1d22634: Waiting                                                                                                                                                                         
-e244aa659f61: Waiting                                                                                                                                                                         
-c56f134d3805: Waiting                                                                                                                                                                         
-d71eae0084c1: Waiting                                                                                                                                                                         
-08000c18d16d: Waiting                                                                                                                                                                         
-unauthorized: {"errors":[{"code":"UNAUTHORIZED_AUTHZ_HEADER_ABSENT","message":"Authorization Failure: Make sure the request contains a valid authorization header","detail":"requestId: d673aa87-5cbb-4829-b080-d62dac1244ce; category: customer_error"}]}
+function Resolve-SnowCli {
+    param([string]$VenvPath)
 
-Rendering service spec to C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\artifacts\client-spcs\webapp.474aed7.yaml
+    $candidates = @(
+        (Join-Path $VenvPath "Scripts\snow.exe"),
+        (Join-Path $VenvPath "Scripts\snow.cmd"),
+        (Join-Path $VenvPath "Scripts\snow")
+    )
 
-Rendering auto-mapping worker spec to C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\artifacts\client-spcs\automap-worker.474aed7.yaml
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate) {
+            return $candidate
+        }
+    }
 
-Creating service 'AI_WORKBENCH_OKTA_WEBAPP_DEV_v4' if needed
-Initiating login request with your identity provider. Press CTRL+C to abort and try again...
-Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lZJRb9owFIX%2FSuQ9J3YCA2oBVShjZIMNQaiqvnmJSa0kdvB1COzXzwll6h5aaW%2BWfc71d%2B%2B54%2FtzWTgnrkEoOUG%2BR5DDZaJSIbMJ2scLd4QcMEymrFCST9CFA7qfjoGVRUXD2rzILT%2FWHIxjC0mg3cME1VpSxUAAlazkQE1Cd%2BF6RQOP0EoroxJVoDeWjx0MgGtjCW%2BWFITFezGmohg3TeM1PU%2FpDAeEEEzusFW1kk83%2Fdn29I7ex6Tf6q3CyjevbDMhryP4COvXVQR0Gccbd%2FNzFyMnvKE%2BKAl1yfWO65NI%2BH67ugKAJVgvd%2Fsv32L365z4Q9%2F3QKrmULCcJ6qsamNrevaEDzzFhcqEbTuaT1CVixT6q3qQbWdP22N%2B%2FNz%2F%2FZ31ROwv9rP1Y2RE73m5rPpZcQlFFCbIebzlGrS5RgA1j2SbprFXJBi4ZOAGo5jcUTKkpOf5ZPSMnLlNU0hmOucN%2BaCSGiqmjbQ1PZUb1iGyqsJ%2F6TE%2F5%2F4pyw9VQEbD%2Fow8%2BekIAyjcRoyuW0M7DD39v1mM8Vvv6%2Fr9sIlE840qRHJxFkqXzLwfmO%2F53Y1I3UMnpbxkogjTVHMAG1xRqOZBc2bslhtdc4Sn11%2F%2F3fPpHw%3D%3D&RelayState=ver%3A3-hint%3A405384797536278-ETMsDgAAAZ8Ne3dEABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEDBBoIyeioGaAkmcbJ1LaREAAACgcdoRMhGCQx8UxgBTVVkv%2BEhKUgDcNeDdB0w6j7iHdu0nR%2BrFJBDFg0MleKpqrPGLxkXyOjOmqEOtFmvxC5K%2Fudl9a05F1jNourMAAcAnC2JEpRQoM2wVgZcgrgnlYIpfApMUUBZoTb%2BHH1E0%2BEeSgIonJGB9i6FQiX%2BpGqWO%2FMeAfP4c6FXSEDU8NOeZoJNplDm4fQKRnD6aNue1uLZ64AAUrCLakwJA37T3u50AFoJdtRxkXIA%3D to authenticate...
-A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
-+-------------------------------------------------------------------------------+
-| key    | value                                                                |
-|--------+----------------------------------------------------------------------|
-| status | AI_WORKBENCH_OKTA_WEBAPP_DEV_V4 already exists, statement succeeded. |
-+-------------------------------------------------------------------------------+
+    return $null
+}
 
-Upgrading service 'AI_WORKBENCH_OKTA_WEBAPP_DEV_v4' to the latest spec
-Initiating login request with your identity provider. Press CTRL+C to abort and try again...
-Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lZJRb9owFIX%2FSuQ9J3a8CqgFVFDomqlsqAnVtDcvcYIXx059HUL%2F%2FUwoU%2FfQSnuz7HOuv3vPnd4cGxUchAVp9AzFEUGB0LkppK5maJfdhRMUgOO64MpoMUMvAtDNfAq8US1bdG6vH8VzJ8AFvpAGNjzMUGc1MxwkMM0bAczlLF1sHhiNCGutcSY3Cr2xfOzgAMI6T3ixFCA93t65lmHc933Uf46MrTAlhGByjb3qJPl00R99T%2B%2FoY0yuTnqv8PLtK9tS6vMIPsL6dRYBu8%2Bybbj9nmYoWFxQb42GrhE2FfYgc7F7fDgDgCfY3Ke79dcs%2FLIi8TiOI9CmLxWvRW6atnO%2BZuRPuBQFVqaSvu1kNUNtLYvyiR7Xdk35br%2BorOxpRZOS2sl2lBbP480SVHXs9aGOfyc5Cp4uudJTrglAJxJ9StP5K0JHIRmFdJKRa0bGzHPQEfmJgpVPU2ruBucFuTR5By23TvuakakdHxB52%2BK%2F9Fgc6%2FhQ1WVLyWR8tSQ%2F4mKCAQw%2BRYzOW8MGDDv%2Fv1lM8Vvv6%2Fp984kkq61RMn8J7oxtuHs%2FsDiKhxtZhOUgZaLhUi2KwgoAH5xSpr%2B1gju%2F5c52AuH5%2Bdd%2F93z%2BBw%3D%3D&RelayState=ver%3A3-hint%3A405384797536278-ETMsDgAAAZ8Ne5ccABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEDgsMEYs7r6UXpFE6LNiWgAAAACg35J0ENFR5MLZDqDN%2F0xI0B46jizVfIWLjD5NKOVocBKGDCFI1mKJEirOVZiWciI2LQ3oHquGc2XXVDHejWsydv4tgXijVBriqgLWdvvrEMPnvOsNto4Ms5A%2FRmVfsqZlJfbwRooyK0gEmDiUgNcfUUUmrZPAaCT%2FEBU5P99HswTJL44wUwjf88NMZDNYzyEcUF7zxt6K%2B2R1Y%2FQe3%2BwJrAAUg0pjZ6sFGMJtIPWURjxuj3oU87s%3D to authenticate...
-A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
-+-------------------------------------------+
-| key    | value                            |
-|--------+----------------------------------|
-| status | Statement executed successfully. |
-+-------------------------------------------+
+function Import-ClientEnv {
+    param([string]$Path)
 
-Listing service endpoints
-Initiating login request with your identity provider. Press CTRL+C to abort and try again...
-Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lZLdctowEIVfxaNe25Jdwo8GyJgADRlIaTBtp3eqLRPFtmS0EiZvX2FCJ7lIZnKnkc5Zfbtnh9fHqvQOXINQcoTCgCCPy1RlQu5GaJvM%2FT7ywDCZsVJJPkLPHND1eAisKmsaW%2FMoH%2FjecjCeKySBtg8jZLWkioEAKlnFgZqUbuLVkkYBobVWRqWqRK8sHzsYANfGEV4sGQiH92hMTTFumiZovgZK73BECMFkgJ3qJPly0R9dT%2B%2FoQ0w6J71TOPn6hW0i5HkEH2H9PYuA3ibJ2l9%2F3yTIiy%2BoN0qCrbjecH0QKd8%2BLM8A4AhWt5vt7C7xv01J2AvDAKRq8pIVPFVVbY2rGbgTznmGS7UTru3FdITqQmT7%2FMrmdhvter2ifPoxSyPRZavZ3lZPd%2BvlXFfbSfyrPy8GsUqR9%2FOSa3TKdQFg%2BUKe0jTuikRdn3T9qJ%2BQASU9GoVBeNX5g7ypS1NIZlrnBTlXqYWaaSNdzUAVhrWIrK7xf3rMj0V42BV5HZF%2BrzMhv8OsjwEUPkWMzltDWww9%2Ftwshvi192X97l0ii%2BlalSJ99uZKV8y8H5jrrr0RmZ%2B3UsorJso4yzQHcMGVpWpuNGfGbbnRliM8Pv%2F6ds%2FH%2FwA%3D&RelayState=ver%3A3-hint%3A405384797536278-ETMsDgAAAZ8Ne73CABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEKpC6fxXvY%2Fh7IKuwAviPMIAAACgpgUcHT94ElJa8AJtbJjt%2BqzGbk1NCaE7plJimfuPaK075KTObEF9PYodeB7MjmPOtzXPH%2BI5zq%2BOKgT%2FN01CzELmeGqUewO1olRefVYo1z%2Bk0iGxtGLcKS1VqdUEiaQRXpxCWuBj%2F0zJ9O6MiVriR0x7M6zZFV6SdTq4%2FMFzFyxikZUuihGS8ywNXFiTEGYePnaN8JvfNLc4NqYD0h4j1gAU231m9S4c%2FABFkXQxKfpE2mGup1g%3D to authenticate...
-A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
-+------------------------------------------------------------------------------------------------------------------------------------------------------------------+                          
-| name | port | port_range | protocol | is_public | ingress_url                                    | privatelink_ingress_url                                       |                          
-|------+------+------------+----------+-----------+------------------------------------------------+---------------------------------------------------------------|                          
-| app  | 8080 | None       | HTTP     | true      | btaiwql-mhsuejt-gd01711.snowflakecomputing.app | btaiwql-mhsuejt-gd01711.spcs.dsmztn.privatelink.snowflake.app |
-+------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+    if (-not (Test-Path $Path)) {
+        throw "Env file not found: $Path"
+    }
 
+    $values = @{}
+    foreach ($line in Get-Content $Path) {
+        $trimmed = $line.Trim()
+        if (-not $trimmed -or $trimmed.StartsWith("#")) {
+            continue
+        }
 
-Creating auto-mapping worker service 'WORKBENCH_AUTOMAP_DEV' if needed
-Initiating login request with your identity provider. Press CTRL+C to abort and try again...
-Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lZJBc9owEIX%2Fikc925IcGkADZEgoDSRpPGDSNjfVlh2NbcnRyhj66ytM6CSHZCY3jfTe6tt9O7rYVaW3FQakVmNEA4I8oRKdSpWP0Sae%2BwPkgeUq5aVWYoz2AtDFZAS8Kms2beyTWonnRoD1XCEFrHsYo8YopjlIYIpXAphN2Hp6d8vCgLDaaKsTXaJXlo8dHEAY6whPlhSkw3uytmYYt20btGeBNjkOCSGYDLFTHSRfTvqd6%2BkdPcWkd9A7hZNHL2yXUh1H8BHWn6MI2HUcR350v46RNz2hXmkFTSXMWpitTMRmdXsEAEdwd73efFvG%2FvcZoX1KA1C6zUpeiERXdWNdzcCdcCZSXOpcurYXszGqC5neb9K9%2Bhvn06qv1g3No%2FBmFZVm9SD4cvD43P%2BamWE4%2F70sfvYS5D2ccg0PuS4AGrFQhzStuyLhuU%2FO%2FXAQkyEjfRYOg7MhfUTezKUpFbed84Sc6aSBmhurXM1AF5Z3iLyu8X96LHYF3eZFVodk0O9dkl80HWAAjQ8Ro%2BPWsA7DTD43ixF%2B7X1Zvx8ukcUs0qVM9t5cm4rb9wOjAe1uZOpnnZSJistymqZGALjgylK3V0Zw67bcmkYgPDn%2B%2BnbPJ%2F8A&RelayState=ver%3A3-hint%3A405384797536278-ETMsDgAAAZ8Ne93vABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEMRw9zR6QKGj86VHOtCdTRQAAACgcYdbUI16wgPmsj%2BU79cmViu%2FdrStX3YrrxbaSBQKDx%2FNj5Q90%2FZUNW9gHwX7YMx5a8DL84FtNxXb0C327dgPsGemslrryXt2oisSKYCVIqg70NZHaOb9CoXhcK7jETk05TEp8B1mB0R65MSKUdpqW1RvJLQN3Luj%2F6HWZ4HhEda2zHvzTR2lzi2i6NRg66jjTpbLXV46mOf%2Fx5Hnz8WDmgAUU7XDH2tL6Tx4VwtbBmCBvhvHYCo%3D to authenticate...
-A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
-╭─ Error ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ 397012 (23001): 01c55923-0004-68ff-0001-70b2473f19de: Image /ffp_hdp_dlab_db_dev/sch_sttm_metadata/ai_workbench_dev_images/sttm-automap-worker:474aed7 not found. Please verify the image  │
-│ exists in the image repository.                                                                                                                                                            │
-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+        $parts = $trimmed -split "=", 2
+        if ($parts.Count -ne 2) {
+            continue
+        }
 
-Upgrading auto-mapping worker service 'WORKBENCH_AUTOMAP_DEV' to the latest spec
-Initiating login request with your identity provider. Press CTRL+C to abort and try again...
-Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lZLdjtowEIVfJXKvE9sBQbCAFT9doIItWgKlvTOJAZfETj0OYfv0NWGpthe7Uu8s%2B5zxN3Om%2B3DJM%2B8sDEiteogGBHlCJTqV6tBD6%2FjRj5AHlquUZ1qJHnoRgB76XeB5VrBBaY%2FqWfwqBVjPFVLA6oceKo1imoMEpngugNmErQaLOQsDwgqjrU50ht5YPnZwAGGsI7xbUpAO72htwTCuqiqoGoE2BxwSQjDpYKe6Sj7d9RfX0zt6iknzqncKJ1%2B%2Bsg2luo3gI6zdTQRsGsdLf%2Fl1FSNvcEcdaQVlLsxKmLNMxPp5fgMAR7CYrtafv8T%2BZExom9IAlK72GT%2BJROdFaV3NwJ3wXqQ40wfp2p6Ne6g4yTQWDd3ZkFQutnwVNWe%2Fo%2BOwtfu5PY6O88li2tiIzmK7m3wbVt8T5G3uuYbXXGcApZipa5rWXZGw5ZOWH0Yx6TDSZo1OQGn0A3ljl6ZU3NbOO%2FJeJyUU3Fjlagb6ZHmNyIsC%2F6XH4nKi58NpX4QkajeHZEvTCANofI0Y3baG1Rim%2F3%2Bz6OK33tf1e3KJzMZLncnkxXvUJuf2%2FcBoQOsbmfr7WspEzmU2SFMjAFxwWaarkRHcui23phQI92%2B%2F%2Frvn%2FT8%3D&RelayState=ver%3A3-hint%3A405384797536278-ETMsDgAAAZ8NfAPuABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEHD6URRSpRjzPYjDsN8OzaAAAACgdCRYeZZj3shXHnBQ%2BGovlxT0ZjOXa54vuhD5z08E7ni4BRGiFK8NTYe5OWqSjr3QkWVboPzQT6tHLDFoW1VvNVief5pr6K65NeDuX3agWNt62WC7HP%2ByuY0XMdpLWfCyX2v9fk3jz2WJ8atRCLf5j%2FFpRX8hPtWEcstuluEANIfJadbsg3%2FDy%2BC1FcK9JRtpmahtRBaEuPPumEENwPC%2BswAUdRYNo7r8ziTfQcWfxvjWSfHznf0%3D to authenticate...
-A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
-╭─ Error ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ 002003 (02000): 01c55923-0004-6b75-0001-70b2473efe42: SQL compilation error:                                                                                                               │
-│ Service 'FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.WORKBENCH_AUTOMAP_DEV' does not exist or not authorized.                                                                                    │
-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+        $key = $parts[0].Trim()
+        $value = $parts[1].Trim()
 
-Pinning auto-mapping worker scale to min=2 max=2
-Initiating login request with your identity provider. Press CTRL+C to abort and try again...
-Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lZLdbuIwEIVfJfJeJ3ayET8WUIWyLKBCsyVUq71zEwNWEjv1OAT69DWhrNqLVuqdZZ8z%2FmbODG6OZeEcuAah5BD5HkEOl6nKhNwN0SaZuj3kgGEyY4WSfIhOHNDNaACsLCoa1WYvH%2FhzzcE4tpAE2j4MUa0lVQwEUMlKDtSkdB0t72jgEVppZVSqCvTO8rWDAXBtLOHVkoGweHtjKopx0zRe89NTeocDQggmfWxVZ8mPq%2F5oe%2FpE72MSnvVWYeXxG9tYyMsIvsJ6uoiAzpIkduP7dYKc6Ip6qyTUJddrrg8i5ZuHuwsAWILlbL35tUjc3xPid33fA6mabcFynqqyqo2t6dkT3vIMF2onbNvzyRBVuchWue6%2FxJPZ0%2BoUN3%2Fu4bgfH4spCxds%2BsKmIgvGj1HYWeyfo2WKnMdrrsE51zlAzefynKaxVyTouKTjBr2E9Cnp0rDrhf3OP%2BRMbJpCMtM6r8hbldZQMW2kremp3LAWkVUV%2Fk%2BP%2BTH3D7t8WwWk1w3H5K%2Bf9TCAwueI0WVraIuhR9%2BbxQC%2F976t38omMp%2FEqhDpyZkqXTLzeWC%2B57c3InO3rZTykokiyjLNAWxwRaGaW82ZsVtudM0RHl1%2B%2Fbjno1c%3D&RelayState=ver%3A3-hint%3A405384797536278-ETMsDgAAAZ8NfCSoABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEN9YcU44r7zqYmVDlxvu3i8AAACgTCuYrtT8un4DFa2qwA9n7aLx6%2F0V8MFf2zFEUqXhOc3Q6fJ5%2BM3IsFwOEO3z2uwmMSTy5PlNbPORJFPJ1RGsk6RSM78ThtuAQ%2BYgJFaBl3x4ctNT8sVx1PvSyUd2biqSWsK3%2FG8SBWZAHKUAyDFcQG%2FbwoMNQxUf9K8Mss%2Fqh2tTV68DPpgoGxEyFLeNJ7QW%2FHoUsetHFAft20J2IEJW2wAUVP4ynrKbK3KWw58hGvIj%2FQI2IUg%3D to authenticate...
-A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
-ALTER SERVICE IF EXISTS FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.WORKBENCH_AUTOMAP_DEV SET MIN_INSTANCES=2, MAX_INSTANCES=2;
-+-----------------------------------------------+                                                                                                                                             
-| status                                        |                                                                                                                                             
-|-----------------------------------------------|                                                                                                                                             
-| Service WORKBENCH_AUTOMAP_DEV does not exist. |
-+-----------------------------------------------+
+        if (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'"))) {
+            $value = $value.Substring(1, $value.Length - 2)
+        }
 
+        $values[$key] = $value
+    }
 
-Listing auto-mapping worker endpoints
-Initiating login request with your identity provider. Press CTRL+C to abort and try again...
-Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lZJbc9owEIX%2Fikd9tiU5XBwNkOHSNCSEMsHJNH0TtiAaZMnRypjw6ytM6KQPyUzfNNI5q2%2F3bO9qX6hgJyxIo%2FuIRgQFQmcml3rTR4%2FpdZigABzXOVdGiz56E4CuBj3ghSrZsHIv%2BkG8VgJc4AtpYM1DH1VWM8NBAtO8EMBcxpbD%2BxmLI8JKa5zJjEIfLF87OICwzhOeLTlIj%2FfiXMkwrus6qi8iYzc4JoRgcom96ij5dtbvfU%2Bf6CkmraPeK7x88c42kvo0gq%2BwVicRsJs0XYSLn8sUBcMz6thoqAphl8LuZCYeH2YnAPAE9zfLx%2B%2B3afhjQmiX0gi0qdeKb0VmirJyvmbkT3gtcqzMRvq2p5M%2BKrcynz7vWoeL5KB4i4xnK0rj27k%2BTOajp%2FazHtfdw8q0R%2BPFa3JXZyh4OucaH3OdAlRiqo9pOn9F4k5IOmGcpOSSkS5rt6Ok1fmNgolPU2ruGucZeW2yCkpunfY1I7N1vEHkZYn%2F0mOx39LdZrsuY5J0WyPyi%2BYJBjD4GDE6bQ1rMOzg%2F2bRwx%2B97%2Bs394lMJwujZPYWXBtbcPd5YDSizY3Mw3UjZaLgUg3z3AoAH5xSph5bwZ3fcmcrgfDg9Ou%2Fez74Aw%3D%3D&RelayState=ver%3A3-hint%3A405384797536278-ETMsDgAAAZ8NfEVGABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEKl1t0enX2D0g5hlG7DPxCAAAACglhKUnla6%2B7De%2BxIRtolSui8wzJvEPx2eiGMj1mBRJEzxWhOICwQYaEnC8gSqa3JalX7brNhVCMnjC5jc94WWX3f2KgDj1Q%2F9rHRjk74MOcVixBUCOThRI5XlOXQy%2F7Bo87djb2uJ0ZpGvkA8ERSm1VDM8Y%2FADFUJPI24h%2B%2BhQrNt8vGB743P8ebbJlVVknsGQNZNtMDOEtgSDD%2BEw7OxcgAUrOC97T9X025uIdxcFi9%2FVwOziYk%3D to authenticate...
-A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
-╭─ Error ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ 002003 (02000): 01c55923-0004-68ff-0001-70b2473f19f2: SQL compilation error:                                                                                                               │
-│ Service 'FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.WORKBENCH_AUTOMAP_DEV' does not exist or not authorized.                                                                                    │
-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+    return $values
+}
 
-Deployment complete.
-Rendered spec: C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\artifacts\client-spcs\webapp.474aed7.yaml
-Auto-mapping worker spec: C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\artifacts\client-spcs\automap-worker.474aed7.yaml
-Next checks:
-  1. snow spcs service status AI_WORKBENCH_OKTA_WEBAPP_DEV_v4 -c client-spcsv1 --database FFP_HDP_DLAB_DB_DEV --schema SCH_STTM_METADATA
-  2. snow spcs service list-containers AI_WORKBENCH_OKTA_WEBAPP_DEV_v4 -c client-spcsv1 --database FFP_HDP_DLAB_DB_DEV --schema SCH_STTM_METADATA
-  3. snow spcs service status WORKBENCH_AUTOMAP_DEV -c client-spcsv1 --database FFP_HDP_DLAB_DB_DEV --schema SCH_STTM_METADATA
-  4. Open the public endpoint from the command output and verify Snowflake sign-in
-PS C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench> 
+function Convert-ToDnsLabel {
+    param([string]$Value)
+
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return ""
+    }
+
+    return $Value.Trim().ToLowerInvariant().Replace("_", "-")
+}
+
+function Require-Env {
+    param(
+        [hashtable]$Cfg,
+        [string[]]$Names
+    )
+
+    foreach ($name in $Names) {
+        if (-not $Cfg.ContainsKey($name) -or [string]::IsNullOrWhiteSpace($Cfg[$name])) {
+            throw "$name must be set in $EnvFile"
+        }
+    }
+}
+
+function Build-AndPushImage {
+    param(
+        [string]$Name,
+        [string]$ContextDir,
+        [string]$RemoteImage
+    )
+
+    Invoke-Checked -Description "Building Docker image $Name -> $RemoteImage" -Command {
+        docker build --platform linux/amd64 -t $RemoteImage $ContextDir
+    }
+
+    Invoke-Checked -Description "Pushing Docker image $RemoteImage" -Command {
+        docker push $RemoteImage
+    }
+}
+
+if (-not (Resolve-SnowCli -VenvPath $ToolsVenv)) {
+    Invoke-Checked -Description "Bootstrapping Snow CLI tools" -Command {
+        & (Join-Path $PSScriptRoot "bootstrap_client_spcs_tools.ps1")
+    }
+}
+
+$SnowExe = Resolve-SnowCli -VenvPath $ToolsVenv
+if (-not $SnowExe) {
+    throw "Snow CLI is unavailable after bootstrap. Check .client-tools-venv\Scripts."
+}
+
+$cfg = Import-ClientEnv -Path $EnvFile
+
+$required = @(
+    "SNOWFLAKE_CONNECTION",
+    "SNOWFLAKE_ACCOUNT",
+    "SNOWFLAKE_USER",
+    "SNOWFLAKE_ROLE",
+    "SNOWFLAKE_WAREHOUSE",
+    "SNOWFLAKE_DATABASE",
+    "SNOWFLAKE_SCHEMA",
+    "SNOWFLAKE_REGISTRY_HOST",
+    "SNOWFLAKE_IMAGE_REPOSITORY",
+    "SNOWFLAKE_COMPUTE_POOL",
+    "WEBAPP_SERVICE_NAME",
+    "SNOWFLAKE_EGRESS_INTEGRATION",
+    "USERS_TABLE",
+    "APP_ROLE_ADMIN",
+    "APP_ROLE_PUBLISHER",
+    "APP_ROLE_VIEWER",
+    "SNOWFLAKE_STTM_BUILDER_AGENT",
+    "SNOWFLAKE_SOURCE_MAPPING_AGENT"
+)
+
+Require-Env -Cfg $cfg -Names $required
+
+$deployAutomap = $cfg.ContainsKey("AUTO_MAPPING_SERVICE_NAME") -and -not [string]::IsNullOrWhiteSpace($cfg["AUTO_MAPPING_SERVICE_NAME"])
+if ($deployAutomap) {
+    Require-Env -Cfg $cfg -Names @("AUTO_MAPPING_COMPUTE_POOL", "AUTO_MAPPING_SERVICE_NAME")
+}
+
+if (-not $ImageTag) {
+    try {
+        $ImageTag = (git -C $RootDir rev-parse --short HEAD).Trim()
+    } catch {
+        $ImageTag = Get-Date -Format "yyyyMMddHHmmss"
+    }
+}
+
+$appName = if ($cfg.ContainsKey("APP_NAME") -and $cfg["APP_NAME"]) { $cfg["APP_NAME"] } else { "BBI AI Migration Workbench API" }
+$appEnv = if ($cfg.ContainsKey("APP_ENV") -and $cfg["APP_ENV"]) { $cfg["APP_ENV"] } else { "client" }
+$authMode = if ($cfg.ContainsKey("AUTH_MODE") -and $cfg["AUTH_MODE"]) { $cfg["AUTH_MODE"] } else { "custom_oauth" }
+$executeAsCaller = if ($cfg.ContainsKey("SPCS_EXECUTE_AS_CALLER_ENABLED") -and $cfg["SPCS_EXECUTE_AS_CALLER_ENABLED"]) { $cfg["SPCS_EXECUTE_AS_CALLER_ENABLED"] } else { "true" }
+$enableCustomCredentials = if ($authMode -eq "custom_oauth") { "true" } else { "false" }
+
+$oauthSecretObject = if ($cfg.ContainsKey("SNOWFLAKE_OAUTH_CLIENT_SECRET_OBJECT") -and $cfg["SNOWFLAKE_OAUTH_CLIENT_SECRET_OBJECT"]) { $cfg["SNOWFLAKE_OAUTH_CLIENT_SECRET_OBJECT"] } else { "{0}.{1}.STTM_BUILDER_OAUTH_CLIENT_CREDENTIALS" -f $cfg["SNOWFLAKE_DATABASE"], $cfg["SNOWFLAKE_SCHEMA"] }
+$oauthSessionSecretObject = if ($cfg.ContainsKey("SNOWFLAKE_OAUTH_SESSION_SECRET_OBJECT") -and $cfg["SNOWFLAKE_OAUTH_SESSION_SECRET_OBJECT"]) { $cfg["SNOWFLAKE_OAUTH_SESSION_SECRET_OBJECT"] } else { "{0}.{1}.STTM_BUILDER_OAUTH_SESSION_KEYS" -f $cfg["SNOWFLAKE_DATABASE"], $cfg["SNOWFLAKE_SCHEMA"] }
+
+$oauthAuthorizeUrl = if ($cfg.ContainsKey("SNOWFLAKE_OAUTH_AUTHORIZE_URL")) { $cfg["SNOWFLAKE_OAUTH_AUTHORIZE_URL"] } else { "" }
+$oauthTokenUrl = if ($cfg.ContainsKey("SNOWFLAKE_OAUTH_TOKEN_URL")) { $cfg["SNOWFLAKE_OAUTH_TOKEN_URL"] } else { "" }
+$oauthRedirectUri = if ($cfg.ContainsKey("SNOWFLAKE_OAUTH_REDIRECT_URI")) { $cfg["SNOWFLAKE_OAUTH_REDIRECT_URI"] } else { "" }
+$oauthScope = if ($cfg.ContainsKey("SNOWFLAKE_OAUTH_SCOPE") -and $cfg["SNOWFLAKE_OAUTH_SCOPE"]) { $cfg["SNOWFLAKE_OAUTH_SCOPE"] } else { "session:role-any" }
+
+if ($authMode -eq "custom_oauth") {
+    foreach ($entry in @{
+        "SNOWFLAKE_OAUTH_CLIENT_SECRET_OBJECT" = $oauthSecretObject
+        "SNOWFLAKE_OAUTH_SESSION_SECRET_OBJECT" = $oauthSessionSecretObject
+        "SNOWFLAKE_OAUTH_AUTHORIZE_URL" = $oauthAuthorizeUrl
+        "SNOWFLAKE_OAUTH_TOKEN_URL" = $oauthTokenUrl
+        "SNOWFLAKE_OAUTH_REDIRECT_URI" = $oauthRedirectUri
+    }.GetEnumerator()) {
+        if ([string]::IsNullOrWhiteSpace($entry.Value)) {
+            throw "$($entry.Key) must be set when AUTH_MODE=custom_oauth"
+        }
+    }
+}
+
+$agentModel = if ($cfg.ContainsKey("SNOWFLAKE_AGENT_ORCHESTRATION_MODEL") -and $cfg["SNOWFLAKE_AGENT_ORCHESTRATION_MODEL"]) { $cfg["SNOWFLAKE_AGENT_ORCHESTRATION_MODEL"] } else { "claude-sonnet-4" }
+$cors = if ($cfg.ContainsKey("CORS_ALLOWED_ORIGINS")) { $cfg["CORS_ALLOWED_ORIGINS"] } else { "" }
+
+$sourceMappingAgent = if ($cfg.ContainsKey("SNOWFLAKE_SOURCE_MAPPING_AGENT") -and $cfg["SNOWFLAKE_SOURCE_MAPPING_AGENT"]) { $cfg["SNOWFLAKE_SOURCE_MAPPING_AGENT"] } else { "{0}.{1}.AGT_SOURCE_MAPPING" -f $cfg["SNOWFLAKE_DATABASE"], $cfg["SNOWFLAKE_SCHEMA"] }
+$semanticModelAgent = if ($cfg.ContainsKey("SNOWFLAKE_SEMANTIC_MODEL_AGENT") -and $cfg["SNOWFLAKE_SEMANTIC_MODEL_AGENT"]) { $cfg["SNOWFLAKE_SEMANTIC_MODEL_AGENT"] } else { "{0}.{1}.AGT_SEMANTIC_MODEL" -f $cfg["SNOWFLAKE_DATABASE"], $cfg["SNOWFLAKE_SCHEMA"] }
+$dbtConversionAgent = if ($cfg.ContainsKey("SNOWFLAKE_DBT_CONVERSION_AGENT") -and $cfg["SNOWFLAKE_DBT_CONVERSION_AGENT"]) { $cfg["SNOWFLAKE_DBT_CONVERSION_AGENT"] } else { "{0}.{1}.AGT_DBT_CONVERSION" -f $cfg["SNOWFLAKE_DATABASE"], $cfg["SNOWFLAKE_SCHEMA"] }
+$testCaseGenerationAgent = if ($cfg.ContainsKey("SNOWFLAKE_TEST_CASE_GENERATION_AGENT") -and $cfg["SNOWFLAKE_TEST_CASE_GENERATION_AGENT"]) { $cfg["SNOWFLAKE_TEST_CASE_GENERATION_AGENT"] } else { "{0}.{1}.AGT_DBT_TEST_GENERATION" -f $cfg["SNOWFLAKE_DATABASE"], $cfg["SNOWFLAKE_SCHEMA"] }
+$conversationAgent = if ($cfg.ContainsKey("SNOWFLAKE_WORKBENCH_CONVERSATION_AGENT") -and $cfg["SNOWFLAKE_WORKBENCH_CONVERSATION_AGENT"]) { $cfg["SNOWFLAKE_WORKBENCH_CONVERSATION_AGENT"] } else { $cfg["SNOWFLAKE_STTM_BUILDER_AGENT"] }
+
+$relationshipsProcedure = if ($cfg.ContainsKey("SNOWFLAKE_RELATIONSHIPS_PROCEDURE") -and $cfg["SNOWFLAKE_RELATIONSHIPS_PROCEDURE"]) { $cfg["SNOWFLAKE_RELATIONSHIPS_PROCEDURE"] } else { "{0}.{1}.SP_GET_TABLE_RELATIONSHIPS" -f $cfg["SNOWFLAKE_DATABASE"], $cfg["SNOWFLAKE_SCHEMA"] }
+$semanticModelTable = if ($cfg.ContainsKey("SNOWFLAKE_SEMANTIC_MODEL_TABLE") -and $cfg["SNOWFLAKE_SEMANTIC_MODEL_TABLE"]) { $cfg["SNOWFLAKE_SEMANTIC_MODEL_TABLE"] } else { "{0}.{1}.TBL_SEMANTIC_MODELS" -f $cfg["SNOWFLAKE_DATABASE"], $cfg["SNOWFLAKE_SCHEMA"] }
+$derivedSourcesTable = if ($cfg.ContainsKey("SNOWFLAKE_DERIVED_SOURCES_TABLE") -and $cfg["SNOWFLAKE_DERIVED_SOURCES_TABLE"]) { $cfg["SNOWFLAKE_DERIVED_SOURCES_TABLE"] } else { "{0}.{1}.TBL_DERIVED_SOURCES" -f $cfg["SNOWFLAKE_DATABASE"], $cfg["SNOWFLAKE_SCHEMA"] }
+$conversationTurnsTable = if ($cfg.ContainsKey("SNOWFLAKE_CONVERSATION_TURNS_TABLE") -and $cfg["SNOWFLAKE_CONVERSATION_TURNS_TABLE"]) { $cfg["SNOWFLAKE_CONVERSATION_TURNS_TABLE"] } else { "{0}.{1}.TBL_WORKBENCH_CONVERSATION_TURNS" -f $cfg["SNOWFLAKE_DATABASE"], $cfg["SNOWFLAKE_SCHEMA"] }
+$conversationFeedbackTable = if ($cfg.ContainsKey("SNOWFLAKE_CONVERSATION_FEEDBACK_TABLE") -and $cfg["SNOWFLAKE_CONVERSATION_FEEDBACK_TABLE"]) { $cfg["SNOWFLAKE_CONVERSATION_FEEDBACK_TABLE"] } else { "{0}.{1}.TBL_WORKBENCH_FEEDBACK" -f $cfg["SNOWFLAKE_DATABASE"], $cfg["SNOWFLAKE_SCHEMA"] }
+$conversationRecommendationsTable = if ($cfg.ContainsKey("SNOWFLAKE_CONVERSATION_RECOMMENDATIONS_TABLE") -and $cfg["SNOWFLAKE_CONVERSATION_RECOMMENDATIONS_TABLE"]) { $cfg["SNOWFLAKE_CONVERSATION_RECOMMENDATIONS_TABLE"] } else { "{0}.{1}.TBL_WORKBENCH_RECOMMENDATIONS" -f $cfg["SNOWFLAKE_DATABASE"], $cfg["SNOWFLAKE_SCHEMA"] }
+$relationshipFactsTable = if ($cfg.ContainsKey("SNOWFLAKE_RELATIONSHIP_FACTS_TABLE") -and $cfg["SNOWFLAKE_RELATIONSHIP_FACTS_TABLE"]) { $cfg["SNOWFLAKE_RELATIONSHIP_FACTS_TABLE"] } else { "{0}.{1}.TBL_WORKBENCH_RELATIONSHIP_FACTS" -f $cfg["SNOWFLAKE_DATABASE"], $cfg["SNOWFLAKE_SCHEMA"] }
+$ragDocumentsTable = if ($cfg.ContainsKey("SNOWFLAKE_RAG_DOCUMENTS_TABLE") -and $cfg["SNOWFLAKE_RAG_DOCUMENTS_TABLE"]) { $cfg["SNOWFLAKE_RAG_DOCUMENTS_TABLE"] } else { "{0}.{1}.TBL_WORKBENCH_RAG_DOCUMENTS" -f $cfg["SNOWFLAKE_DATABASE"], $cfg["SNOWFLAKE_SCHEMA"] }
+$ragSearchService = if ($cfg.ContainsKey("SNOWFLAKE_RAG_SEARCH_SERVICE") -and $cfg["SNOWFLAKE_RAG_SEARCH_SERVICE"]) { $cfg["SNOWFLAKE_RAG_SEARCH_SERVICE"] } else { "{0}.{1}.CSS_WORKBENCH_RAG" -f $cfg["SNOWFLAKE_DATABASE"], $cfg["SNOWFLAKE_SCHEMA"] }
+$oauthSessionsTable = if ($cfg.ContainsKey("SNOWFLAKE_OAUTH_SESSIONS_TABLE") -and $cfg["SNOWFLAKE_OAUTH_SESSIONS_TABLE"]) { $cfg["SNOWFLAKE_OAUTH_SESSIONS_TABLE"] } else { "{0}.{1}.TBL_WORKBENCH_OAUTH_SESSIONS" -f $cfg["SNOWFLAKE_DATABASE"], $cfg["SNOWFLAKE_SCHEMA"] }
+
+$authSessionCookieName = if ($cfg.ContainsKey("AUTH_SESSION_COOKIE_NAME") -and $cfg["AUTH_SESSION_COOKIE_NAME"]) { $cfg["AUTH_SESSION_COOKIE_NAME"] } else { "sttm_session" }
+$authStateCookieName = if ($cfg.ContainsKey("AUTH_STATE_COOKIE_NAME") -and $cfg["AUTH_STATE_COOKIE_NAME"]) { $cfg["AUTH_STATE_COOKIE_NAME"] } else { "sttm_oauth_state" }
+$authSessionCookieSecure = "true"
+$authSessionCookieSameSite = if ($cfg.ContainsKey("AUTH_SESSION_COOKIE_SAMESITE") -and $cfg["AUTH_SESSION_COOKIE_SAMESITE"]) { $cfg["AUTH_SESSION_COOKIE_SAMESITE"] } else { "lax" }
+$authPostLoginRedirectPath = if ($cfg.ContainsKey("AUTH_POST_LOGIN_REDIRECT_PATH") -and $cfg["AUTH_POST_LOGIN_REDIRECT_PATH"]) { $cfg["AUTH_POST_LOGIN_REDIRECT_PATH"] } else { "/dashboard" }
+$authPostLogoutRedirectPath = if ($cfg.ContainsKey("AUTH_POST_LOGOUT_REDIRECT_PATH") -and $cfg["AUTH_POST_LOGOUT_REDIRECT_PATH"]) { $cfg["AUTH_POST_LOGOUT_REDIRECT_PATH"] } else { "/home" }
+
+$autoMappingServiceTimeout = if ($cfg.ContainsKey("AUTO_MAPPING_SERVICE_TIMEOUT_SECONDS") -and $cfg["AUTO_MAPPING_SERVICE_TIMEOUT_SECONDS"]) { $cfg["AUTO_MAPPING_SERVICE_TIMEOUT_SECONDS"] } else { "300" }
+$autoMappingServiceRetries = if ($cfg.ContainsKey("AUTO_MAPPING_SERVICE_RETRY_ATTEMPTS") -and $cfg["AUTO_MAPPING_SERVICE_RETRY_ATTEMPTS"]) { $cfg["AUTO_MAPPING_SERVICE_RETRY_ATTEMPTS"] } else { "2" }
+$autoMappingWorkerConcurrency = if ($cfg.ContainsKey("AUTO_MAPPING_WORKER_MAX_CONCURRENCY") -and $cfg["AUTO_MAPPING_WORKER_MAX_CONCURRENCY"]) { $cfg["AUTO_MAPPING_WORKER_MAX_CONCURRENCY"] } else { "5" }
+$autoMappingProxyBatchSize = if ($cfg.ContainsKey("AUTO_MAPPING_PROXY_BATCH_SIZE") -and $cfg["AUTO_MAPPING_PROXY_BATCH_SIZE"]) { $cfg["AUTO_MAPPING_PROXY_BATCH_SIZE"] } else { "5" }
+$autoMappingProxyMaxInFlight = if ($cfg.ContainsKey("AUTO_MAPPING_PROXY_MAX_IN_FLIGHT") -and $cfg["AUTO_MAPPING_PROXY_MAX_IN_FLIGHT"]) { $cfg["AUTO_MAPPING_PROXY_MAX_IN_FLIGHT"] } else { "2" }
+
+if ($deployAutomap) {
+    $autoMappingServiceNameDns = Convert-ToDnsLabel $cfg["AUTO_MAPPING_SERVICE_NAME"]
+    $autoMappingSchemaDns = Convert-ToDnsLabel $cfg["SNOWFLAKE_SCHEMA"]
+    $autoMappingDatabaseDns = Convert-ToDnsLabel $cfg["SNOWFLAKE_DATABASE"]
+    $autoMappingInternalHost = "{0}.{1}.{2}.snowflakecomputing.internal" -f $autoMappingServiceNameDns, $autoMappingSchemaDns, $autoMappingDatabaseDns
+    $autoMappingServiceUrl = if ($cfg.ContainsKey("AUTO_MAPPING_SERVICE_URL") -and $cfg["AUTO_MAPPING_SERVICE_URL"]) { $cfg["AUTO_MAPPING_SERVICE_URL"] } else { "http://{0}:8000" -f $autoMappingInternalHost }
+} else {
+    $autoMappingServiceUrl = ""
+}
+
+$snowflakeSessionRetries = if ($cfg.ContainsKey("SNOWFLAKE_SESSION_RETRY_ATTEMPTS") -and $cfg["SNOWFLAKE_SESSION_RETRY_ATTEMPTS"]) { $cfg["SNOWFLAKE_SESSION_RETRY_ATTEMPTS"] } else { "2" }
+$snowflakeSessionRetryBackoff = if ($cfg.ContainsKey("SNOWFLAKE_SESSION_RETRY_BACKOFF_SECONDS") -and $cfg["SNOWFLAKE_SESSION_RETRY_BACKOFF_SECONDS"]) { $cfg["SNOWFLAKE_SESSION_RETRY_BACKOFF_SECONDS"] } else { "1.0" }
+$snowflakeAgentRetries = if ($cfg.ContainsKey("SNOWFLAKE_AGENT_RETRY_ATTEMPTS") -and $cfg["SNOWFLAKE_AGENT_RETRY_ATTEMPTS"]) { $cfg["SNOWFLAKE_AGENT_RETRY_ATTEMPTS"] } else { "3" }
+$snowflakeAgentRetryBackoff = if ($cfg.ContainsKey("SNOWFLAKE_AGENT_RETRY_BACKOFF_SECONDS") -and $cfg["SNOWFLAKE_AGENT_RETRY_BACKOFF_SECONDS"]) { $cfg["SNOWFLAKE_AGENT_RETRY_BACKOFF_SECONDS"] } else { "1.0" }
+
+$oauthSecretMappings = ""
+if ($authMode -eq "custom_oauth") {
+    $oauthSecretMappings = @"
+      secrets:
+        - snowflakeSecret: $oauthSecretObject
+          secretKeyRef: username
+          envVarName: SNOWFLAKE_OAUTH_CLIENT_ID
+        - snowflakeSecret: $oauthSecretObject
+          secretKeyRef: password
+          envVarName: SNOWFLAKE_OAUTH_CLIENT_SECRET
+        - snowflakeSecret: $oauthSessionSecretObject
+          secretKeyRef: username
+          envVarName: AUTH_SESSION_SECRET
+        - snowflakeSecret: $oauthSessionSecretObject
+          secretKeyRef: password
+          envVarName: AUTH_SESSION_ENCRYPTION_KEY
+"@
+}
+
+Invoke-Checked -Description "Checking Docker daemon" -Command {
+    docker info
+}
+
+Invoke-Checked -Description "Testing Snow CLI connection '$($cfg["SNOWFLAKE_CONNECTION"])'" -Command {
+    & $SnowExe connection test -c $cfg["SNOWFLAKE_CONNECTION"]
+}
+
+if ($EnsureComputePools) {
+    Invoke-Checked -Description "Ensuring compute pool '$($cfg["SNOWFLAKE_COMPUTE_POOL"])' exists" -Command {
+        & $SnowExe sql -c $cfg["SNOWFLAKE_CONNECTION"] -q "CREATE COMPUTE POOL IF NOT EXISTS $($cfg["SNOWFLAKE_COMPUTE_POOL"]) MIN_NODES = 1 MAX_NODES = 1 INSTANCE_FAMILY = CPU_X64_S AUTO_RESUME = TRUE AUTO_SUSPEND_SECS = 3600;"
+    }
+
+    if ($deployAutomap) {
+        Invoke-Checked -Description "Ensuring auto-mapping compute pool '$($cfg["AUTO_MAPPING_COMPUTE_POOL"])' exists" -Command {
+            & $SnowExe sql -c $cfg["SNOWFLAKE_CONNECTION"] -q "CREATE COMPUTE POOL IF NOT EXISTS $($cfg["AUTO_MAPPING_COMPUTE_POOL"]) MIN_NODES = 2 MAX_NODES = 2 INSTANCE_FAMILY = CPU_X64_S AUTO_RESUME = TRUE AUTO_SUSPEND_SECS = 3600;"
+        }
+    }
+} else {
+    Write-Host ""
+    Write-Host "Skipping compute pool creation. Using existing compute pool(s)."
+}
+
+if (-not $SkipLogin) {
+    Invoke-Checked -Description "Logging Docker into Snowflake image registry" -Command {
+        & $SnowExe spcs image-registry login -c $cfg["SNOWFLAKE_CONNECTION"]
+    }
+} else {
+    Write-Host "Skipping Snowflake image registry login."
+}
+
+$env:SNOWFLAKE_DATABASE_LOWER = $cfg["SNOWFLAKE_DATABASE"].ToLowerInvariant()
+$env:SNOWFLAKE_SCHEMA_LOWER = $cfg["SNOWFLAKE_SCHEMA"].ToLowerInvariant()
+$env:SNOWFLAKE_IMAGE_REPOSITORY_LOWER = $cfg["SNOWFLAKE_IMAGE_REPOSITORY"].ToLowerInvariant()
+$env:IMAGE_TAG = $ImageTag
+
+$registryBase = "{0}/{1}/{2}/{3}" -f `
+    $cfg["SNOWFLAKE_REGISTRY_HOST"], `
+    $env:SNOWFLAKE_DATABASE_LOWER, `
+    $env:SNOWFLAKE_SCHEMA_LOWER, `
+    $env:SNOWFLAKE_IMAGE_REPOSITORY_LOWER
+
+$sttmBuilderImage = "{0}/sttm-builder:{1}" -f $registryBase, $ImageTag
+$automapImage = "{0}/sttm-automap-worker:{1}" -f $registryBase, $ImageTag
+$frontendImage = "{0}/frontend:{1}" -f $registryBase, $ImageTag
+$nginxImage = "{0}/nginx:{1}" -f $registryBase, $ImageTag
+
+if (-not $SkipBuild) {
+    Build-AndPushImage -Name "sttm-builder" -ContextDir (Join-Path $RootDir "services\sttm-builder") -RemoteImage $sttmBuilderImage
+
+    if ($deployAutomap) {
+        Build-AndPushImage -Name "sttm-automap-worker" -ContextDir (Join-Path $RootDir "services\sttm-builder") -RemoteImage $automapImage
+    }
+
+    Build-AndPushImage -Name "frontend" -ContextDir (Join-Path $RootDir "frontend") -RemoteImage $frontendImage
+    Build-AndPushImage -Name "nginx" -ContextDir (Join-Path $RootDir "nginx") -RemoteImage $nginxImage
+} else {
+    Write-Host "Skipping Docker build/push. Existing images with tag '$ImageTag' must already exist."
+}
+
+$env:APP_NAME = $appName
+$env:APP_ENV = $appEnv
+$env:AUTH_MODE = $authMode
+$env:SPCS_EXECUTE_AS_CALLER_ENABLED = $executeAsCaller
+$env:SPCS_ENABLE_CUSTOM_CREDENTIALS = $enableCustomCredentials
+$env:SNOWFLAKE_OAUTH_SECRET_MAPPINGS = $oauthSecretMappings
+$env:USERS_TABLE = $cfg["USERS_TABLE"]
+$env:APP_ROLE_ADMIN = $cfg["APP_ROLE_ADMIN"]
+$env:APP_ROLE_PUBLISHER = $cfg["APP_ROLE_PUBLISHER"]
+$env:APP_ROLE_VIEWER = $cfg["APP_ROLE_VIEWER"]
+$env:SNOWFLAKE_WAREHOUSE = $cfg["SNOWFLAKE_WAREHOUSE"]
+$env:SNOWFLAKE_DATABASE = $cfg["SNOWFLAKE_DATABASE"]
+$env:SNOWFLAKE_SCHEMA = $cfg["SNOWFLAKE_SCHEMA"]
+$env:SNOWFLAKE_STTM_BUILDER_AGENT = $cfg["SNOWFLAKE_STTM_BUILDER_AGENT"]
+$env:SNOWFLAKE_SOURCE_MAPPING_AGENT = $sourceMappingAgent
+$env:SNOWFLAKE_WORKBENCH_CONVERSATION_AGENT = $conversationAgent
+$env:SNOWFLAKE_SEMANTIC_MODEL_AGENT = $semanticModelAgent
+$env:SNOWFLAKE_DBT_CONVERSION_AGENT = $dbtConversionAgent
+$env:SNOWFLAKE_TEST_CASE_GENERATION_AGENT = $testCaseGenerationAgent
+$env:SNOWFLAKE_RELATIONSHIPS_PROCEDURE = $relationshipsProcedure
+$env:SNOWFLAKE_SEMANTIC_MODEL_TABLE = $semanticModelTable
+$env:SNOWFLAKE_DERIVED_SOURCES_TABLE = $derivedSourcesTable
+$env:SNOWFLAKE_CONVERSATION_TURNS_TABLE = $conversationTurnsTable
+$env:SNOWFLAKE_CONVERSATION_FEEDBACK_TABLE = $conversationFeedbackTable
+$env:SNOWFLAKE_CONVERSATION_RECOMMENDATIONS_TABLE = $conversationRecommendationsTable
+$env:SNOWFLAKE_RELATIONSHIP_FACTS_TABLE = $relationshipFactsTable
+$env:SNOWFLAKE_RAG_DOCUMENTS_TABLE = $ragDocumentsTable
+$env:SNOWFLAKE_RAG_SEARCH_SERVICE = $ragSearchService
+$env:SNOWFLAKE_OAUTH_SESSIONS_TABLE = $oauthSessionsTable
+$env:SNOWFLAKE_AGENT_ORCHESTRATION_MODEL = $agentModel
+$env:CORS_ALLOWED_ORIGINS = $cors
+$env:SNOWFLAKE_OAUTH_AUTHORIZE_URL = $oauthAuthorizeUrl
+$env:SNOWFLAKE_OAUTH_TOKEN_URL = $oauthTokenUrl
+$env:SNOWFLAKE_OAUTH_REDIRECT_URI = $oauthRedirectUri
+$env:SNOWFLAKE_OAUTH_SCOPE = $oauthScope
+$env:AUTH_SESSION_COOKIE_NAME = $authSessionCookieName
+$env:AUTH_STATE_COOKIE_NAME = $authStateCookieName
+$env:AUTH_SESSION_COOKIE_SECURE = $authSessionCookieSecure
+$env:AUTH_SESSION_COOKIE_SAMESITE = $authSessionCookieSameSite
+$env:AUTH_POST_LOGIN_REDIRECT_PATH = $authPostLoginRedirectPath
+$env:AUTH_POST_LOGOUT_REDIRECT_PATH = $authPostLogoutRedirectPath
+$env:AUTO_MAPPING_SERVICE_URL = $autoMappingServiceUrl
+$env:AUTO_MAPPING_SERVICE_TIMEOUT_SECONDS = $autoMappingServiceTimeout
+$env:AUTO_MAPPING_SERVICE_RETRY_ATTEMPTS = $autoMappingServiceRetries
+$env:AUTO_MAPPING_WORKER_MAX_CONCURRENCY = $autoMappingWorkerConcurrency
+$env:AUTO_MAPPING_PROXY_BATCH_SIZE = $autoMappingProxyBatchSize
+$env:AUTO_MAPPING_PROXY_MAX_IN_FLIGHT = $autoMappingProxyMaxInFlight
+$env:SNOWFLAKE_SESSION_RETRY_ATTEMPTS = $snowflakeSessionRetries
+$env:SNOWFLAKE_SESSION_RETRY_BACKOFF_SECONDS = $snowflakeSessionRetryBackoff
+$env:SNOWFLAKE_AGENT_RETRY_ATTEMPTS = $snowflakeAgentRetries
+$env:SNOWFLAKE_AGENT_RETRY_BACKOFF_SECONDS = $snowflakeAgentRetryBackoff
+
+New-Item -ItemType Directory -Force -Path $ArtifactsDir | Out-Null
+
+$RenderedSpec = Join-Path $ArtifactsDir ("webapp.{0}.yaml" -f $ImageTag)
+$AutomapRenderedSpec = Join-Path $ArtifactsDir ("automap-worker.{0}.yaml" -f $ImageTag)
+
+Invoke-Checked -Description "Rendering webapp service spec" -Command {
+    python $RenderScript --template $SpecTemplate --output $RenderedSpec
+}
+
+if ($deployAutomap) {
+    Invoke-Checked -Description "Rendering auto-mapping worker service spec" -Command {
+        python $RenderScript --template $AutomapSpecTemplate --output $AutomapRenderedSpec
+    }
+}
+
+Invoke-Checked -Description "Creating webapp service '$($cfg["WEBAPP_SERVICE_NAME"])' if needed" -Command {
+    & $SnowExe spcs service create $cfg["WEBAPP_SERVICE_NAME"] `
+        --connection $cfg["SNOWFLAKE_CONNECTION"] `
+        --database $cfg["SNOWFLAKE_DATABASE"] `
+        --schema $cfg["SNOWFLAKE_SCHEMA"] `
+        --role $cfg["SNOWFLAKE_ROLE"] `
+        --warehouse $cfg["SNOWFLAKE_WAREHOUSE"] `
+        --compute-pool $cfg["SNOWFLAKE_COMPUTE_POOL"] `
+        --spec-path $RenderedSpec `
+        --eai-name $cfg["SNOWFLAKE_EGRESS_INTEGRATION"] `
+        --if-not-exists `
+        --format TABLE
+}
+
+Invoke-Checked -Description "Upgrading webapp service '$($cfg["WEBAPP_SERVICE_NAME"])'" -Command {
+    & $SnowExe spcs service upgrade $cfg["WEBAPP_SERVICE_NAME"] `
+        --connection $cfg["SNOWFLAKE_CONNECTION"] `
+        --database $cfg["SNOWFLAKE_DATABASE"] `
+        --schema $cfg["SNOWFLAKE_SCHEMA"] `
+        --role $cfg["SNOWFLAKE_ROLE"] `
+        --warehouse $cfg["SNOWFLAKE_WAREHOUSE"] `
+        --spec-path $RenderedSpec `
+        --format TABLE
+}
+
+Invoke-Checked -Description "Listing webapp service endpoints" -Command {
+    & $SnowExe spcs service list-endpoints $cfg["WEBAPP_SERVICE_NAME"] `
+        --connection $cfg["SNOWFLAKE_CONNECTION"] `
+        --database $cfg["SNOWFLAKE_DATABASE"] `
+        --schema $cfg["SNOWFLAKE_SCHEMA"] `
+        --role $cfg["SNOWFLAKE_ROLE"] `
+        --warehouse $cfg["SNOWFLAKE_WAREHOUSE"] `
+        --format TABLE
+}
+
+if ($deployAutomap) {
+    Invoke-Checked -Description "Creating auto-mapping worker service '$($cfg["AUTO_MAPPING_SERVICE_NAME"])' if needed" -Command {
+        & $SnowExe spcs service create $cfg["AUTO_MAPPING_SERVICE_NAME"] `
+            --connection $cfg["SNOWFLAKE_CONNECTION"] `
+            --database $cfg["SNOWFLAKE_DATABASE"] `
+            --schema $cfg["SNOWFLAKE_SCHEMA"] `
+            --role $cfg["SNOWFLAKE_ROLE"] `
+            --warehouse $cfg["SNOWFLAKE_WAREHOUSE"] `
+            --compute-pool $cfg["AUTO_MAPPING_COMPUTE_POOL"] `
+            --spec-path $AutomapRenderedSpec `
+            --eai-name $cfg["SNOWFLAKE_EGRESS_INTEGRATION"] `
+            --if-not-exists `
+            --format TABLE
+    }
+
+    Invoke-Checked -Description "Upgrading auto-mapping worker service '$($cfg["AUTO_MAPPING_SERVICE_NAME"])'" -Command {
+        & $SnowExe spcs service upgrade $cfg["AUTO_MAPPING_SERVICE_NAME"] `
+            --connection $cfg["SNOWFLAKE_CONNECTION"] `
+            --database $cfg["SNOWFLAKE_DATABASE"] `
+            --schema $cfg["SNOWFLAKE_SCHEMA"] `
+            --role $cfg["SNOWFLAKE_ROLE"] `
+            --warehouse $cfg["SNOWFLAKE_WAREHOUSE"] `
+            --spec-path $AutomapRenderedSpec `
+            --format TABLE
+    }
+
+    Invoke-Checked -Description "Pinning auto-mapping worker scale to min=2 max=2" -Command {
+        & $SnowExe sql -c $cfg["SNOWFLAKE_CONNECTION"] -q "ALTER SERVICE IF EXISTS $($cfg["SNOWFLAKE_DATABASE"]).$($cfg["SNOWFLAKE_SCHEMA"]).$($cfg["AUTO_MAPPING_SERVICE_NAME"]) SET MIN_INSTANCES=2, MAX_INSTANCES=2;"
+    }
+
+    Invoke-Checked -Description "Listing auto-mapping worker endpoints" -Command {
+        & $SnowExe spcs service list-endpoints $cfg["AUTO_MAPPING_SERVICE_NAME"] `
+            --connection $cfg["SNOWFLAKE_CONNECTION"] `
+            --database $cfg["SNOWFLAKE_DATABASE"] `
+            --schema $cfg["SNOWFLAKE_SCHEMA"] `
+            --role $cfg["SNOWFLAKE_ROLE"] `
+            --warehouse $cfg["SNOWFLAKE_WAREHOUSE"] `
+            --format TABLE
+    }
+} else {
+    Write-Host ""
+    Write-Host "AUTO_MAPPING_SERVICE_NAME is empty. Skipping separate Auto-map worker service deployment."
+}
+
+Write-Host ""
+Write-Host "Deployment completed successfully."
+Write-Host "Image tag: $ImageTag"
+Write-Host "Webapp spec: $RenderedSpec"
+if ($deployAutomap) {
+    Write-Host "Auto-map spec: $AutomapRenderedSpec"
+}
