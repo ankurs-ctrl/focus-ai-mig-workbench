@@ -1,24 +1,52 @@
-.\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
-      --file infra/snowflake/fir_system/procedures/sp-fir-collect-feedback.sql
-  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
-      --file infra/snowflake/fir_system/procedures/sp-fir-generate-inferences.sql
-  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
-      --file infra/snowflake/fir_system/procedures/sp-fir-generate-recommendations.sql
-  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
-      --file infra/snowflake/fir_system/procedures/sp-fir-get-agent-recommendations.sql
-  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
-      --file infra/snowflake/fir_system/procedures/sp-fir-invoke-agent.sql
-  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
-      --file infra/snowflake/fir_system/procedures/sp-fir-orchestrate-batch.sql
-  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
-      --file infra/snowflake/fir_system/procedures/sp-fir-store-recommendation.sql
-  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
-      --file infra/snowflake/fir_system/procedures/sp-fir-store-inference.sql
-  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
-      --file infra/snowflake/fir_system/procedures/sp-fir-score-recommendations.sql
-  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
-      --file infra/snowflake/fir_system/streams/fir_streams.sql
-  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
-      --file infra/snowflake/fir_system/tasks/fir_tasks.sql
-  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
-      --file infra/snowflake/fir_system/cortex_search/fir_search_services.sql
+
+  USE DATABASE FFP_HDP_DLAB_DB_DEV;
+  USE SCHEMA SCH_STTM_METADATA;
+
+  -- Insert your SQL script as a learning asset
+  INSERT INTO TBL_WORKBENCH_CLIENT_SQL_ASSETS (
+      SQL_ASSET_ID, PROJECT_ID, ENTITY_TYPE, ENTITY_IDS,
+      TITLE, SQL_TEXT, SQL_KIND, DIALECT,
+      DESCRIPTION, SOURCE_LABEL, AUTHOR_NAME,
+      TAGS, ATTRIBUTES, STATUS, CREATED_AT, UPDATED_AT
+  )
+  SELECT
+      UUID_STRING(),
+      'your-project-id',
+      'sttm_migration',
+      PARSE_JSON('[]'),
+      'My Historical Mapping Script',
+      $$
+          -- Paste your entire SQL script here between the $$ delimiters
+          SELECT col_a, col_b FROM source_table
+          JOIN dim_table ON ...
+      $$,
+      'historical_mapping',
+      'snowflake',
+      'Historical mapping SQL from prior migration',
+      'client_upload',
+      'your-name',
+      PARSE_JSON('["loan", "income"]'),
+      PARSE_JSON('{}'),
+      'active',
+      CURRENT_TIMESTAMP(),
+      CURRENT_TIMESTAMP();
+
+  Then trigger the FIR agent to process it:
+
+  CALL SP_FIR_INVOKE_AGENT(
+      OBJECT_CONSTRUCT(
+          'task_type', 'document_learning',
+          'batch_size', 50,
+          'processing_options', OBJECT_CONSTRUCT(
+              'collect_feedback', TRUE,
+              'generate_inferences', TRUE,
+              'create_semantic_versions', FALSE,
+              'generate_recommendations', TRUE,
+              'apply_decay', FALSE,
+              'parse_documents', TRUE
+          )
+      )
+  );
+
+  That's it — insert row, call procedure. The agent reads the SQL, extracts
+  table/column/join/transformation patterns, and generates recommendations for all downstream agents.
