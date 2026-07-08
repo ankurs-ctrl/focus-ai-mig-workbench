@@ -1,24 +1,24 @@
-Bootstrapping STTM metadata infra into FFP_HDP_CRM_MIG_DB_DEV.SCH_STTM_METADATA
-[bootstrap-sttm-metadata] Uploading skill file infra\snowflake\skills\sttm_bundle_orchestration\SKILL.md to @"FFP_HDP_CRM_MIG_DB_DEV"."SCH_STTM_METADATA"."STTM_AGENT_SKILLS"/skills/sttm_bundle_orchestration/
-Traceback (most recent call last):
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp-workbecn-v2\scripts\bootstrap_sttm_metadata_infra.py", line 362, in <module>
-    raise SystemExit(main())
-                     ^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp-workbecn-v2\scripts\bootstrap_sttm_metadata_infra.py", line 347, in main
-    upload_skills(connection, args.database, args.schema)
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp-workbecn-v2\scripts\bootstrap_sttm_metadata_infra.py", line 205, in upload_skills
-    cursor.execute(statement)
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp-workbecn-v2\.client-tools-venv\Lib\site-packages\snowflake\connector\cursor.py", line 1096, in execute
-    data = sf_file_transfer_agent.result()
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp-workbecn-v2\.client-tools-venv\Lib\site-packages\snowflake\connector\file_transfer_agent.py", line 782, in result  
-    Error.errorhandler_wrapper(
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp-workbecn-v2\.client-tools-venv\Lib\site-packages\snowflake\connector\errors.py", line 298, in errorhandler_wrapper 
-    handed_over = Error.hand_to_other_handler(
-                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp-workbecn-v2\.client-tools-venv\Lib\site-packages\snowflake\connector\errors.py", line 354, in hand_to_other_handler
-    cursor.errorhandler(connection, cursor, error_class, error_value)
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp-workbecn-v2\.client-tools-venv\Lib\site-packages\snowflake\connector\errors.py", line 229, in default_errorhandler 
-    raise error_class(
-snowflake.connector.errors.OperationalError: 253003: While putting file(s) there was an error: 'HEAD with url b'https://sfc-oh-ds1-50-customer-stage.s3.amazonaws.com/uw5d0000-s/stages/ddc6bde4-0b27-49e2-a428-eed04138945e/skills/sttm_bundle_orchestration/SKILL.md' failed for exceeding maximum retries.', this might be caused by your access to the blob storage provider, or by Snowflake.
-PS C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp-workbecn-v2> 
+.\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
+      --file infra/snowflake/fir_system/procedures/sp-fir-collect-feedback.sql
+  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
+      --file infra/snowflake/fir_system/procedures/sp-fir-generate-inferences.sql
+  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
+      --file infra/snowflake/fir_system/procedures/sp-fir-generate-recommendations.sql
+  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
+      --file infra/snowflake/fir_system/procedures/sp-fir-get-agent-recommendations.sql
+  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
+      --file infra/snowflake/fir_system/procedures/sp-fir-invoke-agent.sql
+  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
+      --file infra/snowflake/fir_system/procedures/sp-fir-orchestrate-batch.sql
+  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
+      --file infra/snowflake/fir_system/procedures/sp-fir-store-recommendation.sql
+  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
+      --file infra/snowflake/fir_system/procedures/sp-fir-store-inference.sql
+  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
+      --file infra/snowflake/fir_system/procedures/sp-fir-score-recommendations.sql
+  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
+      --file infra/snowflake/fir_system/streams/fir_streams.sql
+  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
+      --file infra/snowflake/fir_system/tasks/fir_tasks.sql
+  .\.client-tools-venv\Scripts\python.exe scripts\deploy_snowflake_sql_file.py `
+      --file infra/snowflake/fir_system/cortex_search/fir_search_services.sql
