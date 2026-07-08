@@ -1,37 +1,195 @@
-Yes — for local OAuth you must configure these in:
+SNOWFLAKE_ACCOUNT=MHSUEJT-GD01711
+# Optional. Leave blank unless you explicitly need to override the default host.
+SNOWFLAKE_HOST=
+SNOWFLAKE_AUTHENTICATOR=externalbrowser
+SNOWFLAKE_USER=ANKURSINHA
+SNOWFLAKE_PASSWORD=
+SNOWFLAKE_ROLE=FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV
 
-`services/sttm-builder/.env.local`
+SNOWFLAKE_DATABASE=FFP_HDP_DLAB_DB_DEV
+SNOWFLAKE_SCHEMA=SCH_STTM_METADATA
+SNOWFLAKE_WAREHOUSE=FFP_HDP_DLAB_DB_ADHOC_XS_WH_DEV
+USERS_TABLE=TBL_USERS
+APP_ROLE_ADMIN=FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV
+APP_ROLE_PUBLISHER=FFP_HDP_CRM_MIG_DB_READ_ROLE
+APP_ROLE_VIEWER=PUBLIC
 
-not only `infra/snowflake/env/client.env`.
+# Local-only auth fallback. Keep disabled for deployed SPCS environments.
+LOCAL_DEV_AUTH_ENABLED=true
+LOCAL_DEV_USER_EMAIL=ankur.sinha@focuspartners.com
+LOCAL_DEV_BYPASS_METADATA=true
 
-Add/fill:
+# Cortex Agents
+SNOWFLAKE_STTM_BUILDER_AGENT=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_STTM_BUILDER
+SNOWFLAKE_SEMANTIC_MODEL_AGENT=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_SEMANTIC_MODEL
+SNOWFLAKE_RELATIONSHIPS_PROCEDURE=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.SP_GET_TABLE_RELATIONSHIPS
+SNOWFLAKE_SEMANTIC_MODEL_TABLE=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.TBL_SEMANTIC_MODELS
+SNOWFLAKE_DERIVED_SOURCES_TABLE=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.TBL_DERIVED_SOURCES
+SNOWFLAKE_AGENT_ORCHESTRATION_MODEL=claude-sonnet-4
 
-```env
-AUTH_SESSION_SECRET=<strong-random-string>
-AUTH_SESSION_ENCRYPTION_KEY=<fernet-style-or-random-key>
-```
+# Deployed SPCS traffic should arrive through Snowflake ingress and caller context.
+# For local-only testing, set LOCAL_DEV_AUTH_ENABLED=true and either provide the
+# Snowflake password above or use SNOWFLAKE_AUTHENTICATOR=externalbrowser. The
+# backend will then connect directly as that developer and respect the Snowflake
+# RBAC available to that identity.
+# For local-only testing, allow the reverse proxy origin if needed.
+CORS_ALLOWED_ORIGINS=http://localhost:8000,http://localhost:3000,http://127.0.0.1:3000
 
-Fast way on the client AVD PowerShell:
+# Added from .env.example by start_sttm_backend_local.ps1
+DATAHUB_ENABLED=false
+DATAHUB_GRAPHQL_URL=
+DATAHUB_UI_URL=
+DATAHUB_TOKEN=
+DATAHUB_DATASET_ENV=PROD
+DATAHUB_TIMEOUT_SECONDS=10
 
-```powershell
-python -c "import secrets; print('AUTH_SESSION_SECRET=' + secrets.token_urlsafe(64))"
-python -c "from cryptography.fernet import Fernet; print('AUTH_SESSION_ENCRYPTION_KEY=' + Fernet.generate_key().decode())"
-```
+# Added from .env.example by start_sttm_backend_local.ps1
+AUTH_MODE=ingress_headers
+SPCS_EXECUTE_AS_CALLER_ENABLED=true
+SNOWFLAKE_OAUTH_SESSIONS_TABLE=TBL_WORKBENCH_OAUTH_SESSIONS
+SNOWFLAKE_OAUTH_CLIENT_ID=
+SNOWFLAKE_OAUTH_CLIENT_SECRET=
+SNOWFLAKE_OAUTH_AUTHORIZE_URL=
+SNOWFLAKE_OAUTH_TOKEN_URL=
+SNOWFLAKE_OAUTH_REDIRECT_URI=http://localhost:3000/api/v1/auth/callback
+SNOWFLAKE_OAUTH_SCOPE=session:role-any
+AUTH_SESSION_COOKIE_NAME=sttm_session
+AUTH_STATE_COOKIE_NAME=sttm_oauth_state
+AUTH_SESSION_COOKIE_SECURE=false
+AUTH_SESSION_COOKIE_SAMESITE=lax
+AUTH_POST_LOGIN_REDIRECT_PATH=/dashboard
+AUTH_POST_LOGOUT_REDIRECT_PATH=/home
+SNOWFLAKE_DBT_CONVERSION_AGENT=DB.SCHEMA.AGT_DBT_CONVERSION
+SNOWFLAKE_WORKBENCH_CONVERSATION_AGENT=DB.SCHEMA.AGT_WORKBENCH_CONVERSATION
+AUTH_SESSION_SECRET=1g8Dm8d8OPmPHUpNKo8wbcOzaVFgtA9lYQ9jGSXTO8P55_WLQcIJM284dHnvilsv_lUvjliTzIZ0vbLFUa6Uaw
+AUTH_SESSION_ENCRYPTION_KEY=8atKHmRG7qEgGCN0_PQC_jyNGWRH9O8_iTvuUjoaiN4=
 
-If `cryptography` is not available, this is also okay:
+COCO_ENABLED=true
+COCO_SERVICE_URL=ws://127.0.0.1:8001/api/v1/coco/ws
+COCO_WORKBENCH_API_URL=http://127.0.0.1:8000
 
-```powershell
-python -c "import secrets; print('AUTH_SESSION_SECRET=' + secrets.token_urlsafe(64)); print('AUTH_SESSION_ENCRYPTION_KEY=' + secrets.token_urlsafe(48))"
-```
 
-Then restart the local backend/frontend completely.
+This was env.local
 
-For SPCS/client deployment, you should prefer the Snowflake secret:
 
-```env
+
+This is client.env - 
+# -----------------------------------------------------------------------------
+# Client SPCS deployment environment
+# Copy this file to client.env and fill in the client-specific values.
+# -----------------------------------------------------------------------------
+
+# Snow CLI connection settings
+SNOWFLAKE_CONNECTION=client-spcsv1
+SNOWFLAKE_AUTHENTICATOR=externalbrowser
+SNOWFLAKE_ACCOUNT=MHSUEJT-GD01711
+SNOWFLAKE_USER=ANKURSINHA
+SNOWFLAKE_ROLE=FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV
+
+# Warehouse / runtime namespace
+SNOWFLAKE_WAREHOUSE=FFP_HDP_DLAB_DB_ADHOC_XS_WH_DEV
+SNOWFLAKE_DATABASE=FFP_HDP_DLAB_DB_DEV
+SNOWFLAKE_SCHEMA=SCH_STTM_METADATA
+
+# Registry — format: <org>-<account>.registry.snowflakecomputing.com
+SNOWFLAKE_REGISTRY_HOST=MHSUEJT-GD01711.registry.snowflakecomputing.com
+SNOWFLAKE_IMAGE_REPOSITORY=AI_WORKBENCH_DEV_IMAGES
+
+# Compute pool and service name
+SNOWFLAKE_COMPUTE_POOL=WORKBENCH_COMPUTE_POOL_DEV
+WEBAPP_SERVICE_NAME=AI_WORKBENCH_OKTA_WEBAPP_DEV_v4
+SNOWFLAKE_NETWORK_POLICY=
+
+# Only needed for the split auto-mapping worker deployment path.
+# Leave these populated only if you intend to deploy the separate worker service.
+AUTO_MAPPING_COMPUTE_POOL=WORKBENCH_COMPUTE_POOL_DEV
+AUTO_MAPPING_SERVICE_NAME=WORKBENCH_AUTOMAP_DEV
+
+# Egress integration already created by client admin
+SNOWFLAKE_EGRESS_INTEGRATION=AI_WORKBENCH_EGRESS_INTEGRATION
+
+# App runtime
+APP_NAME=BBI AI Migration Workbench API
+APP_ENV=client
+AUTH_MODE=custom_oauth
+SPCS_EXECUTE_AS_CALLER_ENABLED=false
+SPCS_ENABLE_CUSTOM_CREDENTIALS=true
+
+USERS_TABLE=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.TBL_USERS
+SNOWFLAKE_OAUTH_SESSIONS_TABLE=
+
+# Snowflake custom OAuth
+# Password-type Snowflake secret whose username is the OAuth client ID and
+# password is the OAuth client secret. The deployer/service owner needs READ.
+SNOWFLAKE_OAUTH_AUTHORIZE_URL=https://MHSUEJT-GD01711.snowflakecomputing.com/oauth/authorize
+SNOWFLAKE_OAUTH_TOKEN_URL=https://MHSUEJT-GD01711.snowflakecomputing.com/oauth/token-request
+SNOWFLAKE_OAUTH_SCOPE=session:role:FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV
+SNOWFLAKE_OAUTH_CLIENT_SECRET_OBJECT=FFP_HDP_OPS_DB_DEV.SCH_HDP_ADMIN.STTM_BUILDER_OAUTH_CLIENT_CREDENTIALS
 SNOWFLAKE_OAUTH_SESSION_SECRET_OBJECT=FFP_HDP_OPS_DB_DEV.SCH_HDP_ADMIN.STTM_BUILDER_OAUTH_SESSION_KEYS
-```
+SNOWFLAKE_OAUTH_REDIRECT_URI=https://btaiwql-mhsuejt-gd01711.snowflakecomputing.app/api/v1/auth/callback
 
-In SPCS, the deploy spec maps that Snowflake secret into `AUTH_SESSION_SECRET` and `AUTH_SESSION_ENCRYPTION_KEY`, so you do not need to hardcode those values in code.
+AUTH_SESSION_COOKIE_NAME=sttm_session
+AUTH_STATE_COOKIE_NAME=sttm_oauth_state
+AUTH_SESSION_COOKIE_SECURE=true
+AUTH_SESSION_COOKIE_SAMESITE=lax
+AUTH_POST_LOGIN_REDIRECT_PATH=/dashboard
+AUTH_POST_LOGOUT_REDIRECT_PATH=/home
+AUTH_SESSION_SECRET=1g8Dm8d8OPmPHUpNKo8wbcOzaVFgtA9lYQ9jGSXTO8P55_WLQcIJM284dHnvilsv_lUvjliTzIZ0vbLFUa6Uaw
+AUTH_SESSION_ENCRYPTION_KEY=8atKHmRG7qEgGCN0_PQC_jyNGWRH9O8_iTvuUjoaiN4=
+# Persona role mapping
+APP_ROLE_ADMIN=FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV
+APP_ROLE_PUBLISHER=FFP_HDP_CRM_MIG_DB_READ_ROLE
+APP_ROLE_VIEWER=PUBLIC
 
-One important thing: these values are not your Snowflake password. They are just app-side keys used to sign OAuth state cookies and encrypt the app’s session token storage.
+# Cortex Agent configuration
+SNOWFLAKE_STTM_BUILDER_AGENT=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_STTM_BUILDER
+SNOWFLAKE_SOURCE_MAPPING_AGENT=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_SOURCE_MAPPING
+SNOWFLAKE_SEMANTIC_MODEL_AGENT=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_SEMANTIC_MODEL
+SNOWFLAKE_DBT_CONVERSION_AGENT=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_DBT_CONVERSION
+SNOWFLAKE_TEST_CASE_GENERATION_AGENT=
+
+# Compatibility-only: normal assistant requests now use AGT_STTM_BUILDER.
+# Leave blank to default to SNOWFLAKE_STTM_BUILDER_AGENT.
+SNOWFLAKE_WORKBENCH_CONVERSATION_AGENT=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AGT_WORKBENCH_CONVERSATION_AGENT
+
+SNOWFLAKE_RELATIONSHIPS_PROCEDURE=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.SP_GET_TABLE_RELATIONSHIPS
+SNOWFLAKE_SEMANTIC_MODEL_TABLE=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.TBL_SEMANTIC_MODELS
+SNOWFLAKE_DERIVED_SOURCES_TABLE=FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.TBL_DERIVED_SOURCES
+SNOWFLAKE_AGENT_ORCHESTRATION_MODEL=claude-sonnet-4
+
+# Optional DBT repo bootstrap for AGT_DBT_CONVERSION.
+# Leave blank to skip DBT repo bootstrap.
+SNOWFLAKE_DBT_GIT_API_INTEGRATION=GIT_API_INTEGRATION_DBT
+SNOWFLAKE_DBT_GIT_ALLOWED_PREFIX=https://github.com/your-org-or-user/
+SNOWFLAKE_DBT_GIT_SECRET_NAME=GIT_SECRET_DBT
+SNOWFLAKE_DBT_GIT_USERNAME=
+SNOWFLAKE_DBT_GIT_PAT=
+SNOWFLAKE_DBT_GIT_REPOSITORY_NAME=DBT_REPO
+SNOWFLAKE_DBT_GIT_ORIGIN=
+SNOWFLAKE_DBT_GIT_CONSUMER_ROLE=
+
+# Usually left empty because deployed webapp uses same-origin /api routing.
+CORS_ALLOWED_ORIGINS=
+
+# Private auto-mapping worker
+# The deploy script can derive the internal DNS host automatically using:
+# http://<endpoint>.<service>.<SYSTEM$GET_SERVICE_DNS_DOMAIN()>:8000
+# Leave AUTO_MAPPING_SERVICE_URL empty unless you want to override it manually.
+AUTO_MAPPING_SERVICE_URL=
+AUTO_MAPPING_ENDPOINT_NAME=api
+AUTO_MAPPING_SERVICE_TIMEOUT_SECONDS=300
+AUTO_MAPPING_SERVICE_RETRY_ATTEMPTS=2
+AUTO_MAPPING_WORKER_MAX_CONCURRENCY=5
+AUTO_MAPPING_PROXY_BATCH_SIZE=5
+AUTO_MAPPING_PROXY_MAX_IN_FLIGHT=2
+
+# Reliability tuning for caller-rights sessions and Cortex Agent calls
+SNOWFLAKE_SESSION_RETRY_ATTEMPTS=2
+SNOWFLAKE_SESSION_RETRY_BACKOFF_SECONDS=1.0
+#SNOWFLAKE_USER_SESSION_CACHE_TTL_SECONDS=1800
+SNOWFLAKE_AGENT_RETRY_ATTEMPTS=3
+SNOWFLAKE_AGENT_RETRY_BACKOFF_SECONDS=1.0
+SNOWFLAKE_USER_SESSION_CACHE_TTL_SECONDS=300
+
+# Optional image tag override; otherwise the wrapper uses current git short SHA
+IMAGE_TAG=
