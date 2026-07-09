@@ -1,44 +1,4 @@
-{
-    "contract_version": "1.0",
-    "request_id": "03ad6afd-dbbd-4370-a9c8-4b0e1145cc3a",
-    "operation": "refresh_semantic_context",
-    "actor": null,
-    "context": {
-        "trace_id": "03ad6afd-dbbd-4370-a9c8-4b0e1145cc3a"
-    },
-    "data": null,
-    "warnings": [],
-    "error": {
-        "type": "about:blank",
-        "title": "Semantic assets have not been published for every selected table.",
-        "status": 404,
-        "detail": "Semantic assets have not been published for every selected table.",
-        "code": "SEMANTIC_ASSET_NOT_FOUND",
-        "field": null
-    },
-    "meta": {
-        "details": [
-            {
-                "field": "semantic_asset",
-                "message": "FFP_HDP_DLAB_DB_DEV.SCH_CRM_SOURCE.ACCOUNT_35"
-            },
-            {
-                "field": "semantic_asset",
-                "message": "FFP_HDP_DLAB_DB_DEV.SCH_CRM_TARGET.ACCOUNT_HH"
-            }
-        ],
-        "guardrails": {
-            "trace_id": "03ad6afd-dbbd-4370-a9c8-4b0e1145cc3a",
-            "request_id": "f36e3851-26cd-45fa-a2c2-6ccdfd1b2fac",
-            "persona": null,
-            "redaction_count": 0,
-            "approval_required": false,
-            "approval": {
-                "status": "not_required",
-                "reason_codes": [],
-                "reviewer_role": null
-            },
-            "trust_labels": []
-        }
-    }
-}
+SNOWFLAKE_SEMANTIC_TABLE_VIEWS_TABLE: ${SNOWFLAKE_SEMANTIC_TABLE_VIEWS_TABLE}   
+SNOWFLAKE_SEMANTIC_COLUMN_VIEWS_TABLE: ${SNOWFLAKE_SEMANTIC_COLUMN_VIEWS_TABLE} 
+SNOWFLAKE_SEMANTIC_VIEWS_DATABASE: "${SNOWFLAKE_SEMANTIC_VIEWS_DATABASE}"       
+SNOWFLAKE_SEMANTIC_VIEWS_SCHEMA: "${SNOWFLAKE_SEMANTIC_VIEWS_SCHEMA}"  
