@@ -1,231 +1,44 @@
-[sttm-backend] Backend dependencies already available in C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv
-[sttm-backend] Starting STTM backend on http://127.0.0.1:8000
-[sttm-backend] Health check: http://127.0.0.1:8000/health
-[sttm-backend] Docs: http://127.0.0.1:8000/docs
-[sttm-backend] Local note: Snowflake ingress auth headers are not present on localhost.
-[sttm-backend] For local frontend/API testing, set LOCAL_DEV_AUTH_ENABLED=true in C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.env.local
-[sttm-backend] and provide either SNOWFLAKE_USER / SNOWFLAKE_PASSWORD
-[sttm-backend] or SNOWFLAKE_USER with SNOWFLAKE_AUTHENTICATOR=externalbrowser
-INFO:     Will watch for changes in these directories: ['C:\\Users\\ankur.sinha\\Desktop\\bbi-workbench-dev\\ffp_ai_mig_workbench\\services\\sttm-builder']
-C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\app\schema\common.py:4: UserWarning: Field name "schema" in "TableRef" shadows an attribute in parent "BaseModel"
-  class TableRef(BaseModel):
-C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\app\schema\table_selection.py:70: UserWarning: Field name "schema" in "ListTablesRequestData" shadows an attribute in parent "BaseModel"
-  class ListTablesRequestData(BaseModel):
-INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [11828] using WatchFiles
-C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\app\schema\common.py:4: UserWarning: Field name "schema" in "TableRef" shadows an attribute in parent "BaseModel"
-  class TableRef(BaseModel):
-C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\app\schema\table_selection.py:70: UserWarning: Field name "schema" in "ListTablesRequestData" shadows an attribute in parent "BaseModel"
-  class ListTablesRequestData(BaseModel):
-INFO:     Started server process [20408]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-WARNING:  WatchFiles detected changes in 'app\routers\fir_admin.py', 'app\routers\upload.py'. Reloading...
- INFO:     Shutting down
-INFO:     Waiting for application shutdown.
-INFO:     Application shutdown complete.
-INFO:     Finished server process [20408]
-WARNING:  WatchFiles detected changes in 'app\core\project_service.py', 'app\core\sql_parser.py', 'app\routers\auto_mapping.py', 'app\core\learning_retrieval.py', 'app\core\agent_learning_service.py', 'app\routers\projects.py', 'app\core\notification_scorer.py', 'app\core\fir_triggers.py', 'app\routers\notifications.py', 'app\core\fir_notification_bridge.py', 'app\core\signal_bus.py', 'app\core\fir_template_engine.py', 'app\core\excel_parser.py'. Reloading...
- C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\app\schema\common.py:4: UserWarning: Field name "schema" in "TableRef" shadows an attribute in parent "BaseModel"
-  class TableRef(BaseModel):
-C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\app\schema\table_selection.py:70: UserWarning: Field name "schema" in "ListTablesRequestData" shadows an attribute in parent "BaseModel"
-  class ListTablesRequestData(BaseModel):
-INFO:     Started server process [19012]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-INFO:     Shutting down
-INFO:     Waiting for application shutdown.
-INFO:     Application shutdown complete.
-INFO:     Finished server process [19012]
-WARNING:  WatchFiles detected changes in 'tests\fixtures\fir_fixtures.py', 'app\schema\project.py', 'tests\integration\fir_system\test_fir_learning_retrieval.py', 'tests\unit\fir_system\test_fir_confidence_scoring.py', 'tests\unit\fir_system\test_fir_confidence_decay.py', 'tests\unit\fir_system\test_fir_inference_types.py', 'tests\integration\fir_system\__init__.py', 'tests\unit\fir_system\__init__.py'. Reloading...
- Traceback (most recent call last):
-  File "<string>", line 1, in <module>
-  File "C:\Program Files\Python311\Lib\multiprocessing\spawn.py", line 120, in spawn_main
-    exitcode = _main(fd, parent_sentinel)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python311\Lib\multiprocessing\spawn.py", line 130, in _main
-    self = reduction.pickle.load(from_parent)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\__init__.py", line 2, in <module>
-    from uvicorn.main import Server, main, run
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\main.py", line 32, in <module>
-    from uvicorn.supervisors import ChangeReload, Multiprocess
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\supervisors\__init__.py", line 12, in <module>
-    from uvicorn.supervisors.watchfilesreload import WatchFilesReload as ChangeReload
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\supervisors\watchfilesreload.py", line 7, in <module>
-    from watchfiles import watch
-  File "<frozen importlib._bootstrap>", line 1178, in _find_and_load
-  File "<frozen importlib._bootstrap>", line 1140, in _find_and_load_unlocked
-  File "<frozen importlib._bootstrap>", line 1080, in _find_spec
-  File "<frozen importlib._bootstrap_external>", line 1504, in find_spec
-  File "<frozen importlib._bootstrap_external>", line 1476, in _get_spec
-  File "<frozen importlib._bootstrap_external>", line 1612, in find_spec
-  File "<frozen importlib._bootstrap_external>", line 147, in _path_stat
-KeyboardInterrupt
-C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\app\schema\common.py:4: UserWarning: Field name "schema" in "TableRef" shadows an attribute in parent "BaseModel"
-  class TableRef(BaseModel):
-C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\app\schema\table_selection.py:70: UserWarning: Field name "schema" in "ListTablesRequestData" shadows an attribute in parent "BaseModel"
-  class ListTablesRequestData(BaseModel):
-INFO:     Started server process [12120]
-INFO:     Waiting for application startup.
-INFO:     Application startup complete.
-WARNING:  WatchFiles detected changes in 'app\core\snowflake_analyst.py', 'app\guardrails\contracts\trust.py', 'app\guardrails\config\schema.py', 'app\main.py', 'app\config.py', 'app\routers\derived_source.py', 'app\core\export_workbook.py', 'app\guardrails\runtime\output_validator.py', 'app\guardrails\policies\agent_registry.py', 'app\routers\test_case_generation.py', 'app\routers\table_selection.py', 'app\core\semantic_context.py', 'app\core\auto_mapping_proxy.py', 'app\guardrails\observability\audit_log.py', 'app\guardrails\runtime\router.py', 'app\core\semantic_model.py', 'app\routers\sttm_builder.py', 'app\guardrails\runtime\postflight.py', 'app\routers\user.py', 'app\guardrails\contracts\approval.py', 'app\routers\conversation.py', 'app\core\__init__.py', 'app\core\datahub.py', 'app\guardrails\contracts\decisions.py', 'app\core\mapping_sql.py', 'app\guardrails\runtime\model_boundary.py', 'app\routers\export_workbook.py', '__init__.py', 'app\core\dbt_conversion.py', 'app\core\conversation_memory.py', 'app\routers\semantic_context.py', 'app\core\error_codes.py', 'app\core\snowflake_agent.py', 'app\routers\semantic_model.py', 'app\routers\agent_gateway.py', 'app\core\config.py', 'app\guardrails\config\__init__.py', 'app\routers\agents.py', 'app\routers\mapping_sql.py', 'app\guardrails\observability\__init__.py', 'app\guardrails\runtime\__init__.py', 'app\guardrails\observability\tracer.py', 'app\core\user.py', 'app\routers\dbt_conversion.py', 'app\core\snowflake.py', 'app\guardrails\runtime\toxicity_validator.py', 'app\guardrails\config\loader.py', 'app\__init__.py', 'app\core\exceptions.py', 'app\routers\debug.py', 'app\core\docs.py', 'app\guardrails\policies\redaction.py', 'app\core\derived_source.py', 'app\routers\__init__.py', 'app\guardrails\runtime\grounding_validator.py', 'app\guardrails\contracts\__init__.py', 'app\guardrails\__init__.py', 'app\routers\coco.py', 'app\guardrails\runtime\trust_boundary.py', 'app\core\test_case_generation.py', 'app\core\table_selection.py', 'app\guardrails\runtime\preflight.py', 'app\core\sttm_builder.py', 'app\core\conversation.py'. Reloading...
- INFO:     Shutting down
-INFO:     Waiting for application shutdown.
-INFO:     Application shutdown complete.
-INFO:     Finished server process [12120]
-WARNING:  WatchFiles detected changes in 'tests\unit\core\test_conversation_service.py', 'app\auth\extractors\__init__.py', 'app\schema\dbt_conversion.py', 'tests\unit\core\test_semantic_bundle_composer.py', 'app\auth\router.py', 'app\auth\persona\permissions.py', 'app\auth\persona\resolver.py', 'tests\unit\guardrails\test_output_validator.py', 'tests\conftest.py', 'app\guardrails\policies\agent_registry.py', 'tests\integration\test_conversation_routes.py', 'tests\unit\guardrails\test_preflight.py', 'app\auth\dependencies.py', 'app\coco\__init__.py', 'app\auto_mapping_worker\router.py', 'app\schema\contracts.py', 'tests\unit\guardrails\test_conversation_postflight.py', 'tests\unit\auth\test_resolver.py', 'app\guardrails\policies\resolver.py', 'tests\integration\test_auth_routes.py', 'app\schema\errors.py', 'app\guardrails\adapters\presidio.py', 'app\schema\user.py', 'app\coco\runtime.py', 'app\guardrails\adapters\__init__.py', 'app\coco\mcp_server.py', 'tests\unit\core\test_coco_runtime.py', 'app\auth\extractors\headers.py', 'tests\unit\core\test_snowflake_agent.py', 'app\schema\workspace_context.py', 'tests\unit\guardrails\test_contract_integration.py', 'app\guardrails\integrations\fastapi.py', 'app\schema\derived_source.py', 'app\coco\main.py', 'app\schema\test_case_generation.py', 'tests\unit\auth\test_headers.py', 'app\api\deps.py', 'app\schema\table_selection.py', 'tests\integration\test_test_case_generation_routes.py', 'app\schema\common.py', 'app\coco\protocol.py', 'app\auth\custom_oauth.py', 'app\guardrails\integrations\__init__.py', 'app\guardrails\adapters\rag_source.py', 'app\schema\sttm_builder.py', 'app\schema\workbench.py', 'app\schema\conversation.py', 'tests\unit\auth\test_custom_oauth.py', 'app\api\__init__.py', 'tests\unit\core\test_sttm_payload_contract.py', 'tests\integration\test_guardrails_workbench_routes.py', 'tests\__init__.py', 'app\schema\export_workbook.py', 'app\api\error_handlers.py', 'app\guardrails\adapters\content_safety.py', 'app\models\__init__.py', 'app\guardrails\adapters\base.py', 'app\schema\semantic_context.py', 'tests\unit\core\test_auto_mapping_proxy.py', 'app\guardrails\adapters\snowflake.py', 'app\auth\__init__.py', 'app\auth\persona\__init__.py', 'app\schema\semantic_model.py', 'app\guardrails\policies\intent_policy.py', 'app\guardrails\policies\business_rules.py', 'tests\unit\core\test_test_case_generation.py', 'app\schema\__init__.py', 'tests\unit\core\test_export_workbook.py', 'tests\unit\guardrails\test_router.py', 'tests\unit\guardrails\test_settings.py', 'app\auto_mapping_worker\main.py', 'tests\unit\core\test_snowflake.py', 'app\guardrails\policies\operation_policy.py', 'app\schema\agents.py', 'app\auth\models.py', 'app\schema\mapping_sql.py', 'app\guardrails\policies\__init__.py'. Reloading...
- C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\app\schema\common.py:4: UserWarning: Field name "schema" in "TableRef" shadows an attribute in parent "BaseModel"
-  class TableRef(BaseModel):
-C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\app\schema\table_selection.py:70: UserWarning: Field name "schema" in "ListTablesRequestData" shadows an attribute in parent "BaseModel"
-  class ListTablesRequestData(BaseModel):
-sqlglot not installed — SQL parsing will use fallback regex
-Form data requires "python-multipart" to be installed.
-You can install "python-multipart" with:
-
-pip install python-multipart
-
-Process SpawnProcess-5:
-Traceback (most recent call last):
-  File "C:\Program Files\Python311\Lib\multiprocessing\process.py", line 314, in _bootstrap
-    self.run()
-  File "C:\Program Files\Python311\Lib\multiprocessing\process.py", line 108, in run
-    self._target(*self._args, **self._kwargs)
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\_subprocess.py", line 80, in subprocess_started
-    target(sockets=sockets)
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\server.py", line 75, in run
-    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\_compat.py", line 30, in asyncio_run
-    return runner.run(main)
-           ^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python311\Lib\asyncio\runners.py", line 118, in run
-    return self._loop.run_until_complete(task)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python311\Lib\asyncio\base_events.py", line 650, in run_until_complete
-    return future.result()
-           ^^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\server.py", line 79, in serve
-    await self._serve(sockets)
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\server.py", line 86, in _serve
-    config.load()
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\config.py", line 481, in load
-    self.loaded_app = self.load_app()
-                      ^^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\config.py", line 415, in load_app
-    return import_from_string(self.app)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\importer.py", line 19, in import_from_string
-    module = importlib.import_module(module_str)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python311\Lib\importlib\__init__.py", line 126, in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<frozen importlib._bootstrap>", line 1206, in _gcd_import
-  File "<frozen importlib._bootstrap>", line 1178, in _find_and_load
-  File "<frozen importlib._bootstrap>", line 1149, in _find_and_load_unlocked
-  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
-  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
-  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\app\main.py", line 24, in <module>
-    from app.routers.upload import router as upload_router
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\app\routers\upload.py", line 33, in <module>
-    @router.post("/sql")
-     ^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\fastapi\routing.py", line 1450, in decorator
-    self.add_api_route(
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\fastapi\routing.py", line 1386, in add_api_route
-    route = route_class(
-            ^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\fastapi\routing.py", line 949, in __init__
-    self.dependant = get_dependant(
-                     ^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\fastapi\dependencies\utils.py", line 311, in get_dependant
-    param_details = analyze_param(
-                    ^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\fastapi\dependencies\utils.py", line 535, in analyze_param
-    ensure_multipart_is_installed()
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\fastapi\dependencies\utils.py", line 120, in ensure_multipart_is_installed
-    raise RuntimeError(multipart_not_installed_error) from None
-RuntimeError: Form data requires "python-multipart" to be installed.
-You can install "python-multipart" with:
-
-pip install python-multipart
-
-C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\app\schema\common.py:4: UserWarning: Field name "schema" in "TableRef" shadows an attribute in parent "BaseModel"
-  class TableRef(BaseModel):
-C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\app\schema\table_selection.py:70: UserWarning: Field name "schema" in "ListTablesRequestData" shadows an attribute in parent "BaseModel"
-  class ListTablesRequestData(BaseModel):
-sqlglot not installed — SQL parsing will use fallback regex
-Form data requires "python-multipart" to be installed.
-You can install "python-multipart" with:
-
-pip install python-multipart
-
-Process SpawnProcess-6:
-Traceback (most recent call last):
-  File "C:\Program Files\Python311\Lib\multiprocessing\process.py", line 314, in _bootstrap
-    self.run()
-  File "C:\Program Files\Python311\Lib\multiprocessing\process.py", line 108, in run
-    self._target(*self._args, **self._kwargs)
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\_subprocess.py", line 80, in subprocess_started
-    target(sockets=sockets)
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\server.py", line 75, in run
-    return asyncio_run(self.serve(sockets=sockets), loop_factory=self.config.get_loop_factory())
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\_compat.py", line 30, in asyncio_run
-    return runner.run(main)
-           ^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python311\Lib\asyncio\runners.py", line 118, in run
-    return self._loop.run_until_complete(task)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python311\Lib\asyncio\base_events.py", line 650, in run_until_complete
-    return future.result()
-           ^^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\server.py", line 79, in serve
-    await self._serve(sockets)
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\server.py", line 86, in _serve
-    config.load()
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\config.py", line 481, in load
-    self.loaded_app = self.load_app()
-                      ^^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\config.py", line 415, in load_app
-    return import_from_string(self.app)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\uvicorn\importer.py", line 19, in import_from_string
-    module = importlib.import_module(module_str)
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Program Files\Python311\Lib\importlib\__init__.py", line 126, in import_module
-    return _bootstrap._gcd_import(name[level:], package, level)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<frozen importlib._bootstrap>", line 1206, in _gcd_import
-  File "<frozen importlib._bootstrap>", line 1178, in _find_and_load
-  File "<frozen importlib._bootstrap>", line 1149, in _find_and_load_unlocked
-  File "<frozen importlib._bootstrap>", line 690, in _load_unlocked
-  File "<frozen importlib._bootstrap_external>", line 940, in exec_module
-  File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\app\main.py", line 24, in <module>
-    from app.routers.upload import router as upload_router
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\app\routers\upload.py", line 33, in <module>
-    @router.post("/sql")
-     ^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\fastapi\routing.py", line 1450, in decorator
-    self.add_api_route(
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\fastapi\routing.py", line 1386, in add_api_route
-    route = route_class(
-            ^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\fastapi\routing.py", line 949, in __init__
-    self.dependant = get_dependant(
-                     ^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\fastapi\dependencies\utils.py", line 311, in get_dependant
-    param_details = analyze_param(
-                    ^^^^^^^^^^^^^^
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\fastapi\dependencies\utils.py", line 535, in analyze_param
-    ensure_multipart_is_installed()
-  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\services\sttm-builder\.venv\Lib\site-packages\fastapi\dependencies\utils.py", line 120, in ensure_multipart_is_installed
-    raise RuntimeError(multipart_not_installed_error) from None
-RuntimeError: Form data requires "python-multipart" to be installed.
-You can install "python-multipart" with:
-
-pip install python-multipart
-
+{
+    "contract_version": "1.0",
+    "request_id": "03ad6afd-dbbd-4370-a9c8-4b0e1145cc3a",
+    "operation": "refresh_semantic_context",
+    "actor": null,
+    "context": {
+        "trace_id": "03ad6afd-dbbd-4370-a9c8-4b0e1145cc3a"
+    },
+    "data": null,
+    "warnings": [],
+    "error": {
+        "type": "about:blank",
+        "title": "Semantic assets have not been published for every selected table.",
+        "status": 404,
+        "detail": "Semantic assets have not been published for every selected table.",
+        "code": "SEMANTIC_ASSET_NOT_FOUND",
+        "field": null
+    },
+    "meta": {
+        "details": [
+            {
+                "field": "semantic_asset",
+                "message": "FFP_HDP_DLAB_DB_DEV.SCH_CRM_SOURCE.ACCOUNT_35"
+            },
+            {
+                "field": "semantic_asset",
+                "message": "FFP_HDP_DLAB_DB_DEV.SCH_CRM_TARGET.ACCOUNT_HH"
+            }
+        ],
+        "guardrails": {
+            "trace_id": "03ad6afd-dbbd-4370-a9c8-4b0e1145cc3a",
+            "request_id": "f36e3851-26cd-45fa-a2c2-6ccdfd1b2fac",
+            "persona": null,
+            "redaction_count": 0,
+            "approval_required": false,
+            "approval": {
+                "status": "not_required",
+                "reason_codes": [],
+                "reviewer_role": null
+            },
+            "trust_labels": []
+        }
+    }
+}
