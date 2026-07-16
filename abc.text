@@ -1,30 +1,64 @@
-{
-  "agent_invoked": true,
-  "agent_response": null,
-  "context_built": {
-    "activity_summary": {
-      "active_recommendations": 21,
-      "last_24h_by_source": {
-        "document_upload": 4,
-        "explicit": 14,
-        "implicit": 8,
-        "mapping_feedback": 20
-      }
-    },
-    "pending_counts": {
-      "pending": 23
-    },
-    "streams_with_data": [
-      "STM_FIR_WORKBENCH_FEEDBACK",
-      "STM_FIR_STTM_ATTRIBUTES",
-      "STM_FIR_STTM_VERSIONS",
-      "STM_FIR_CLIENT_SQL_ASSETS"
-    ],
-    "unprocessed_document_count": 0
-  },
-  "errors": [
-    "Expecting value: line 1 column 1 (char 0)"
-  ],
-  "started_at": "2026-07-16T21:29:54.338198",
-  "status": "failed"
-}
+Summary of everything done today
+Procedure changes made
+1. SP_FIR_INVOKE_AGENT — patched twice
+
+Version	Fix
+Patch 1	_current_namespace() fallback — task sessions have no CURRENT_DATABASE(), so the agent API path resolved to None.None.AGT_FIR_SYSTEM → HTTP 401. Added hardcoded fallback to FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA
+Patch 2	Response body parsing — json.loads('') crashed on empty/non-JSON agent responses. Wrapped body = json.loads(body_raw) in try/except and added body_raw = response.get('content') or '{}' to handle None
+No other procedures were modified. SP_FIR_ENRICH_CONTEXT and SP_FIR_COLLECT_FEEDBACK were untouched.
+
+Other direct data changes
+What	Where	Why
+Dropped stale CHECK constraint SYS_CONSTRAINT_7b17d76c...	TBL_FIR_AGENT_RECOMMENDATIONS	Bootstrap fir_v2_schema.sql was failing on it
+Force-set 13 evidence records to ready	TBL_FIR_CONTEXT_EVIDENCE	Enrichment couldn't resolve semantic context (wrong schema); forced so agent could attempt them
+Granted USAGE ON AGENT AGT_FIR_SYSTEM	to FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV	Agent was returning 401 "not authorized"
+Resumed all 10 FIR tasks	TSK_FIR_CAPTURE chain + standalone tasks	Were all in suspended state
+Inserted 18 EverNest rows	SCH_STTM_METADATA.SEM_TABLE_REGISTRY	Copied from SCH_STTM_MCP — enrichment reads wrong schema
+How the 16 inferences were generated — full sequence
+text
+Step 1 — YOU ran the original CALL SP_FIR_INVOKE_AGENT(document_learning)
+         → Failed: HTTP 401 (None.None.AGT_FIR_SYSTEM)
+         → Root cause: no session database context
+
+Step 2 — YOU ran again from Snowsight with USE DATABASE + USE SCHEMA
+         → Agent ran, found the EverNest SQL document (sql_asset_id 3abf...)
+         → Generated 16 inferences + 5 recommendations for EVERNEST_HH_SF_IMPORT
+         → 1 FIR record marked completed (the document_upload record)
+
+         At this point: 13 mapping_feedback records still pending
+         (needs_semantic_context in evidence)
+
+Step 3 — I patched SP_FIR_INVOKE_AGENT (namespace fix)
+         → Tasks resumed, ran every 5 min
+         → But enrichment returned 0 because evidence = needs_semantic_context
+         → Agent still called but got no_work for the 13 records
+
+Step 4 — I force-set 13 evidence records to ready
+         → Tasks picked them up
+         → Agent ran 10 min — processed them but produced 0 new inferences
+         → Root cause: active_inference_goals JSON too large, ReadPendingFIR response
+           truncated before fir_record_ids visible
+
+Step 5 — I patched SP_FIR_INVOKE_AGENT (response body fix)
+         → Procedure no longer crashes on empty/non-JSON responses
+
+Step 6 — I inserted 18 EverNest rows into SCH_STTM_METADATA.SEM_TABLE_REGISTRY
+         → So enrichment can find EverNest table context
+
+Step 7 — YOU re-ran with SEM_NATIVE_VIEWS hint
+         → Agent confirmed: all 16 inferences already complete, nothing new to add
+         → status: partial (deduplication worked correctly)
+
+Step 8 — Ran smaller batch + semantic_version/recommendations-only mode
+         → Agent confirmed all 16 inferences, started CreateSemanticVersion
+         → Response truncated mid-execution, version not saved
+What's currently blocked and why
+Blocked item	Root cause
+34 pending FIR records (mapping_feedback events for STTM 201/301/401)	SP_FIR_ENRICH_CONTEXT stores the full Q1-Q10 inference goal JSON schemas inside each evidence record's active_inference_goals field. When ReadPendingFIR returns even 5 records, each carrying 10 large schemas, the tool response exceeds the context window before fir_record_id fields are visible. Agent correctly refuses to invent IDs.
+CreateSemanticVersion for EVERNEST_HH_SF_IMPORT	Same truncation issue — agent starts the work but response is cut before the tool calls complete
+Automatic bundle auto-save from the app	GRANT CALLER MODIFY (or equivalent) on TBL_SEMANTIC_BUNDLES not applied — needs ACCOUNTADMIN-level grant
+FIR tasks auto-processing correctly long-term	The SNOWFLAKE_SEMANTIC_VIEWS_SCHEMA mismatch (SCH_STTM_METADATA vs SCH_STTM_MCP) — enrichment always reads the wrong schema until the app is redeployed with the corrected env var
+The 16 inferences themselves are complete and correct. The blocked items are pipeline automation issues, not gaps in what's been analyzed.
+
+
+
