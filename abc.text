@@ -308,3 +308,36 @@ instead of repeating `--project-name`.
 ```
 
 After this, selecting the same or compatible source and target tables in the UI will retrieve the imported mapping, joins, CTE patterns, transformations, filters, semantic meanings, and FIR recommendations.
+ .\scripts\bootstrap_sttm_metadata_infra.ps1 -EnvFile ".\infra\snowflake\env\client.env"
+                                                                         
+Security warning
+Run only scripts that you trust. While scripts from the internet can be useful, this script can potentially harm your computer. If you trust this script, use the Unblock-File cmdlet to      
+allow the script to run without this warning message. Do you want to run C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\scripts\bootstrap_sttm_metadata_infra.ps1?       
+[D] Do not run  [R] Run once  [S] Suspend  [?] Help (default is "D"): R
+Bootstrapping STTM metadata infra into FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA
+Initiating login request with your identity provider. Press CTRL+C to abort and try again...
+Going to open: https://focuspartners.okta.com/app/snowflake/exk1vgkfp20874B0X1d8/sso/saml?SAMLRequest=lZJRb9owFIX%2FSuQ9J7YDItQCKgrtYCqDQVIq3tzEoV4cO7UdAv9%2BJpSpe2ilvVn2OdffvecObo%2Bl8A5MG67kEOAAAY%2FJVGVc7ocgiR%2F8PvCMpTKjQkk2BCdmwO1oYGgpKjKu7atcs7eaGeu5QtKQ9mEIai2JooYbImnJDLEp2YwXjyQMEKm0sipVAnywfO2gxjBtHeHVkhnu8F6trQiETdMETSdQeg9DhBBEN9CpzpJvV%2F3R9fSJHkPUPeudwslX72x3XF5G8BXWy0VkyCyOV%2F5quYmBN76iTpQ0dcn0hukDT1myfrwAGEewmG2S%2Bx%2Bx%2F32KcIRxYKRqckELlqqyqq2rGbgTzFkGhdpz1%2FZ8OgRVwbPlZJbvks6OrpIFej781tuXbX8S9XbLqChOqvfrXrzp9Vv6tE1S4D1dcw3Puc6NqdlcntO07gqFPR9FPu7FuEO6NwR1gxBHO%2BBNXZpcUts6r8i5SmtTUW2lqxmowtIWkVYV%2FEsP2bHAh32RVyHqR9079IyzPjRGwXPE4LI1pMXQo%2F%2BbxQB%2B9L6v30%2BXyHy6UoKnJ%2B9B6ZLazwPDAW5veObnrZSwknIxzjLNjHHBCaGaiWbUui23umYAji6%2F%2Frvnoz8%3D&RelayState=ver%3A3-hint%3A405384798871602-ETMsDgAAAZ9rMCFZABRBRVMvQ0JDL1BLQ1M1UGFkZGluZwEAABAAEIXlKE%2BKUgOKS0zRx6Xobi0AAACgIqRpynoDcMuMz19RVm4oXM7d%2BUF7skGuZEZKXxv3mdfk1lBgn%2BpO%2Fom7IUUOXY8%2FxKUxVRAqChP1vRBm3aIk7GrxuqoobNmoLDiZB62WsK9Fb4%2B90P0S0D67%2BzkSHhIFnTbLYZ3IFO9WarSaPI7PqPZnB2t2u6ithVaSUkLhG6zvpkAaW7BzRlI9xPqF5q0UcjxNENiVztc3jG0BIpCSsgAUWRlkm6seLF1MzyMZg1kYcYtJGDQ%3D to authenticate...
+A browser window should have opened for you to complete the login. If you can't see it, check existing browser windows, or your OS settings.
+[bootstrap-sttm-metadata] Uploading skill file infra\snowflake\skills\sttm_bundle_orchestration\SKILL.md to @"FFP_HDP_DLAB_DB_DEV"."SCH_STTM_METADATA"."STTM_AGENT_SKILLS"/skills/sttm_bundle_orchestration/
+Traceback (most recent call last):
+  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\scripts\bootstrap_sttm_metadata_infra.py", line 462, in <module>
+    raise SystemExit(main())
+                     ^^^^^^
+  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\scripts\bootstrap_sttm_metadata_infra.py", line 428, in main
+    upload_skills(connection, args.database, args.schema)
+  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\scripts\bootstrap_sttm_metadata_infra.py", line 282, in upload_skills
+    cursor.execute(statement)
+  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\.client-tools-venv\Lib\site-packages\snowflake\connector\cursor.py", line 1096, in execute
+    data = sf_file_transfer_agent.result()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\.client-tools-venv\Lib\site-packages\snowflake\connector\file_transfer_agent.py", line 782, in result
+    Error.errorhandler_wrapper(
+  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\.client-tools-venv\Lib\site-packages\snowflake\connector\errors.py", line 298, in errorhandler_wrapper
+    handed_over = Error.hand_to_other_handler(
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\.client-tools-venv\Lib\site-packages\snowflake\connector\errors.py", line 354, in hand_to_other_handler
+    cursor.errorhandler(connection, cursor, error_class, error_value)
+  File "C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench\.client-tools-venv\Lib\site-packages\snowflake\connector\errors.py", line 229, in default_errorhandler
+    raise error_class(
+snowflake.connector.errors.OperationalError: 253003: While putting file(s) there was an error: 'HEAD with url https://oyecjasfcb1stg.blob.core.windows.net/stageszz133128f5-f7c5-444d-b8f0-798549ace09a/skills/sttm_bundle_orchestration/SKILL.md?sv=2026-02-06&se=2026-07-16T15%3A49%3A08Z&skoid=d56083a5-278a-4904-b4cf-4c8c183f6148&sktid=1d482ae1-3b13-4805-b815-955cf48f64d1&skt=2026-07-16T13%3A49%3A08Z&ske=2026-07-23T13%3A48%3A08Z&sks=b&skv=2026-02-06&sr=c&sp=racwdl&sig=FACLG7GNMNf6tu4Dfzm63Gj%2F7bRBN0QSdi%2FxhlDKjQo%3D failed for exceeding maximum retries.', this might be caused by your access to the blob storage provider, or by Snowflake.
+PS C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench> 
