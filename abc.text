@@ -1,66 +1,137 @@
-No data needs to be deleted. Run this one-time reconciliation, then rerun bootstrap.
-1. Drop Legacy FIR Constraints
-From the repository root:
-$Snow = ".\.client-tools-venv\Scripts\snow.exe"
-$Connection = "<SNOWFLAKE_CONNECTION from client.env>"
+1. Prepare Configuration
+Ensure client.env contains:
+SNOWFLAKE_SEMANTIC_VIEWS_DATABASE=FOCUS_DB_2
+SNOWFLAKE_SEMANTIC_VIEWS_SCHEMA=STTM_MCP
+SNOWFLAKE_SEMANTIC_TABLE_VIEWS_TABLE=SEM_TABLE_VIEWS
+SNOWFLAKE_SEMANTIC_COLUMN_VIEWS_TABLE=SEM_COLUMN_VIEWS
+SNOWFLAKE_SEMANTIC_NATIVE_VIEWS_TABLE=SEM_NATIVE_VIEWS
+The importer reads services\sttm-builder\.env.local, so create it locally:
+Copy-Item `
+  .\infra\snowflake\env\client.env `
+  .\services\sttm-builder\.env.local `
+  -Force
+Do not commit either environment file.
+2. Prepare Python Once
+py -3.11 -m venv .\services\sttm-builder\.venv
 
-$FixSql = @'
-EXECUTE IMMEDIATE
-$$
-DECLARE
-    drop_sql STRING;
-    legacy_checks CURSOR FOR
-        SELECT tc.CONSTRAINT_NAME
-        FROM FFP_HDP_DLAB_DB_DEV.INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-        INNER JOIN FFP_HDP_DLAB_DB_DEV.INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc
-            ON cc.CONSTRAINT_CATALOG = tc.CONSTRAINT_CATALOG
-           AND cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
-           AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
-        WHERE UPPER(tc.TABLE_SCHEMA) = 'SCH_STTM_METADATA'
-          AND UPPER(tc.TABLE_NAME) = 'TBL_FIR_AGENT_RECOMMENDATIONS'
-          AND UPPER(tc.CONSTRAINT_TYPE) = 'CHECK'
-          AND (
-              UPPER(cc.CHECK_CLAUSE) LIKE '%TRIGGER_TYPE%'
-              OR UPPER(cc.CHECK_CLAUSE) LIKE '%RECOMMENDATION_TYPE%'
-          );
-BEGIN
-    FOR constraint_row IN legacy_checks DO
-        drop_sql :=
-            'ALTER TABLE FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.' ||
-            'TBL_FIR_AGENT_RECOMMENDATIONS DROP CONSTRAINT "' ||
-            REPLACE(constraint_row.CONSTRAINT_NAME, '"', '""') || '"';
+.\services\sttm-builder\.venv\Scripts\python.exe `
+  -m pip install -e .\services\sttm-builder
+Confirm FIR was deployed before the task failure:
+SHOW AGENTS LIKE 'AGT_FIR_SYSTEM' IN SCHEMA <METADATA_DB>.<METADATA_SCHEMA>;
+SHOW PROCEDURES LIKE 'SP_FIR_INVOKE_AGENT' IN SCHEMA <METADATA_DB>.<METADATA_SCHEMA>;
+3. Check Semantic Compatibility Views
+The current FIR procedures read these lightweight latest-record views:
+SHOW VIEWS LIKE 'LATEST_%' IN SCHEMA FOCUS_DB_2.STTM_MCP;
+You should see:
+LATEST_TABLE_VIEWS
+LATEST_COLUMN_VIEWS
+LATEST_NATIVE_VIEWS
+These do not copy semantic data. They select the latest active row from your existing SEM_* tables. If they are absent, the script can still be stored and published, but semantic-grounded FIR learning should wait until the views are created.
+4. Dry Run the Import
+Run once per mapping. Supply authoritative fully qualified physical tables:
+$python = ".\services\sttm-builder\.venv\Scripts\python.exe"
 
-        EXECUTE IMMEDIATE :drop_sql;
-    END FOR;
-END;
-$$;
-'@
+& $python .\scripts\load_client_fir_knowledge.py `
+  --project-id "401" `
+  --mapping-name "Household Migration" `
+  --mapping-description "Historical household migration imported from client SQL" `
+  --business-goal "Create the curated household target" `
+  --file "C:\ClientMappings\household.sql" `
+  --source-table-hint "SOURCE_DB.CRM.ACCOUNTS" `
+  --source-table-hint "SOURCE_DB.CRM.CONTACTS" `
+  --target-table-hint "TARGET_DB.CURATED.HOUSEHOLD" `
+  --create-mapping `
+  --publish `
+  --dry-run
+Use --project-name, --project-description, --project-domain, and --project-outcome instead of --project-id when creating a new project.
+Review the dry-run output for:
+Detected CTEs
+Source tables
+Target table
+Mapping row count
+context_key
+Publication intent
+5. Perform the Actual Import
+Run the same command without --dry-run:
+& $python .\scripts\load_client_fir_knowledge.py `
+  --project-id "401" `
+  --mapping-name "Household Migration" `
+  --mapping-description "Historical household migration imported from client SQL" `
+  --business-goal "Create the curated household target" `
+  --file "C:\ClientMappings\household.sql" `
+  --source-table-hint "SOURCE_DB.CRM.ACCOUNTS" `
+  --source-table-hint "SOURCE_DB.CRM.CONTACTS" `
+  --target-table-hint "TARGET_DB.CURATED.HOUSEHOLD" `
+  --create-mapping `
+  --publish `
+  --rebuild-search
+To create physical secure views for named CTEs, add:
+--materialize-ctes
+Use that only when the role can create the derived views and the CTE SQL is executable in the client environment. Nested CTEs, comments, joins, filters, windows, and transformations are learned as evidence even without materialization.
+6. Manually Run FIR
+Because tasks cannot run yet, execute this in Snowsight or Snow CLI:
+ALTER SESSION SET STATEMENT_TIMEOUT_IN_SECONDS = 3600;
 
-& $Snow sql -c $Connection -q $FixSql
-This removes only the obsolete TRIGGER_TYPE and RECOMMENDATION_TYPE checks. It preserves the table and every existing recommendation.
-2. Confirm Constraints Were Removed
-& $Snow sql -c $Connection -q @'
-SELECT
-    tc.CONSTRAINT_NAME,
-    cc.CHECK_CLAUSE
-FROM FFP_HDP_DLAB_DB_DEV.INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-INNER JOIN FFP_HDP_DLAB_DB_DEV.INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc
-    ON cc.CONSTRAINT_CATALOG = tc.CONSTRAINT_CATALOG
-   AND cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
-   AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
-WHERE UPPER(tc.TABLE_SCHEMA) = 'SCH_STTM_METADATA'
-  AND UPPER(tc.TABLE_NAME) = 'TBL_FIR_AGENT_RECOMMENDATIONS';
-'@
-Other checks such as confidence, status, and target-agent restrictions should remain. Only trigger/recommendation-type checks should have been removed.
-3. Rerun Bootstrap
-.\scripts\bootstrap_sttm_metadata_infra.ps1 `
-    -EnvFile ".\infra\snowflake\env\client.env"
-The bootstrap is idempotent. Previously created tables and uploaded skills are safe; it will continue through:
-Remaining FIR schema migration.
-Streams.
-All FIR procedures.
-Search services.
-All agents, including AGT_FIR_SYSTEM.
-FIR tasks and grants.
-4. Expected Completion
-You should eventually see:
+CALL <METADATA_DB>.<METADATA_SCHEMA>.SP_FIR_COLLECT_FEEDBACK();
+
+CALL <METADATA_DB>.<METADATA_SCHEMA>.SP_FIR_ENRICH_CONTEXT(100);
+
+CALL <METADATA_DB>.<METADATA_SCHEMA>.SP_FIR_INVOKE_AGENT(
+  OBJECT_CONSTRUCT(
+    'task_type', 'document_learning',
+    'batch_size', 100,
+    'processing_options', OBJECT_CONSTRUCT(
+      'collect_feedback', FALSE,
+      'generate_inferences', TRUE,
+      'create_semantic_versions', TRUE,
+      'generate_recommendations', TRUE,
+      'parse_documents', TRUE,
+      'apply_decay', FALSE
+    )
+  )
+);
+
+CALL <METADATA_DB>.<METADATA_SCHEMA>.SP_FIR_SCORE_RECOMMENDATIONS();
+The FIR agent call can take several minutes. It does not require EXECUTE TASK; it requires permission to call the procedures and agent. Snowflake allows procedures to be invoked directly using CALL. Snowflake procedure documentation
+7. Verify Learning
+SELECT *
+FROM <METADATA_DB>.<METADATA_SCHEMA>.TBL_FIR_ASSET_TABLE_REFERENCES
+ORDER BY CREATED_AT DESC;
+
+SELECT INFERENCE_TYPE, SUMMARY, CONFIDENCE, STATUS
+FROM <METADATA_DB>.<METADATA_SCHEMA>.TBL_WORKBENCH_INFERENCES
+ORDER BY CREATED_AT DESC;
+
+SELECT TARGET_AGENT, TRIGGER_TYPE, DISPLAY_MESSAGE, CONFIDENCE
+FROM <METADATA_DB>.<METADATA_SCHEMA>.TBL_FIR_AGENT_RECOMMENDATIONS
+WHERE STATUS = 'active'
+ORDER BY CREATED_AT DESC;
+For multiple CRM mappings such as Accounts, Contacts, Notes, and Household, run the importer separately for each mapping. That gives every source set and target its own published STTM and exact context_key, allowing the UI and Auto-map to retrieve the correct precedent later.
+
+
+20:37
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Approve for me
+
+5.6 TerraExtra High5.6 SolHigh
