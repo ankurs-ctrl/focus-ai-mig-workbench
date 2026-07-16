@@ -1,1 +1,66 @@
+No data needs to be deleted. Run this one-time reconciliation, then rerun bootstrap.
+1. Drop Legacy FIR Constraints
+From the repository root:
+$Snow = ".\.client-tools-venv\Scripts\snow.exe"
+$Connection = "<SNOWFLAKE_CONNECTION from client.env>"
 
+$FixSql = @'
+EXECUTE IMMEDIATE
+$$
+DECLARE
+    drop_sql STRING;
+    legacy_checks CURSOR FOR
+        SELECT tc.CONSTRAINT_NAME
+        FROM FFP_HDP_DLAB_DB_DEV.INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+        INNER JOIN FFP_HDP_DLAB_DB_DEV.INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc
+            ON cc.CONSTRAINT_CATALOG = tc.CONSTRAINT_CATALOG
+           AND cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+           AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+        WHERE UPPER(tc.TABLE_SCHEMA) = 'SCH_STTM_METADATA'
+          AND UPPER(tc.TABLE_NAME) = 'TBL_FIR_AGENT_RECOMMENDATIONS'
+          AND UPPER(tc.CONSTRAINT_TYPE) = 'CHECK'
+          AND (
+              UPPER(cc.CHECK_CLAUSE) LIKE '%TRIGGER_TYPE%'
+              OR UPPER(cc.CHECK_CLAUSE) LIKE '%RECOMMENDATION_TYPE%'
+          );
+BEGIN
+    FOR constraint_row IN legacy_checks DO
+        drop_sql :=
+            'ALTER TABLE FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.' ||
+            'TBL_FIR_AGENT_RECOMMENDATIONS DROP CONSTRAINT "' ||
+            REPLACE(constraint_row.CONSTRAINT_NAME, '"', '""') || '"';
+
+        EXECUTE IMMEDIATE :drop_sql;
+    END FOR;
+END;
+$$;
+'@
+
+& $Snow sql -c $Connection -q $FixSql
+This removes only the obsolete TRIGGER_TYPE and RECOMMENDATION_TYPE checks. It preserves the table and every existing recommendation.
+2. Confirm Constraints Were Removed
+& $Snow sql -c $Connection -q @'
+SELECT
+    tc.CONSTRAINT_NAME,
+    cc.CHECK_CLAUSE
+FROM FFP_HDP_DLAB_DB_DEV.INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+INNER JOIN FFP_HDP_DLAB_DB_DEV.INFORMATION_SCHEMA.CHECK_CONSTRAINTS cc
+    ON cc.CONSTRAINT_CATALOG = tc.CONSTRAINT_CATALOG
+   AND cc.CONSTRAINT_SCHEMA = tc.CONSTRAINT_SCHEMA
+   AND cc.CONSTRAINT_NAME = tc.CONSTRAINT_NAME
+WHERE UPPER(tc.TABLE_SCHEMA) = 'SCH_STTM_METADATA'
+  AND UPPER(tc.TABLE_NAME) = 'TBL_FIR_AGENT_RECOMMENDATIONS';
+'@
+Other checks such as confidence, status, and target-agent restrictions should remain. Only trigger/recommendation-type checks should have been removed.
+3. Rerun Bootstrap
+.\scripts\bootstrap_sttm_metadata_infra.ps1 `
+    -EnvFile ".\infra\snowflake\env\client.env"
+The bootstrap is idempotent. Previously created tables and uploaded skills are safe; it will continue through:
+Remaining FIR schema migration.
+Streams.
+All FIR procedures.
+Search services.
+All agents, including AGT_FIR_SYSTEM.
+FIR tasks and grants.
+4. Expected Completion
+You should eventually see:
