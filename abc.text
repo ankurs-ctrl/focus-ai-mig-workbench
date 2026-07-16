@@ -1,179 +1,30 @@
-1. Verify EverNest Records
-Run in Snowsight using the metadata database/schema:
-USE DATABASE FFP_HDP_DLAB_DB_DEV;
-USE SCHEMA SCH_STTM_METADATA;
-
-SELECT
-    FIR_RECORD_ID,
-    SOURCE_TYPE,
-    SOURCE_EVENT_TYPE,
-    PROJECT_ID,
-    STTM_ID,
-    PROCESSING_STAGE,
-    CONTEXT_KEY,
-    FEEDBACK_PAYLOAD:sql_asset_id::STRING AS SQL_ASSET_ID,
-    CREATED_AT
-FROM TBL_AGENT_FIR_360
-WHERE FEEDBACK_PAYLOAD:sql_asset_id::STRING =
-      '3abf76268adb34d1cb6caf9388e572de'
-   OR CONTEXT_KEY =
-      'ctx_003c4873ac994cc841c88307f02ce73b869f1a75'
-   OR STTM_ID = '401'
-ORDER BY CREATED_AT;
-Copy the returned FIR_RECORD_ID values for later verification.
-2. Prioritize EverNest
-UPDATE TBL_AGENT_FIR_360
-SET FEEDBACK_PAYLOAD = OBJECT_INSERT(
-        COALESCE(FEEDBACK_PAYLOAD, OBJECT_CONSTRUCT()),
-        'priority',
-        TRUE,
-        TRUE
-    ),
-    UPDATED_AT = CURRENT_TIMESTAMP()
-WHERE (
-    FEEDBACK_PAYLOAD:sql_asset_id::STRING =
-        '3abf76268adb34d1cb6caf9388e572de'
-    OR CONTEXT_KEY =
-        'ctx_003c4873ac994cc841c88307f02ce73b869f1a75'
-    OR STTM_ID = '401'
-)
-AND PROCESSING_STAGE IN ('pending', 'feedback_collected', 'failed');
-If any records show failed, reset only those EverNest records:
-UPDATE TBL_AGENT_FIR_360
-SET PROCESSING_STAGE = 'pending',
-    PROCESSING_ERROR = NULL,
-    UPDATED_AT = CURRENT_TIMESTAMP()
-WHERE (
-    FEEDBACK_PAYLOAD:sql_asset_id::STRING =
-        '3abf76268adb34d1cb6caf9388e572de'
-    OR CONTEXT_KEY =
-        'ctx_003c4873ac994cc841c88307f02ce73b869f1a75'
-    OR STTM_ID = '401'
-)
-AND PROCESSING_STAGE = 'failed';
-3. Enrich The Evidence
-CALL SP_FIR_ENRICH_CONTEXT(200);
-Confirm the EverNest evidence is ready:
-SELECT
-    f.FIR_RECORD_ID,
-    f.PROCESSING_STAGE,
-    e.EVIDENCE_STATUS,
-    e.CREATED_AT
-FROM TBL_AGENT_FIR_360 f
-LEFT JOIN TBL_FIR_CONTEXT_EVIDENCE e
-    ON e.EVIDENCE_CONTEXT_ID = f.EVIDENCE_CONTEXT_ID
-WHERE f.FEEDBACK_PAYLOAD:sql_asset_id::STRING =
-        '3abf76268adb34d1cb6caf9388e572de'
-   OR f.CONTEXT_KEY =
-        'ctx_003c4873ac994cc841c88307f02ce73b869f1a75'
-   OR f.STTM_ID = '401';
-Proceed when EVIDENCE_STATUS = 'ready'.
-4. Invoke FIR With EverNest Priority
-CALL SP_FIR_INVOKE_AGENT(
-    PARSE_JSON($$
-    {
-      "task_type": "document_learning",
-      "batch_size": 200,
-      "processing_options": {
-        "priority_asset_id": "3abf76268adb34d1cb6caf9388e572de",
-        "collect_feedback": false,
-        "generate_inferences": true,
-        "create_semantic_versions": true,
-        "generate_recommendations": true,
-        "apply_decay": false,
-        "parse_documents": true
-      },
-      "precomputation_context": {
-        "project_id": "4",
-        "sttm_id": "401",
-        "context_key": "ctx_003c4873ac994cc841c88307f02ce73b869f1a75",
-        "sql_asset_id": "3abf76268adb34d1cb6caf9388e572de",
-        "instruction": "Process the EverNest historical mapping first. Generate inferences and recommendations only from compatible EverNest evidence."
+{
+  "agent_invoked": true,
+  "agent_response": null,
+  "context_built": {
+    "activity_summary": {
+      "active_recommendations": 21,
+      "last_24h_by_source": {
+        "document_upload": 4,
+        "explicit": 14,
+        "implicit": 8,
+        "mapping_feedback": 20
       }
-    }
-    $$)
-);
-The call may take several minutes. Let it finish even if the worksheet appears idle.
-Important: the currently deployed reader still reads a global pending queue. priority_asset_id strongly directs the agent, but it is not a strict database-level filter.
-5. Check Generated Inferences
-SELECT
-    i.INFERENCE_ID,
-    i.INFERENCE_GOAL_ID,
-    i.INFERENCE_TYPE,
-    i.SUBJECT_KEY,
-    i.SUMMARY,
-    i.CONFIDENCE,
-    i.CONFIDENCE_BAND,
-    i.VALIDATION_STATUS,
-    i.CREATED_AT
-FROM TBL_WORKBENCH_INFERENCES i
-JOIN TBL_AGENT_FIR_360 f
-    ON f.INFERENCE_ID = i.INFERENCE_ID
-WHERE f.FEEDBACK_PAYLOAD:sql_asset_id::STRING =
-        '3abf76268adb34d1cb6caf9388e572de'
-   OR f.CONTEXT_KEY =
-        'ctx_003c4873ac994cc841c88307f02ce73b869f1a75'
-   OR f.STTM_ID = '401'
-ORDER BY i.CREATED_AT DESC;
-6. Check Generated Recommendations
-SELECT
-    r.AGENT_RECOMMENDATION_ID,
-    r.TARGET_AGENT,
-    r.TRIGGER_TYPE,
-    r.RECOMMENDATION_CATEGORY,
-    r.DISPLAY_MESSAGE,
-    r.CONFIDENCE,
-    r.RECOMMENDATION_PRIORITY,
-    r.STATUS,
-    r.CREATED_AT
-FROM TBL_FIR_AGENT_RECOMMENDATIONS r
-JOIN TBL_AGENT_FIR_360 f
-    ON f.FIR_RECORD_ID = r.FIR_RECORD_ID
-WHERE f.FEEDBACK_PAYLOAD:sql_asset_id::STRING =
-        '3abf76268adb34d1cb6caf9388e572de'
-   OR f.CONTEXT_KEY =
-        'ctx_003c4873ac994cc841c88307f02ce73b869f1a75'
-   OR f.STTM_ID = '401'
-ORDER BY r.CREATED_AT DESC;
-7. Score The New Recommendations
-CALL SP_FIR_SCORE_RECOMMENDATIONS();
-Finally, check the lineage:
-SELECT
-    PROCESSING_STAGE,
-    COUNT(*) AS RECORD_COUNT
-FROM TBL_AGENT_FIR_360
-WHERE FEEDBACK_PAYLOAD:sql_asset_id::STRING =
-        '3abf76268adb34d1cb6caf9388e572de'
-   OR CONTEXT_KEY =
-        'ctx_003c4873ac994cc841c88307f02ce73b869f1a75'
-   OR STTM_ID = '401'
-GROUP BY PROCESSING_STAGE;
-Successful records should finish at inference_generated, recommendation_created, or completed.
-
-
-2:34
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Approve for me
-
-5.6 TerraExtra High5.6 SolHigh
+    },
+    "pending_counts": {
+      "pending": 23
+    },
+    "streams_with_data": [
+      "STM_FIR_WORKBENCH_FEEDBACK",
+      "STM_FIR_STTM_ATTRIBUTES",
+      "STM_FIR_STTM_VERSIONS",
+      "STM_FIR_CLIENT_SQL_ASSETS"
+    ],
+    "unprocessed_document_count": 0
+  },
+  "errors": [
+    "Expecting value: line 1 column 1 (char 0)"
+  ],
+  "started_at": "2026-07-16T21:29:54.338198",
+  "status": "failed"
+}
