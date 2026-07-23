@@ -1,1 +1,61 @@
-Prepare one reusable household-level source for the EverNest household migration. Include eligible client households and the required household ownership, status, source-of-business, primary address, referral, legacy detail, mail-merge, review, RPC, household inclusion, and mapper outputs. Preserve the validated historical household exceptions and deduplication behavior.
+We reviewed the July 20–22 Snowflake usage. The environment consumed 83.39 credits, of which 82.32 were virtual-warehouse compute credits. Approximately 71% of the total three-day usage occurred on July 22.
+The main issue was that the Medium warehouse was being used for both heavy validation workloads and frequent lightweight operations such as metadata discovery, refresh, autosave, semantic/FIR retrieval, polling, stored procedures, agent-support queries, and manual testing. Medium consumes four times the hourly credits of an X-Small warehouse. Because these short operations occurred throughout the day, the warehouse remained active or repeatedly resumed even though users were not continuously using the application.
+The report attributes the usage across both direct user activity and the application: ANKURSINHA and SMITSHAH account for approximately 52.6 estimated credits combined, while the web application service account represents approximately 21.5 credits. Because the previous release did not include detailed workload query tags, these numbers cannot yet distinguish every application feature from manual or Snowsight activity.
+We have implemented the following corrective actions:
+Routine control and metadata work is routed to X-Small compute.
+Medium is reserved for explicit preview, validation, data-quality, test, publish, and DBT execution.
+Semantic bundles and FIR learning context are cached and reused.
+Concurrent duplicate requests are coalesced.
+Repeated connection-health SQL has been removed.
+Large SQL and semantic YAML are stored once as secured artifacts rather than repeatedly sent through agent conversations.
+Agent conversations automatically roll over while preserving context, preventing oversized repeated prompts.
+Workload-specific query tags, timeouts, resource monitors, and cost dashboards have been added.
+Warehouses will use short auto-suspend settings and separate cost thresholds.
+Following deployment, we will compare query history and warehouse metering against the previous release. The target is at least an 80% reduction in routine SQL volume, with the Medium warehouse remaining suspended unless a user explicitly performs a heavy execution or validation operation.
+Smaller version of this
+
+
+
+
+Show less
+
+0:23
+
+
+
+
+
+
+We reviewed the July 20–22 usage: 83.39 credits were consumed, including 82.32 warehouse-compute credits. Approximately 71% was consumed on July 22.
+The primary cause was the Medium warehouse handling both heavy workloads and frequent lightweight operations such as metadata loading, refreshes, polling, stored procedures, AI support queries, and manual testing. Medium costs approximately four times more per hour than X-Small, and repeated activity kept it active or caused frequent resumes.
+Usage came from both direct user activity and the application. The previous release did not have sufficient workload tagging to identify every query precisely.
+We have now:
+Routed routine work to X-Small warehouses.
+Reserved Medium for explicit execution and validation.
+Added semantic, FIR, and metadata caching.
+Removed duplicate and unnecessary requests.
+Added artifact storage for large SQL and YAML.
+Added conversation rollover, query tags, timeouts, auto-suspend controls, and cost monitoring.
+After deployment, we will compare usage against the previous release, targeting a significant reduction in routine query volume and Medium warehouse activity.
+
+
+0:24
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Ask for approval
