@@ -1,45 +1,56 @@
-From the client repository root in PowerShell:
-
-1. Upload, process, monitor, and approve through one workflow:
-
-```powershell
-.\scripts\manage_client_fir_learning.ps1 workflow `
-  --file ".\docs\01-EverNest-HHs-reference.sql" `
-  --project-id 1101 `
-  --target-table "FFP_HDP_CRM_MIG_DB_DEV.SCH_REDTAIL_EVERNEST_TARGET.EVERNEST_HH" `
-  --max-rounds 30
-```
-
-Replace the target FQN if necessary.
-
-2. The script will display:
-
-- SQL asset ID
-- FIR learning-job ID
-- Processing status
-- Generated findings and recommendations
-- Approval result
-
-3. To check the job later:
-
-```powershell
-.\scripts\manage_client_fir_learning.ps1 status `
-  --job-id "<LEARNING_JOB_ID>"
-```
-
-4. To continue monitoring:
-
-```powershell
-.\scripts\manage_client_fir_learning.ps1 watch `
-  --job-id "<LEARNING_JOB_ID>" `
-  --max-rounds 30
-```
-
-5. If it completed but was not approved:
-
-```powershell
-.\scripts\manage_client_fir_learning.ps1 approve `
-  --job-id "<LEARNING_JOB_ID>"
-```
-
-Use the original EverNest SQL, not the expanded derived-source SQL. Ensure the deployed `sttm-builder` service is healthy before starting.
+Demo Speaking Sequence
+1. Create the project — Taxonomy
+Definition: Taxonomy classifies data into predefined business domains.
+Say:
+“When we create a project, we provide a domain name and a business description. The domain establishes the taxonomy boundary—for example, Customer and Household, Advisor, or Migration. The description gives the system the project’s objective, vocabulary and scope. This ensures that everything we discover later is interpreted within the correct business context.”
+2. Create a mapping — Data
+Definition: Data is the physical information stored in tables, columns and files.
+Say:
+“Inside the project, we create a mapping for a specific migration use case. We select the physical source tables and target table involved in that flow. At this stage, we know where the data exists, but we are still building an understanding of what it means and how it should move.”
+3. Review tables and columns — Business-Term Extraction
+Definition: Business-term extraction identifies the business meaning represented by technical data.
+Say:
+“The application examines table names, column names, descriptions, SQL logic and available semantic metadata. From these technical assets, it identifies business concepts such as Household, Advisor, Address or Head of Household. This begins translating technical database terminology into language that the business can understand.”
+4. Match similar concepts — Node Resolution
+Definition: Node resolution recognizes when different names refer to the same business entity.
+Say:
+“Different systems frequently use different names for the same concept. One source may use REP_ID, another may use ADVISOR_ID, while another uses SERVICING_ADVISOR. Node resolution determines whether these names represent the same canonical Advisor entity, preventing duplicated or fragmented business meaning.”
+5. Review joins — Node Relationships
+Definition: Node relationships describe how resolved business entities are connected.
+Say:
+“Once the business entities are identified, we determine how they connect. SQL joins provide the structural evidence, while semantic metadata and previous learnings help explain the business purpose. Instead of seeing only two columns joined together, we can understand relationships such as Advisor services Household, Contact belongs to Household, or Household has an Address.”
+6. Explain the combined meaning — Ontology
+Definition: Ontology defines business entities, what they mean and how they relate.
+Say:
+“When the entities have been resolved and the relationships have been understood, they form the business ontology. Taxonomy tells us where a concept belongs; ontology tells us what that concept means and how it interacts with other concepts. This creates a connected business model rather than just a collection of tables.”
+7. Upload SQL — Lineage
+Definition: Lineage traces where data originates and how it is transformed.
+Say:
+“When an existing SQL script is uploaded, the deterministic parser first analyzes exactly what the SQL does. It identifies physical sources, CTEs, subqueries, joins, filters, transformations and final target columns. It then traces each target column back through the SQL to its physical source wherever the script provides enough information.”
+8. Assemble context — Semantic Bundle
+Definition: A semantic bundle packages the relevant technical and business context for one mapping.
+Say:
+“The application combines the selected sources, target, relationships, derived sources, SQL lineage and available semantic views into a mapping-specific semantic bundle. It can also include the project context, previous mappings and existing approved knowledge. This means FIR receives a complete business and technical picture, rather than analyzing an isolated SQL file.”
+9. Submit for FIR learning — Semantic Enrichment
+Definition: Semantic enrichment combines technical structure with business and historical evidence.
+Say:
+“When we submit the mapping for offline learning, FIR performs the deeper analysis. It combines deterministic SQL lineage with semantic views, project context, previous mappings and approved learnings. From that evidence, it generates draft findings at the table, column, relationship, transformation and derived-source levels, along with its rationale, confidence and validation requirements.”
+10. Review the findings — HITL
+Definition: HITL means a human approves, rejects or corrects the system’s findings.
+Say:
+“These findings remain drafts because the system should not turn an interpretation into enterprise truth automatically. Through Human in the Loop, a reviewer can inspect the evidence, approve correct findings, reject incorrect ones or provide corrections. That feedback also helps improve future recommendations.”
+11. Publish — Semantic Layer
+Definition: The semantic layer provides a consistent, business-friendly representation of data.
+Say:
+“Once the mapping and its findings are reviewed and published, the approved knowledge contributes to the curated semantic layer. This provides consistent definitions for dimensions, measures, keys, grain, relationships and transformation rules. Reports, applications and agents can therefore use the same trusted business interpretation.”
+12. Connect approved knowledge — Knowledge Graph
+Definition: A knowledge graph connects approved entities, relationships, mappings and evidence.
+Say:
+“The current Knowledge Graph screen primarily shows structural lineage—the sources, CTEs, transformations and targets. As findings are semantically enriched and approved, they contribute to the broader business knowledge graph, connecting physical assets to business terms, canonical entities, relationships, semantic definitions and supporting evidence.”
+13. Reuse the knowledge — Agents
+Definition: Agents use approved knowledge to make recommendations and complete tasks.
+Say:
+“This is where the approach becomes continuously valuable. When another user creates a mapping involving the same or related tables, agents can reuse previously approved entities, relationships and mapping patterns. They do not need to rediscover the business meaning from scratch, which results in faster and more consistent recommendations.”
+Closing
+“The complete journey is Data → Taxonomy → Business-Term Extraction → Node Resolution → Node Relationships → Ontology → Semantic Bundle → Semantic Enrichment → HITL → Semantic Layer → Knowledge Graph → Agents.  
+We begin with physical data and classify it within the correct business domain. We extract business terms, resolve them into canonical entities and understand their relationships. FIR then combines the structural and semantic evidence to generate draft knowledge. Human review determines what becomes trusted, and that approved knowledge enriches the semantic layer and knowledge graph. Future agents can then reuse it instead of rebuilding the same understanding for every migration.”
