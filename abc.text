@@ -1,56 +1,257 @@
-Demo Speaking Sequence
-1. Create the project — Taxonomy
-Definition: Taxonomy classifies data into predefined business domains.
-Say:
-“When we create a project, we provide a domain name and a business description. The domain establishes the taxonomy boundary—for example, Customer and Household, Advisor, or Migration. The description gives the system the project’s objective, vocabulary and scope. This ensures that everything we discover later is interpreted within the correct business context.”
-2. Create a mapping — Data
-Definition: Data is the physical information stored in tables, columns and files.
-Say:
-“Inside the project, we create a mapping for a specific migration use case. We select the physical source tables and target table involved in that flow. At this stage, we know where the data exists, but we are still building an understanding of what it means and how it should move.”
-3. Review tables and columns — Business-Term Extraction
-Definition: Business-term extraction identifies the business meaning represented by technical data.
-Say:
-“The application examines table names, column names, descriptions, SQL logic and available semantic metadata. From these technical assets, it identifies business concepts such as Household, Advisor, Address or Head of Household. This begins translating technical database terminology into language that the business can understand.”
-4. Match similar concepts — Node Resolution
-Definition: Node resolution recognizes when different names refer to the same business entity.
-Say:
-“Different systems frequently use different names for the same concept. One source may use REP_ID, another may use ADVISOR_ID, while another uses SERVICING_ADVISOR. Node resolution determines whether these names represent the same canonical Advisor entity, preventing duplicated or fragmented business meaning.”
-5. Review joins — Node Relationships
-Definition: Node relationships describe how resolved business entities are connected.
-Say:
-“Once the business entities are identified, we determine how they connect. SQL joins provide the structural evidence, while semantic metadata and previous learnings help explain the business purpose. Instead of seeing only two columns joined together, we can understand relationships such as Advisor services Household, Contact belongs to Household, or Household has an Address.”
-6. Explain the combined meaning — Ontology
-Definition: Ontology defines business entities, what they mean and how they relate.
-Say:
-“When the entities have been resolved and the relationships have been understood, they form the business ontology. Taxonomy tells us where a concept belongs; ontology tells us what that concept means and how it interacts with other concepts. This creates a connected business model rather than just a collection of tables.”
-7. Upload SQL — Lineage
-Definition: Lineage traces where data originates and how it is transformed.
-Say:
-“When an existing SQL script is uploaded, the deterministic parser first analyzes exactly what the SQL does. It identifies physical sources, CTEs, subqueries, joins, filters, transformations and final target columns. It then traces each target column back through the SQL to its physical source wherever the script provides enough information.”
-8. Assemble context — Semantic Bundle
-Definition: A semantic bundle packages the relevant technical and business context for one mapping.
-Say:
-“The application combines the selected sources, target, relationships, derived sources, SQL lineage and available semantic views into a mapping-specific semantic bundle. It can also include the project context, previous mappings and existing approved knowledge. This means FIR receives a complete business and technical picture, rather than analyzing an isolated SQL file.”
-9. Submit for FIR learning — Semantic Enrichment
-Definition: Semantic enrichment combines technical structure with business and historical evidence.
-Say:
-“When we submit the mapping for offline learning, FIR performs the deeper analysis. It combines deterministic SQL lineage with semantic views, project context, previous mappings and approved learnings. From that evidence, it generates draft findings at the table, column, relationship, transformation and derived-source levels, along with its rationale, confidence and validation requirements.”
-10. Review the findings — HITL
-Definition: HITL means a human approves, rejects or corrects the system’s findings.
-Say:
-“These findings remain drafts because the system should not turn an interpretation into enterprise truth automatically. Through Human in the Loop, a reviewer can inspect the evidence, approve correct findings, reject incorrect ones or provide corrections. That feedback also helps improve future recommendations.”
-11. Publish — Semantic Layer
-Definition: The semantic layer provides a consistent, business-friendly representation of data.
-Say:
-“Once the mapping and its findings are reviewed and published, the approved knowledge contributes to the curated semantic layer. This provides consistent definitions for dimensions, measures, keys, grain, relationships and transformation rules. Reports, applications and agents can therefore use the same trusted business interpretation.”
-12. Connect approved knowledge — Knowledge Graph
-Definition: A knowledge graph connects approved entities, relationships, mappings and evidence.
-Say:
-“The current Knowledge Graph screen primarily shows structural lineage—the sources, CTEs, transformations and targets. As findings are semantically enriched and approved, they contribute to the broader business knowledge graph, connecting physical assets to business terms, canonical entities, relationships, semantic definitions and supporting evidence.”
-13. Reuse the knowledge — Agents
-Definition: Agents use approved knowledge to make recommendations and complete tasks.
-Say:
-“This is where the approach becomes continuously valuable. When another user creates a mapping involving the same or related tables, agents can reuse previously approved entities, relationships and mapping patterns. They do not need to rediscover the business meaning from scratch, which results in faster and more consistent recommendations.”
-Closing
-“The complete journey is Data → Taxonomy → Business-Term Extraction → Node Resolution → Node Relationships → Ontology → Semantic Bundle → Semantic Enrichment → HITL → Semantic Layer → Knowledge Graph → Agents.  
-We begin with physical data and classify it within the correct business domain. We extract business terms, resolve them into canonical entities and understand their relationships. FIR then combines the structural and semantic evidence to generate draft knowledge. Human review determines what becomes trusted, and that approved knowledge enriches the semantic layer and knowledge graph. Future agents can then reuse it instead of rebuilding the same understanding for every migration.”
+So did we update our autosave metadata tables? where do mappings save and write? and does automapping agent also update semantic bundles or read from tbl_Sematnic_bunldes?
+
+
+
+
+
+
+14:53
+
+
+
+
+
+
+Worked for 5m 22s
+
+
+
+Yes—the autosave flow and metadata structure are aligned with the latest mapping changes, including Project Values/hardcoded variables.
+Where mappings are saved
+Stage	Snowflake storage	What is saved
+Editing/autosave	TBL_WORKSPACE_SNAPSHOTS	Complete restorable UI workspace: tables, target, relationships, derived sources, mapping rows, SQL, variables, semantic bundle IDs
+Current mapping	TBL_STTM.DRAFT_PAYLOAD	Latest complete draft
+Selected sources	TBL_STTM_SOURCES	Physical and derived sources as draft rows
+Column mappings	TBL_STTM_ATTRIBUTES	Target column, source columns, transformations, confidence, status and mapping mode
+Project Values	TBL_PROJECT_ATTRIBUTES	Project-level hardcoded/variable names and their values
+Published version	TBL_STTM_VERSIONS	Immutable published snapshot/version
+
+For a Project Value mapping, TBL_STTM_ATTRIBUTES.CONDITION stores:
+{
+  "mapping_mode": "attribute",
+  "attribute_name": "TransactionFirmID",
+  "constant_value": "...",
+  "semantic_bundle_id": "...",
+  "semantic_bundle_hash": "..."
+}
+A normal literal uses mapping_mode: "constant", while a source-column mapping uses mapping_mode: "source".
+Autosave now calculates a context hash and skips the database write when nothing important changed. It does not save on every render or mouse interaction. The relevant implementation is in [project_service.py (line 1212)](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/services/sttm-builder/app/core/project_service.py:1212), and the canonical DDL is in [create-table-ddl.sql (line 355)](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/infra/snowflake/create-table-ddl.sql:355).
+What Auto-mapping does with semantic bundles
+Auto-mapping both benefits from the bundle and can cause the application to refresh it, but the agent itself does not directly write to TBL_SEMANTIC_BUNDLES.
+The flow is:
+The application receives selected sources, target, derived sources, relationships and columns.
+SemanticContextService calculates the bundle’s selection key.
+It first checks memory cache.
+It then checks TBL_SEMANTIC_BUNDLES for an exact existing bundle.
+If it does not exist, the service composes and persists a new raw semantic bundle.
+The resolved semantic context, bundle ID and reading instructions are passed to AGT_SOURCE_MAPPING.
+The Auto-mapping agent reads that supplied semantic evidence and returns proposed mappings.
+Accepted mappings are saved through the regular autosave/publish pipeline.
+Therefore:
+Reads: Yes, Auto-map uses information originating from TBL_SEMANTIC_BUNDLES.
+Direct agent updates: No, AGT_SOURCE_MAPPING does not directly modify the table.
+Application updates: Yes, SemanticContextService can MERGE a newly composed or refreshed bundle into TBL_SEMANTIC_BUNDLES before dispatching Auto-map.
+Mapping changes: Saved mappings reference the bundle ID/hash, but ordinary autosave does not rewrite the bundle artifact.
+Curated learning: Approval/publishing and FIR curation are separate controlled processes; an unapproved Auto-map suggestion does not silently become curated semantic knowledge.
+That bundle resolution happens in [auto_mapping.py (line 390)](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/services/sttm-builder/app/routers/auto_mapping.py:390), while durable bundle reads/writes happen in [semantic_context.py (line 139)](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/services/sttm-builder/app/core/semantic_context.py:139).
+
+
+14:58
+
+
+
+
+
+
+
+so tbl_Agent_Artifacts hows that used?
+
+
+
+
+
+
+14:59
+
+
+
+
+
+
+TBL_AGENT_ARTIFACTS is the audit and handoff table for outputs produced by agents. It does not store the authoritative mapping itself.
+It stores items such as:
+Auto-map recommendations
+Suggested transformations
+SQL repairs
+Validation findings
+DBT conversion results
+Generated test cases
+FIR recommendations or inferences
+The context and semantic bundle used to generate them
+A typical record connects:
+Agent output
+  → request/session
+  → project and STTM
+  → workspace snapshot
+  → semantic bundle
+  → affected mapping entities
+  → draft/accepted/rejected status
+How it is used
+An agent runs and generates structured output.
+The output is saved in TBL_AGENT_ARTIFACTS with fields such as:AGENT_NAME
+ARTIFACT_TYPE
+ARTIFACT_STATUS
+ENTITY_TYPE and ENTITY_IDS
+SNAPSHOT_ID
+SEMANTIC_BUNDLE_ID
+CONTEXT_KEY
+artifact payload, evidence and validation information
+
+The UI can show that artifact as a recommendation or generated result.
+When the user accepts it, the actual change is written into canonical tables such as TBL_STTM_ATTRIBUTES.
+The artifact remains as provenance: which agent suggested the change, using which evidence and context.
+Important distinction
+Table	Purpose
+TBL_AGENT_ARTIFACTS	Draft/generated agent output and audit trail
+TBL_STTM_ATTRIBUTES	Current authoritative column mappings
+TBL_STTM_SOURCES	Current selected sources
+TBL_STTM_VERSIONS	Immutable published mapping versions
+TBL_SEMANTIC_BUNDLES	Semantic context supplied to agents
+FIR recommendation tables	Reusable approved learnings and recommendations
+
+Autosave records agent artifacts when they are included in the autosave request. You can see that call in [project_service.py (line 1307)](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/services/sttm-builder/app/core/project_service.py:1307).
+So, in simple terms: TBL_AGENT_ARTIFACTS stores what the agent produced; the STTM tables store what the user actually accepted.
+
+
+14:59
+
+
+
+
+
+
+
+was this newly added as well?
+
+
+
+
+
+
+15:00
+
+
+
+
+
+
+Worked for 54s
+
+
+
+Yes. TBL_AGENT_ARTIFACTS was added as part of our newer workbench reliability and agent-intelligence upgrade; it was not part of the older R7-style metadata model.
+However, distinguish these two tables:
+TBL_AGENT_ARTIFACTS: stores completed/draft agent-generated outputs, evidence, context and approval status.
+TBL_AGENT_ARTIFACT_JOBS: newer durable job tracking for long-running DBT and test-case generation—queued, running, completed or failed.
+The recent Project Value change also added TBL_PROJECT_ATTRIBUTES, but it did not create TBL_AGENT_ARTIFACTS.
+So the client environment must run the latest bootstrap/DDL to create these tables. The definitions are included in [create-table-ddl.sql](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/infra/snowflake/create-table-ddl.sql). Running the bootstrap is designed to be additive through CREATE TABLE IF NOT EXISTS and should preserve existing mappings.
+
+
+15:01
+
+
+
+
+
+
+
+and most of the things we decided to cahce in browser only right - waht all are those? and for how much time it peprsists, also for ex leets say I opened selection page chose some databse and taschema and table and then went to mapping page, but then came back to selection page, will I have to load the. databse schmea and table again in left sisdebar? 
+
+
+
+
+
+
+15:02
+
+
+
+
+
+
+Worked for 2m 51s
+
+
+
+We kept browser caching mainly for speed and navigation continuity. Important mapping data is also autosaved to Snowflake; it is not browser-only.
+What is cached in the browser
+Data	Browser location	Persistence
+Current mapping workspace	localStorage	No fixed expiry; survives refresh, tab close and browser restart
+Selected sources and target	localStorage + Redux	Same as workspace
+Loaded database/schema/table tree	Redux and normally localStorage	Retained during navigation; may be reloaded after cache reset or storage compaction
+Mapping rows, relationships and derived-source selections	localStorage + Snowflake autosave	Browser recovery plus durable backend copy
+SQL draft and compiled SQL	localStorage when small enough + Snowflake snapshot	No browser expiry; large SQL may be omitted from browser storage
+Agent chat history	localStorage	Up to 30 chat sessions; workspace snapshot keeps the latest 12 messages
+UI preferences	localStorage	No fixed expiry
+Table columns and relationship metadata	In-memory cache	10 minutes
+Semantic bundle response	In-memory cache	10 minutes
+Active semantic bundle identity	sessionStorage	Until the browser tab/session closes
+Database-list freshness marker	Redux/workspace	5 minutes before it can refresh
+Project list/summary	sessionStorage	30 seconds
+Authentication lookup	Memory	5 minutes
+Uploaded SQL handoff	sessionStorage	One-time; removed after the mapping page consumes it
+
+If browser storage becomes too large, the app deliberately removes reloadable content first:
+Database catalog trees
+Full semantic evidence
+Preview rows
+Large SQL strings
+Large derived-source SQL
+It retains the important selections, mapping rows, identifiers and backend snapshot pointers.
+Your selection → mapping → back example
+If you:
+Open Selection.
+Expand a database and schema.
+Load tables.
+Select sources and a target.
+Go to Mapping.
+Return to Selection.
+You should not need to fetch the database, schema and tables again. The Redux workspace remains alive, and the schemasLoaded/tablesLoaded markers prevent duplicate requests. Your selected tables and target also remain selected.
+The visual tree may occasionally return in a collapsed state if the component itself is remounted, but expanding it should display already cached tables without another Snowflake call.
+After a full browser refresh:
+The app first restores the scoped workspace from localStorage.
+For an existing mapping, it can restore the authoritative workspace from the backend snapshot.
+If browser storage had to use its compact fallback, the catalog may reload, but selected tables and mappings should still be restored.
+After more than 5–10 minutes, the application may refresh metadata in the background to avoid showing stale Snowflake schemas. That refresh should not remove the selected tables or mapping work.
+So the short answer is: normal back navigation should be immediate and should not require reloading the sidebar hierarchy. Browser caching provides speed; Snowflake autosave provides recovery and durability.
+
+
+15:05
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Approve for me
+
+
+
+
+
+
+
+5.6 TerraExtra High5.6 SolLight
