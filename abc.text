@@ -1,3 +1,16 @@
+In my client avd, I asked Coco code, to analyze my code, my snowfleka env and understand why app runs slow, and each endpoint and agent responses, the following is what the coco analysed and gave recommendations:
+THis is the plan coco created, I want you to analyze this and create a plan. 
+
+But remember, we dont want to break things, we just want to optimize and remove bottle necks. 
+The quality should only improve whether it would be response time, parallel executions or ai response . it should not degrade. 
+
+Also in client avd I will ask them for a new compute pool for auto mapping but for now everyhting is using ssame compute pool. 
+
+And For everything I gave same warehouse and not medium as last time it ran out of credits, we just want to make sure that medium if we want to use, then it gives us great advantage and optimizes and we dont use for eveyrhting or small repeated metadataqueries 
+
+generate a plan for this
+
+
 
 Safe, Cost-Controlled Workbench Performance Plan
 Summary
