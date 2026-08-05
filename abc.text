@@ -1,257 +1,162 @@
-So did we update our autosave metadata tables? where do mappings save and write? and does automapping agent also update semantic bundles or read from tbl_Sematnic_bunldes?
+# BBI AI Migration Workbench — Master Performance Plan
+
+**Evidence base:** full read of backend (`services/sttm-builder/app`), frontend (`frontend/src`), SPCS specs + deploy scripts, **plus live Snowflake introspection** of your account (`MHSUEJT-GD01711`): compute pools, service containers, warehouse config, 3 days of `QUERY_HISTORY`, `WAREHOUSE_LOAD_HISTORY`, semantic registry coverage, FK constraints, and cache-table population. Tags: **[LIVE]** = verified in Snowflake, **[CODE]** = verified in source.
+
+---
+
+## 1. Root-cause summary
+
+| # | Issue | Evidence | Cost |
+|---|---|---|---|
+| 1 | Webapp packed on 1 small node; **unused CoCo sidecar running**; `MAX_INSTANCES=1` | **[LIVE]** 4 containers incl. `coco-agent` READY; `CPU_X64_S`, 2 active nodes | Serializes the parallel request burst → inflates *everything* |
+| 2 | **Automap shares the webapp pool** | **[LIVE]** both on `WORKBENCH_COMPUTE_POOL_DEV`; `client.env:72,78` identical | Batch work starves interactive app |
+| 3 | `SP_FIR_GET_AGENT_RECOMMENDATIONS` on **every chat turn** | **[LIVE]** 38 calls/3d — avg **6.3s**, p95 9.8s, max 11.5s, tag `workload:"control"` | ~5–10s dead time before the AI speaks |
+| 4 | `SP_GET_TABLE_RELATIONSHIPS` — **100% redundant** | **[LIVE]** zero FOREIGN KEYs in all source schemas → proc returns empty; fires for 29% of tables (44/154); measured 3.5–7s | Pure waste, ~7s |
+| 5 | Learning context = **~12 independent queries run serially** | **[CODE]** `learning_retrieval.py:370-451` | ~10–16s cold |
+| 6 | `prepare` runs semantic → learning **serially** | **[CODE]** `prepared_context.py:313-369` | Adds cold-build time |
+| 7 | Autosave = **8–10 sequential writes** in-request | **[CODE]** `project_service.py:1260-1376` + **[LIVE]** waterfall 10–14s | UI blocks on analytics writes |
+| 8 | Agent latency = assembly + tool hops + big outputs | **[LIVE]** streams 539/179 kB at 30s/42s/1.1min; sub-agent procs ~4.7s | Perceived "AI is slow" |
+| 9 | Chat markdown re-parsed **per token** (O(n²)) | **[CODE]** `ai-agent-panel.tsx:188-404`, `sttm-builder-slice.ts:3566` | Jank on long streams |
+| 10 | **Prepared-context L2 cache barely populated** | **[LIVE]** 4 rows, last write Jul 28 (vs semantic 27 rows written today) | Cold rebuilds; worsens with 2 instances |
+| 11 | Session TTL 300s, no reconnect on OAuth path, no evict on refresh | **[CODE]** `client.env:183`, `snowflake.py:349` | Extra session rebuilds; reliability risk |
+| 12 | `/sttm/builder/[id]` is a **dead stub**; identity via localStorage only | **[CODE]** returns `<></>` | Reload/incognito loses draft |
 
+**Explicitly ruled out:** warehouse sizing as a *queuing* problem — **[LIVE]** queued time ≈0ms, load ≈idle. The XS is not congested; the procs are **execution-bound**, which is why a Medium still helps.
 
+---
 
+## 2. Cross-cutting decisions
 
+### Parallelization matrix
+| Parallelize | Keep sequential |
+|---|---|
+| The ~11 learning sub-queries **after** `_get_link_scope` | `_get_link_scope` first (feeds linked ids) |
+| `semantic` ‖ `learning` in `prepare._build` | The agent stream (single LLM call) |
+| Autosave analytics writes → background | Core snapshot write before the STTM `UPDATE` referencing it |
+| (client already parallel) attributes ‖ relationships | DDL / `ensure_storage` |
 
+**Constraint:** Snowpark `Session` is not thread-safe for concurrent queries → use a **small connection pool, one connection per worker thread**.
 
-14:53
+### Warehouse allocation (one Medium available)
+| Workload | Target | Rationale |
+|---|---|---|
+| **CONTROL** | **Medium** | Runs the FIR recs proc + the parallel learning fan-out + autosave. *Biggest win — the slow procs are tagged `control`.* |
+| **AGENT** | **Medium** | Cortex analyst/agent tool SQL (~4–5s) on the interactive path |
+| **EXECUTION** | **Medium** | SQL preview / derived-source validation |
+| **AUTOMAP** | keep **XS** | Batch — must not contend with interactive |
 
+**Make the Medium multi-cluster (MIN 1 / MAX 3).** Parallelizing learning sends ~11 concurrent queries at CONTROL; a single cluster would re-serialize them. (Your XS is already `MAX_CLUSTER_COUNT=3` — match it.)
 
+---
 
+## 3. PHASE 0 — TODAY (ops only, no rebuild, ~1 hour)
 
+| Step | Change | Expected gain | Risk / Rollback |
+|---|---|---|---|
+| 0.1 | **Remove the `coco-agent` container** from `webapp.yaml.tmpl:102-125`, re-render, `ALTER SERVICE … FROM SPECIFICATION` | frees ~0.5–1 CPU immediately | None (unused). Rollback: re-add container |
+| 0.2 | `sttm-builder` resources → `requests: cpu 1`, `limits: cpu 3` | less GIL/CPU throttling → real concurrency | Low. Rollback: revert spec |
+| 0.3 | `ALTER SERVICE … SET MIN_INSTANCES=2, MAX_INSTANCES=2` | parallel request bursts | Pool is shared — watch capacity. Note: **per-instance L1 caches** (see 2.4) |
+| 0.4 | `SNOWFLAKE_CONTROL/AGENT/EXECUTION_WAREHOUSE` → **Medium (multi-cluster)**; leave `AUTO_MAPPING_WAREHOUSE` on XS | procs ~6s → ~3s | None functionally. Rollback: env revert |
+| 0.5 | `SNOWFLAKE_USER_SESSION_CACHE_TTL_SECONDS` 300 → **1800** | fewer caller-rights session rebuilds | None |
 
+**Then re-measure** the network waterfall + `x-workbench-timing-*` headers. This separates *contention* from *proc cost* and calibrates Phase 1.
 
-Worked for 5m 22s
+---
 
+## 4. PHASE 1 — CODE DROP 1 (the structural wins)
 
+### 1.1 Remove `SP_GET_TABLE_RELATIONSHIPS` from the hot path — *highest value / lowest risk*
+- **Where:** `table_selection.py:327-333` (the `if not payload and len(tables) <= 3` fallback).
+- **Why safe:** **[LIVE]** your source schemas have **PRIMARY KEYs but zero FOREIGN KEYs**; the proc reads only FKs → it returns empty 100% of the time. Output is identical to today.
+- **How:** delete/flag-gate the fallback. For tables with `HAS_LOW_CONFIDENCE_JOINS=TRUE` (29%), make a **product decision**: surface low-confidence joins with a "needs review" badge, or show none — but don't call a 5s empty proc.
+- **Gain:** −3.5–7s on the relationship step. **Rollback:** env flag to re-enable.
 
-Yes—the autosave flow and metadata structure are aligned with the latest mapping changes, including Project Values/hardcoded variables.
-Where mappings are saved
-Stage	Snowflake storage	What is saved
-Editing/autosave	TBL_WORKSPACE_SNAPSHOTS	Complete restorable UI workspace: tables, target, relationships, derived sources, mapping rows, SQL, variables, semantic bundle IDs
-Current mapping	TBL_STTM.DRAFT_PAYLOAD	Latest complete draft
-Selected sources	TBL_STTM_SOURCES	Physical and derived sources as draft rows
-Column mappings	TBL_STTM_ATTRIBUTES	Target column, source columns, transformations, confidence, status and mapping mode
-Project Values	TBL_PROJECT_ATTRIBUTES	Project-level hardcoded/variable names and their values
-Published version	TBL_STTM_VERSIONS	Immutable published snapshot/version
+### 1.2 Parallelize the learning fan-out — *biggest latency lever*
+- **Where:** `learning_retrieval.py:370-451`.
+- **How:** run `_get_link_scope` first; then execute the remaining ~11 independent calls in a `ThreadPoolExecutor` (size ~6–8) with a **connection pool** (one connection per worker). Preserve result-merge order and existing L1/L2 caching + build locks.
+- **Gain:** ~16s → ~max(single) ≈ 9s now, **≈2s** after 2.1.
+- **Risk:** thread-safety (handled by the pool) + connection pressure (bounded by pool size). **Rollback:** flag `LEARNING_PARALLEL_ENABLED=false`.
 
-For a Project Value mapping, TBL_STTM_ATTRIBUTES.CONDITION stores:
-{
-  "mapping_mode": "attribute",
-  "attribute_name": "TransactionFirmID",
-  "constant_value": "...",
-  "semantic_bundle_id": "...",
-  "semantic_bundle_hash": "..."
-}
-A normal literal uses mapping_mode: "constant", while a source-column mapping uses mapping_mode: "source".
-Autosave now calculates a context hash and skips the database write when nothing important changed. It does not save on every render or mouse interaction. The relevant implementation is in [project_service.py (line 1212)](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/services/sttm-builder/app/core/project_service.py:1212), and the canonical DDL is in [create-table-ddl.sql (line 355)](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/infra/snowflake/create-table-ddl.sql:355).
-What Auto-mapping does with semantic bundles
-Auto-mapping both benefits from the bundle and can cause the application to refresh it, but the agent itself does not directly write to TBL_SEMANTIC_BUNDLES.
-The flow is:
-The application receives selected sources, target, derived sources, relationships and columns.
-SemanticContextService calculates the bundle’s selection key.
-It first checks memory cache.
-It then checks TBL_SEMANTIC_BUNDLES for an exact existing bundle.
-If it does not exist, the service composes and persists a new raw semantic bundle.
-The resolved semantic context, bundle ID and reading instructions are passed to AGT_SOURCE_MAPPING.
-The Auto-mapping agent reads that supplied semantic evidence and returns proposed mappings.
-Accepted mappings are saved through the regular autosave/publish pipeline.
-Therefore:
-Reads: Yes, Auto-map uses information originating from TBL_SEMANTIC_BUNDLES.
-Direct agent updates: No, AGT_SOURCE_MAPPING does not directly modify the table.
-Application updates: Yes, SemanticContextService can MERGE a newly composed or refreshed bundle into TBL_SEMANTIC_BUNDLES before dispatching Auto-map.
-Mapping changes: Saved mappings reference the bundle ID/hash, but ordinary autosave does not rewrite the bundle artifact.
-Curated learning: Approval/publishing and FIR curation are separate controlled processes; an unapproved Auto-map suggestion does not silently become curated semantic knowledge.
-That bundle resolution happens in [auto_mapping.py (line 390)](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/services/sttm-builder/app/routers/auto_mapping.py:390), while durable bundle reads/writes happen in [semantic_context.py (line 139)](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/services/sttm-builder/app/core/semantic_context.py:139).
+### 1.3 Run `semantic ‖ learning` in `prepare`
+- **Where:** `prepared_context.py:313-369`. Two independent stages → run concurrently, merge results.
+- **Gain:** cold `prepare` ≈ max(semantic, learning) instead of the sum.
 
+### 1.4 Defer autosave analytics writes to background
+- **Where:** `project_service.py:1260-1376`.
+- **Keep synchronous:** snapshot INSERT → sources → mapping rows → STTM `UPDATE`.
+- **Move to background:** `_record_agent_artifacts`, `_record_autosave_fir_events`, `knowledge_projector.project`, `_record_target_mapping_patterns`, `upsert_feature_snapshot`.
+- **Guardrail:** add **retry + logging** so deferred learning writes can't silently vanish.
+- **Gain:** ~12s → ~2–3s. **Rollback:** flag to run inline.
 
-14:58
+### 1.5 Frontend streaming render
+- **Where:** `ai-agent-panel.tsx:188-404`, `sttm-builder-slice.ts:3566`.
+- **How:** `React.memo` `MessageContent`; `useMemo` the parsed blocks (parse only new content); **throttle/batch** token dispatch on a ~50 ms / rAF tick.
+- **Gain:** removes O(n²) re-parse; smooth long streams.
 
+---
 
+## 5. PHASE 2 — CODE DROP 2 (depth + the caching gap)
 
+### 2.1 Optimize `SP_FIR_GET_AGENT_RECOMMENDATIONS`
+- Profile it (`GET_QUERY_OPERATOR_STATS`); 6–11s implies full scans. Add clustering / pre-aggregation / tighter predicates on the FIR tables.
+- **Keep it in the agent prompt** — parallelize (1.2), don't defer it out. *See §6.*
+- **Gain:** the parallel fan-out's ceiling drops from ~9s to ~1–2s.
 
+### 2.2 Fix prepared-context **L2 persistence** *(new — from the cache evidence)*
+- **[LIVE]** only 4 rows, last write Jul 28 → the durable tier isn't filling, so caching is effectively per-process L1. **This matters more once `MAX_INSTANCES=2`** (each instance warms separately).
+- Investigate whether the persist path is gated/failing under `custom_oauth` + caller-rights; make it write reliably (and log failures).
+- **Gain:** warm `prepare` survives restarts and is shared across instances.
 
+### 2.3 Session-cache hardening
+- Add **reconnect-on-failure** to the OAuth cache path (`snowflake.py:349`); **evict on token refresh**; consider a small healthcheck interval instead of `0`.
 
+### 2.4 Dedupe overlapping recompute
+- `prepare`, `evaluate`, and the learning build each recompute overlapping FIR/semantic/learning context. **Compute once per selection and reuse** — this is *dedup, not truncation*; the agent's context content is unchanged.
 
-so tbl_Agent_Artifacts hows that used?
+### 2.5 Optional (flagged OFF): agent prompt/model tuning
+- Trim redundant prompt payload; constrain output size where the UI doesn't need a 500 kB narrative; **optional** model tiering (`claude-haiku` for trivial routing only, `claude-sonnet-4` retained for all mapping/generation). Only enable after validation. *See §6.*
 
+---
 
+## 6. Accuracy guarantee
 
+**The plan does not compromise agent answers or accuracy.** Item by item:
 
+| Change | Accuracy impact |
+|---|---|
+| 1.1 Remove rel-proc | **None** — proven empty return; relationships come from the YAML regardless. Byte-identical output |
+| 1.2 / 1.3 Parallelize | **None** — same queries, same results, only concurrent |
+| 1.4 Async autosave | **None to the current turn** — deferred writes feed *future* learning and still execute (with retry) |
+| 0.1–0.5, 2.2, 2.3 | **None** — infra/caching/session only |
+| 2.4 Dedupe | **None** — compute-once-and-reuse; content unchanged |
 
+**Two explicit guardrails:**
+1. **Keep FIR recommendations in the agent prompt.** The safe optimization is to **parallelize** the recs retrieval (agent still sees it), **not** "stream first, inject later" — that would remove it from the prompt and could change answers.
+2. **Model tiering stays OFF by default** (2.5). It's the only accuracy-sensitive lever; all latency targets are met without touching the model.
 
-14:59
+---
 
+## 7. Verification plan
 
+1. **Baseline now:** capture the network waterfall + `x-workbench-timing-{total,auth,session,snowflake,agent}-ms` and `x-workbench-cache-hit` (already emitted, `main.py:95`) for: table selection, a chat turn, an autosave.
+2. **After Phase 0:** re-capture → quantifies contention removed vs. proc cost remaining.
+3. **After each Phase 1 item:** re-capture + confirm via `QUERY_HISTORY` that the rel-proc no longer appears and that learning queries now overlap in time.
+4. **Accuracy regression check:** for a fixed selection, diff the agent's context payload hash (`agent_payload.sha256` already in response meta) and spot-check mapping suggestions before/after — should be equivalent.
 
+---
 
+## 8. Expected end state
 
+| Metric | Now **[LIVE]** | After Phase 0 | After Phase 1–2 |
+|---|---|---|---|
+| Time-to-first-token (chat) | ~12s | ~6–8s | **~2s** |
+| Relationship step | 6.4–12.8s | ~4–6s | **~1–2s** |
+| Attributes | 7–8s | ~4s | ~2s |
+| Autosave | 9.7–14s | ~6–8s | **~2–3s** |
+| Long agent generation | 30s–1.1min | same | starts instantly, renders smoothly |
 
-TBL_AGENT_ARTIFACTS is the audit and handoff table for outputs produced by agents. It does not store the authoritative mapping itself.
-It stores items such as:
-Auto-map recommendations
-Suggested transformations
-SQL repairs
-Validation findings
-DBT conversion results
-Generated test cases
-FIR recommendations or inferences
-The context and semantic bundle used to generate them
-A typical record connects:
-Agent output
-  → request/session
-  → project and STTM
-  → workspace snapshot
-  → semantic bundle
-  → affected mapping entities
-  → draft/accepted/rejected status
-How it is used
-An agent runs and generates structured output.
-The output is saved in TBL_AGENT_ARTIFACTS with fields such as:AGENT_NAME
-ARTIFACT_TYPE
-ARTIFACT_STATUS
-ENTITY_TYPE and ENTITY_IDS
-SNAPSHOT_ID
-SEMANTIC_BUNDLE_ID
-CONTEXT_KEY
-artifact payload, evidence and validation information
+**Sequence:** Phase 0 today → measure → Phase 1 (1.1, 1.2, 1.4 first) → Phase 2 → dedicated compute pool when available → Phase 3 (URL-durable STTM id + persistence hardening, item 12).
 
-The UI can show that artifact as a recommendation or generated result.
-When the user accepts it, the actual change is written into canonical tables such as TBL_STTM_ATTRIBUTES.
-The artifact remains as provenance: which agent suggested the change, using which evidence and context.
-Important distinction
-Table	Purpose
-TBL_AGENT_ARTIFACTS	Draft/generated agent output and audit trail
-TBL_STTM_ATTRIBUTES	Current authoritative column mappings
-TBL_STTM_SOURCES	Current selected sources
-TBL_STTM_VERSIONS	Immutable published mapping versions
-TBL_SEMANTIC_BUNDLES	Semantic context supplied to agents
-FIR recommendation tables	Reusable approved learnings and recommendations
+---
 
-Autosave records agent artifacts when they are included in the autosave request. You can see that call in [project_service.py (line 1307)](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/services/sttm-builder/app/core/project_service.py:1307).
-So, in simple terms: TBL_AGENT_ARTIFACTS stores what the agent produced; the STTM tables store what the user actually accepted.
-
-
-14:59
-
-
-
-
-
-
-
-was this newly added as well?
-
-
-
-
-
-
-15:00
-
-
-
-
-
-
-Worked for 54s
-
-
-
-Yes. TBL_AGENT_ARTIFACTS was added as part of our newer workbench reliability and agent-intelligence upgrade; it was not part of the older R7-style metadata model.
-However, distinguish these two tables:
-TBL_AGENT_ARTIFACTS: stores completed/draft agent-generated outputs, evidence, context and approval status.
-TBL_AGENT_ARTIFACT_JOBS: newer durable job tracking for long-running DBT and test-case generation—queued, running, completed or failed.
-The recent Project Value change also added TBL_PROJECT_ATTRIBUTES, but it did not create TBL_AGENT_ARTIFACTS.
-So the client environment must run the latest bootstrap/DDL to create these tables. The definitions are included in [create-table-ddl.sql](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench/infra/snowflake/create-table-ddl.sql). Running the bootstrap is designed to be additive through CREATE TABLE IF NOT EXISTS and should preserve existing mappings.
-
-
-15:01
-
-
-
-
-
-
-
-and most of the things we decided to cahce in browser only right - waht all are those? and for how much time it peprsists, also for ex leets say I opened selection page chose some databse and taschema and table and then went to mapping page, but then came back to selection page, will I have to load the. databse schmea and table again in left sisdebar? 
-
-
-
-
-
-
-15:02
-
-
-
-
-
-
-Worked for 2m 51s
-
-
-
-We kept browser caching mainly for speed and navigation continuity. Important mapping data is also autosaved to Snowflake; it is not browser-only.
-What is cached in the browser
-Data	Browser location	Persistence
-Current mapping workspace	localStorage	No fixed expiry; survives refresh, tab close and browser restart
-Selected sources and target	localStorage + Redux	Same as workspace
-Loaded database/schema/table tree	Redux and normally localStorage	Retained during navigation; may be reloaded after cache reset or storage compaction
-Mapping rows, relationships and derived-source selections	localStorage + Snowflake autosave	Browser recovery plus durable backend copy
-SQL draft and compiled SQL	localStorage when small enough + Snowflake snapshot	No browser expiry; large SQL may be omitted from browser storage
-Agent chat history	localStorage	Up to 30 chat sessions; workspace snapshot keeps the latest 12 messages
-UI preferences	localStorage	No fixed expiry
-Table columns and relationship metadata	In-memory cache	10 minutes
-Semantic bundle response	In-memory cache	10 minutes
-Active semantic bundle identity	sessionStorage	Until the browser tab/session closes
-Database-list freshness marker	Redux/workspace	5 minutes before it can refresh
-Project list/summary	sessionStorage	30 seconds
-Authentication lookup	Memory	5 minutes
-Uploaded SQL handoff	sessionStorage	One-time; removed after the mapping page consumes it
-
-If browser storage becomes too large, the app deliberately removes reloadable content first:
-Database catalog trees
-Full semantic evidence
-Preview rows
-Large SQL strings
-Large derived-source SQL
-It retains the important selections, mapping rows, identifiers and backend snapshot pointers.
-Your selection → mapping → back example
-If you:
-Open Selection.
-Expand a database and schema.
-Load tables.
-Select sources and a target.
-Go to Mapping.
-Return to Selection.
-You should not need to fetch the database, schema and tables again. The Redux workspace remains alive, and the schemasLoaded/tablesLoaded markers prevent duplicate requests. Your selected tables and target also remain selected.
-The visual tree may occasionally return in a collapsed state if the component itself is remounted, but expanding it should display already cached tables without another Snowflake call.
-After a full browser refresh:
-The app first restores the scoped workspace from localStorage.
-For an existing mapping, it can restore the authoritative workspace from the backend snapshot.
-If browser storage had to use its compact fallback, the catalog may reload, but selected tables and mappings should still be restored.
-After more than 5–10 minutes, the application may refresh metadata in the background to avoid showing stale Snowflake schemas. That refresh should not remove the selected tables or mapping work.
-So the short answer is: normal back navigation should be immediate and should not require reloading the sidebar hierarchy. Browser caching provides speed; Snowflake autosave provides recovery and durability.
-
-
-15:05
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-Approve for me
-
-
-
-
-
-
-
-5.6 TerraExtra High5.6 SolLight
+This is the complete plan; all findings are saved in project memory so we can resume at any point. Want me to **save this to `docs/perf-optimization-plan.md`**, produce the **exact spec + `ALTER SERVICE` statements for Phase 0**, or **switch to plan mode and start implementing Phase 1**?
