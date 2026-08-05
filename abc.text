@@ -1,146 +1,84 @@
-Revise your "Safe, Cost-Controlled Workbench Performance Plan" using the measured
-evidence below. Keep your plan's structure, safety posture, feature flags, and
-acceptance gates — I am asking for targeted corrections and additions, not a rewrite.
+Codex task: fix Cortex Agent token-limit failures + redundant frontend refetches in the STTM workbench
+This prompt is grounded in live production logs from the deployed SPCS service FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AI_WORKBENCH_OKTA_WEBAPP_DEV_V4 (image tag New-Build-010, the current code in this repo). Every claim below is backed by a log line, a query-history measurement, or a code reference. Please verify each before changing code.
 
-## Context
-- Environment is STILL IN DEVELOPMENT and we will be adding significantly more FIR
-  learnings over time. Plan for data growth.
-- Constraint unchanged: do not degrade AI response quality, evidence coverage,
-  recommendation behavior, confidence rules, prompts, or generated outputs.
-  Latency/throughput may improve; quality must never regress.
-- Credits matter (we exhausted credits previously). XS stays the default.
-- Auto-Mapping currently shares the webapp compute pool; a dedicated pool is being
-  requested but is not available yet.
+Issue 1 (CRITICAL): Cortex Agent rejects oversized messages — TWO independent code paths
+Symptom (observed live)
+Two different user actions fail with the same underlying Cortex Agent error:
 
-## Measured evidence (verified live in Snowflake — do not re-litigate or assume otherwise)
-Topology:
-- Live webapp service AI_WORKBENCH_OKTA_WEBAPP_DEV_V4 runs FOUR containers:
-  sttm-builder, frontend, nginx, AND coco-agent (RUNNING, unused).
-- Pool WORKBENCH_COMPUTE_POOL_DEV: CPU_X64_S, MIN 1 / MAX 5, only 2 active nodes,
-  7 services attached (incl. 2 unrelated dashboards). Webapp MAX_INSTANCES=1.
-- WORKBENCH_AUTOMAP_DEV (2 instances) is on the SAME pool
-  (client.env sets SNOWFLAKE_COMPUTE_POOL == AUTO_MAPPING_COMPUTE_POOL).
+Chat / "Recommend / Generate derived source" → agent panel shows Done. with no answer.
+Auto-mapping → job fails, network shows 502 on auto-map-jobs, recommendations shows (canceled).
+Exact error (from SYSTEM$GET_SERVICE_LOGS, container sttm-builder)
+Cortex Agent returned HTTP 400:
+  "user messages (len of 1457330) exceeds token limit 90000.
+   please start a new conversation to continue."
+Chat path observed sizes: 652,740 / 1,183,037 / 1,699,048 / 1,711,927 chars.
+Auto-map path observed size: 1,457,330 chars.
+Remote hard limit appears to be ~90,000 (compared against a raw-ish length, not a 4:1 token estimate).
+Root cause A — chat path
+services/sttm-builder/app/core/sttm_builder.py::_build_agent_payload (around line 3440) serializes the entire request envelope into one user message. _compact_semantic_context / _compact_workspace_context are relevance filters, not size caps. After compaction the payload is returned with no byte ceiling:
 
-Warehouse (FFP_HDP_DLAB_DB_ADHOC_XS_WH_DEV, X-Small, GEN2, auto_suspend 60s, max_clusters 3):
-- NOT congested: queued_provisioning ~0-1ms, queued_overload 0, load ~idle.
-- Small SELECTs are COMPILE-dominated: p50 94ms, p95 501ms, avg compile 133ms vs
-  exec 33ms  => Medium cannot help metadata/autosave/routine queries.
-- The slow items are EXECUTION-bound procedures (below) => Medium can help those only.
+compact_payload = _prune_empty(payload_dict)
+return json.dumps(compact_payload, separators=(",", ":"))
+Measured composition of a real envelope: data ≈ 527K (dominated by data.artifact, the previous response echoed back into context), context ≈ 116K (of which semantic_context ≈ 86K). Any of these alone can exceed 90K.
 
-Hot-path procedures (3 days, tag workload:"control", real users):
-- SP_FIR_GET_AGENT_RECOMMENDATIONS: 39 calls, avg 6338ms, p50 5134, p95 9819, max 11473.
-- SP_GET_TABLE_RELATIONSHIPS: ~31 calls, avg 3593ms, p50 3348, max 7109.
-- SP_SUBAGT_TRANSFORMATION_RULE: 4 calls, avg 4693ms.
+NOTE: sttm_builder.py is byte-identical between R12 and R13 (verified by diffing the R12 release zip). This is a long-standing bug, not an R13 regression. Rolling back does not fix it; it only resets in-memory state so fresh/short conversations happen to fit.
 
-Relationship evidence:
-- ALL source schemas have PRIMARY KEYs but ZERO FOREIGN KEYs
-  (INFORMATION_SCHEMA.TABLE_CONSTRAINTS). SHOW IMPORTED KEYS on
-  SCH_EVERNEST_HH_SOURCE.CONTACTS returns 0 rows.
-  => SP_GET_TABLE_RELATIONSHIPS (which reads only FKs) returns EMPTY 100% of the time
-  in this environment, after paying a slow ACCOUNT_USAGE.DATABASES guard query.
-- SEM_NATIVE_VIEWS: 154 active views; 44 (29%) have HAS_LOW_CONFIDENCE_JOINS=TRUE
-  (SCH_REDTAIL_TMD_07_06_2026 41/125; SCH_EVERNEST_HH_SOURCE 3/17); 0 flagged_excluded.
-  Those 29% currently surface NO relationships and are exactly the tables that fall
-  through to the empty procedure.
+Root cause B — auto-map path (separate, and worse)
+services/sttm-builder/app/core/auto_mapping_proxy.py batches attributes, but the batch budget (around lines 1044-1067) counts only per-attribute bytes:
 
-Cache health (this contradicts your step-7 assumption):
-- TBL_PREPARED_WORKSPACE_CONTEXTS: only 4 rows, last write 2026-07-28 (STALE).
-- TBL_PREPARED_LEARNING_CONTEXTS: 22 rows, 1 write in last 24h.
-- TBL_SEMANTIC_BUNDLES: 27 rows, written today (this tier IS healthy).
-=> The prepared-context durable tier is effectively NOT working; FIR retrieval is
-   NOT being served from cache.
+payload_size = len(json.dumps(attribute.model_dump(mode="json"), default=str))
+...
+token_budget_chars = 24000 if complexity >= 3 else 48000
+Then _invoke_batch (line 1242) sends the full request per batch:
 
-Data-capture gap:
-- TBL_WORKBENCH_CONVERSATION_TURNS: only 16 rows TOTAL since 2026-06-17, 6 in the
-  last 7 days, 5 conversations => durable conversation memory is under-persisting
-  in the deployed custom_oauth/caller-rights path.
+payload = req.model_dump(mode="json")   # includes the entire shared context envelope
+So the shared context (semantic_context, workspace_context, relation graph — ~1.4 MB) is re-attached to every batch, while the budget only accounts for the tiny attribute list. A 6-attribute batch = ~small attrs + ~1.4 MB shared context = 1,457,330 chars → 400 rejection.
 
-Observed client waterfall (real session): attributes 7-8s, relationships 6.4-12.8s,
-evaluate 5.7-6.9s, prepare 12s, autosave 9.7-14s, validate 20.8s, agent streams
-30s / 42s / 1.1min (539kB / 179kB payloads).
+CONSTRAINT that rules out the obvious fix (from live logs)
+Agent artifact stage upload is disabled in caller-rights OAuth sessions;
+using bounded inline persistence.
+Source: conversation_memory.py:1724. Under the production auth mode (AUTH_MODE=custom_oauth + SPCS_EXECUTE_AS_CALLER_ENABLED=true), stage-backed artifact offload is disabled. So "store the big context as an artifact and pass a reference" does NOT work in prod — the fallback is inline persistence, which is exactly what overflows. Any fix must keep the outbound message small without relying on stage upload. Options to evaluate:
 
-Code facts: hot endpoints are synchronous `def` handlers; learning retrieval runs ~12
-independent queries strictly serially after _get_link_scope; autosave performs 8-10
-sequential writes in-request; Snowpark Session is not safe for concurrent queries.
+Hard byte budget in _build_agent_payload that drops/summarizes the largest optional sections (especially data.artifact echo and semantic_context detail) down to a target (~60-70K chars, safely under 90K) rather than offloading them.
+Stop echoing the previous response (data.artifact) back into the next request's context.
+In auto_mapping_proxy, factor the shared context out of per-batch payloads (send it once, or compact it per batch), and make the batch budget count the actual serialized request size including shared context — not just attribute bytes.
+Secondary bug (same area)
+The local rollover safety net cannot fire before the remote limit: conversation_continuity.py::estimate_tokens divides UTF-8 bytes by 3.6 and compares against AGENT_CONTEXT_LIMIT_TOKENS = 90000 (config.py:636). Effective local ceiling ≈ 259K chars, while the remote rejects near ~90K raw. Recalibrate the estimator (or the limit) so soft/hard rollover trips before Cortex rejects.
 
-## Required corrections to your plan
-1. PROMOTE cache correctness to the FIRST code change, ahead of parallelization.
-   Your step 7 assumes FIR recommendations are normally cache-served; the evidence
-   shows the prepared-context durable tier holds 4 stale rows while the proc ran 39
-   times in 3 days. Parallelizing redundant calls still executes them. Deliver first:
-   (a) bound-parameter JSON writes for durable cache persistence,
-   (b) loud logging/metrics on cache-persist failures (never silently treat as a miss),
-   (c) measured cache hit-rate reporting,
-   (d) de-duplication of the FIR/learning/semantic retrieval call sites so one
-       selection computes context once and reuses it across prepare, signal
-       evaluation, and agent context assembly.
-2. TEMPER the parallelization expectation. With your cap of 4 concurrent operations
-   per request and ~11 independent learning queries (~3 waves, and any wave containing
-   the 6-11s proc is gated by it), cold learning improves roughly 16s -> 6-9s, not to
-   ~2s. Keep your ">=50% cold prepared-context improvement" gate; state the expected
-   range explicitly so nobody expects more. Your single-cluster Medium decision is
-   correct precisely because parallelism is bounded — keep it.
+Issue 2: Redundant frontend refetch on navigation (summary / prepare / batch / autosave storms)
+Symptom (observed live)
+Loading a dashboard/mapping, navigating away, and returning via the sidebar re-issues the same expensive calls every time. Network tab shows repeated summary, prepare, batch, attributes, recommendations, autosave, evaluate calls — many at 6-34s each — and recommendations frequently (canceled) because the component unmounts mid-flight and refires on remount.
 
-## Required additions
-3. Fix the procedure internals, not just the call site. SP_GET_TABLE_RELATIONSHIPS
-   begins with `SELECT COUNT(*) FROM SNOWFLAKE.ACCOUNT_USAGE.DATABASES` plus two more
-   existence checks. ACCOUNT_USAGE is multi-second. Replace with a cheap
-   INFORMATION_SCHEMA/SHOW probe or drop the guards and let SHOW ... KEYS fail
-   gracefully. Needed because your negative-capability cache will still call the proc
-   in environments where FK evidence may exist.
-4. Make the 29% low-confidence blind spot an explicit, tracked product decision:
-   either surface low-confidence joins with a "needs review" badge, or formally accept
-   that those tables show no relationships. Do not let a performance plan silently
-   ratify the gap. Keep the confidence rules themselves unchanged (as you proposed).
-5. Add a workstream for the durable conversation-memory under-persistence (16 turns
-   since June). FIR learns from turns, feedback, and corrections, so a lossy capture
-   layer starves the learning loop we are about to invest in. Treat as data-quality,
-   not performance, and fix before layering more FIR learnings on top.
-6. Add the dead-route/persistence gap: /sttm/builder/[id] is a stub returning <></>,
-   all navigation goes to /sttm/builder/new, and draft identity survives only via a
-   localStorage pointer (lost in incognito / cleared storage / another browser).
-   Recommend a durable STTM id in the URL with load-by-id on mount, and earlier
-   server-side autosave for brand-new drafts. Robustness, low priority vs latency.
-7. Note that removing the coco-agent container does NOT shrink the image: the Cortex
-   CLI (cortex.tar.gz) is baked into the sttm-builder image, so cold image pulls stay
-   slow. Recommend gating it behind a build ARG to cut cold-start time.
+What to investigate
+No client-side cache / dedup on remount. Data-loading effects re-run on every navigation because there is no query cache keyed by (project_id, sttm_id) with a staleness window, or the effect deps cause refetch on mount. Look under frontend/src/features/dashboard/*, frontend/src/features/sttm/*, and the data hooks in frontend/src/data/* / frontend/src/api/*.
+Requests are not cancellation-safe: recommendations shows (canceled) then refires. Ensure in-flight requests are aborted AND their results cached so a remount coalesces instead of re-fetching.
+Backend confirms the waste: GET /api/v1/projects/summary, /api/v1/workbench/recommendations, /api/v1/table-selection/* all re-run on return. Consider a short-TTL cache or a singleflight on the server side for idempotent GETs too.
+Backend duplicate-prepare (needs root-cause confirmation, do NOT assume)
+Query history showed the full context-prep sequence running twice back-to-back with two system$cancel_all_queries between passes. context_singleflight_v1 (prepared_context.py:273) is an in-memory, per-process lock — it coalesces concurrent requests on one replica but will NOT dedupe a client timeout-and-retry. Determine which this is (frontend retry vs. true server race) before writing any dedup — the fix differs completely.
 
-## Required adjustments for FIR data growth (development environment)
-8. Treat today's procedure timings as a FLOOR, not a ceiling: 6.3s avg was measured on
-   a nearly empty dataset. Cost will grow with FIR volume, so the caching and query-shape
-   fixes are more urgent, not less.
-9. Make FIR query predicates prunable NOW (push project/target/trigger/context/status
-   filters ahead of FLATTEN, joins, and ranking). Keep deferring physical clustering /
-   search optimization until profiles justify it — but re-evaluate as volume grows,
-   since retrofitting later is more expensive.
-10. Invalidate the FIR/learning cache NARROWLY (per target identity, context hash, and
-    semantic version) rather than globally on any new learning. With frequent learning
-    ingestion, a coarse epoch bump would invalidate everything and reinstate the slow
-    procedure on every turn.
-11. Make benchmarks and the credit gate ROLLING: re-baseline periodically against the
-    current build rather than validating once against a frozen number.
+Issue 3: Pydantic serialization warning (likely benign, but confirm)
+Live log:
 
-## Keep as-is (explicitly endorsed)
-- No blanket Medium; add the PREPARATION workload route; never route metadata,
-  autosave, cache lookups, or routine repeated queries to Medium. Additionally: expect
-  AGENT to gain little from Medium because agent latency is dominated by Cortex service
-  time and token generation (streams of 539kB/179kB), not warehouse compute — benchmark
-  it, but predict XS is sufficient there.
-- Keep ONE webapp instance until Auto-Mapping moves to its own pool; only then evaluate
-  scaling against your CPU/queue thresholds.
-- Conditional relationship-fallback skipping via a negative-capability cache keyed by
-  database/schema + metadata version, behind a rollback flag (not blanket removal).
-- Bounded Snowflake session-lease pool with one session per worker and sequential
-  fallback; no shared-session parallelism.
-- Durable idempotent async job table for post-save projections, with leases, bounded
-  retries, restart resumption, inline fallback on enqueue failure, and publish draining
-  the current snapshot's job.
-- Shadow-mode context-hash equivalence as the gate before enabling parallel retrieval.
-- No periodic SELECT 1; evict/recreate a session only after a real failure.
-- Independent feature flags and independent rollback for every optimization.
+PydanticSerializationUnexpectedValue(Expected `WorkbenchContextSnapshotV1` -
+  ... field_name='workspace_context', input_value={'context_version':'2.0'...}, input_type=dict)
+workspace_context is passed as a raw dict where a WorkbenchContextSnapshotV1 model is expected. Confirm this isn't silently dropping/altering fields in the context sent to the agent (which would also feed Issue 1). Fix the type or the serialization path.
 
-## Deliverable
-Return the revised plan with: the corrected ordering (cache correctness first), the
-new workstreams, explicit expected-gain ranges per item, the flag name for each
-optimization, and the acceptance/rollback criteria per item. Call out any place where
-you disagree with the evidence above and explain why.
+Performance context (so fixes target the right thing)
+Measured breakdown of a representative 57s chat request (from ACCOUNT_USAGE.QUERY_HISTORY):
+
+37s = Cortex Agent call itself (zero SQL running) — not fixable in app code.
+13.3s = SQL compilation (61% of all SQL time); avg ~226 ms/query across 59 statements.
+8.5s = SQL execution. 0 queued, 0 spilled.
+Implication: a bigger warehouse will NOT help (no queue, no spill; compile is single-threaded). The levers are: fewer statements per turn, parameterized SQL (reduce compile time), and smaller payloads (reduce the 37s agent portion). R13 already parameterized record_turn; extend the same to the per-turn semantic-bundle merge/update and TBL_STTM_SOURCES delete+insert in sttm_builder.py.
+Compute-pool note (optional, infra not code)
+WORKBENCH_COMPUTE_POOL_DEV = CPU_X64_S (3 vCPU/13 GiB per node), 2 nodes = 6 vCPU total. It hosts the webapp, WORKBENCH_AUTOMAP_DEV (2 instances, each bursting to 2 vCPU = up to 4 vCPU), and two unrelated SCH_AI_TEAM dashboards. SPCS autoscales on resource requests, not usage, so the pool never adds a node even when CPU-starved. Consider a dedicated pool for automap. This affects consistency, not the 57s baseline. Enable spec.platformMonitor to measure before/after.
+
+Changes made during the diagnostic session (please review — these live outside the R13 overlay and will be reverted by the next overlay)
+services/sttm-builder/app/core/target_mapping_patterns.py — re-applied the _quote backslash-escape fix (doubles \ before doubling ') so JSON payloads with escaped double-quotes from double-quoted SQL identifiers don't corrupt PARSE_JSON. R13 had reverted this.
+infra/snowflake/fir_system/procedures/sp-fir-create-semantic-version.sql — changed illegal PARSE_JSON(?) inside a VALUES clause to INSERT ... SELECT .... Deployed to FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA via authenticated SQL connection (not via the release zip).
+infra/snowflake/env/client.env — appended the R13 feature-flag / sizing block (124 → 162 keys): 12 safe-default-ON flags, 5 shadowed-OFF flags, cost controls (empty prep warehouse, timeouts, INSTALL_CORTEX_CLI=0, COCO_SIDECAR_ENABLED=false, APPLY_CALLER_GRANTS=false), pool sizing knobs, and SNOWFLAKE_PROJECT_ATTRIBUTES_TABLE, AGENT_CALLER_INLINE_FALLBACK_LIMIT_BYTES=1048576, FIR_LEARNING_CONTEXT_ENABLED=true, FIR_SIGNAL_BUS_ENABLED=true.
+services/sttm-builder/Dockerfile — Zscaler/corporate TLS-CA trust (SSL_CERT_FILE, REQUESTS_CA_BUNDLE, UV_NATIVE_TLS=1), HTTP→HTTPS apt sources rewrite, and made the apt/Cortex-CLI layer conditional on INSTALL_CORTEX_CLI=1 so builds don't depend on Debian mirrors behind the proxy.
+frontend/Dockerfile — Zscaler CA trust for npm (NODE_EXTRA_CA_CERTS), npm ci --no-audit --no-fund.
+scripts/deploy_spcs_client_snow_safe.ps1 — added 7 missing FIR env definitions + exports required by automap-worker.yaml.tmpl (FIR_AGENT_DAILY_REQUEST_LIMIT, FIR_AGENT_DAILY_TOKEN_LIMIT, FIR_AGENT_PROCESSING_ENABLED, FIR_CATCHUP_SCHEDULE_CRON, FIR_DOCUMENT_LINEAGE_V3, FIR_PIPELINE_ENABLED, FIR_PROCESS_UPLOADS_IMMEDIATELY) — the render step failed without them.
+frontend/src/features/sttm/source-target/table-relationship-flow.tsx — hid the low-confidence-join "Needs review" panel behind NEXT_PUBLIC_LOW_CONFIDENCE_JOIN_REVIEW_V1 (default off). Backend detection/SQL-exclusion unchanged; JSX and approve/reject handlers retained.
+Please fold items 1, 4, 5, 6, 7 into the mainline so the next release overlay doesn't revert them. Item 2 is already live in the DB but should also be committed to the repo procedure file.
