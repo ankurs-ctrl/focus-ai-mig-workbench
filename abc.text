@@ -1,151 +1,146 @@
-In my client avd, I asked Coco code, to analyze my code, my snowfleka env and understand why app runs slow, and each endpoint and agent responses, the following is what the coco analysed and gave recommendations:
-THis is the plan coco created, I want you to analyze this and create a plan. 
+Revise your "Safe, Cost-Controlled Workbench Performance Plan" using the measured
+evidence below. Keep your plan's structure, safety posture, feature flags, and
+acceptance gates — I am asking for targeted corrections and additions, not a rewrite.
 
-But remember, we dont want to break things, we just want to optimize and remove bottle necks. 
-The quality should only improve whether it would be response time, parallel executions or ai response . it should not degrade. 
+## Context
+- Environment is STILL IN DEVELOPMENT and we will be adding significantly more FIR
+  learnings over time. Plan for data growth.
+- Constraint unchanged: do not degrade AI response quality, evidence coverage,
+  recommendation behavior, confidence rules, prompts, or generated outputs.
+  Latency/throughput may improve; quality must never regress.
+- Credits matter (we exhausted credits previously). XS stays the default.
+- Auto-Mapping currently shares the webapp compute pool; a dedicated pool is being
+  requested but is not available yet.
 
-Also in client avd I will ask them for a new compute pool for auto mapping but for now everyhting is using ssame compute pool. 
+## Measured evidence (verified live in Snowflake — do not re-litigate or assume otherwise)
+Topology:
+- Live webapp service AI_WORKBENCH_OKTA_WEBAPP_DEV_V4 runs FOUR containers:
+  sttm-builder, frontend, nginx, AND coco-agent (RUNNING, unused).
+- Pool WORKBENCH_COMPUTE_POOL_DEV: CPU_X64_S, MIN 1 / MAX 5, only 2 active nodes,
+  7 services attached (incl. 2 unrelated dashboards). Webapp MAX_INSTANCES=1.
+- WORKBENCH_AUTOMAP_DEV (2 instances) is on the SAME pool
+  (client.env sets SNOWFLAKE_COMPUTE_POOL == AUTO_MAPPING_COMPUTE_POOL).
 
-And For everything I gave same warehouse and not medium as last time it ran out of credits, we just want to make sure that medium if we want to use, then it gives us great advantage and optimizes and we dont use for eveyrhting or small repeated metadataqueries 
+Warehouse (FFP_HDP_DLAB_DB_ADHOC_XS_WH_DEV, X-Small, GEN2, auto_suspend 60s, max_clusters 3):
+- NOT congested: queued_provisioning ~0-1ms, queued_overload 0, load ~idle.
+- Small SELECTs are COMPILE-dominated: p50 94ms, p95 501ms, avg compile 133ms vs
+  exec 33ms  => Medium cannot help metadata/autosave/routine queries.
+- The slow items are EXECUTION-bound procedures (below) => Medium can help those only.
 
-generate a plan for this
+Hot-path procedures (3 days, tag workload:"control", real users):
+- SP_FIR_GET_AGENT_RECOMMENDATIONS: 39 calls, avg 6338ms, p50 5134, p95 9819, max 11473.
+- SP_GET_TABLE_RELATIONSHIPS: ~31 calls, avg 3593ms, p50 3348, max 7109.
+- SP_SUBAGT_TRANSFORMATION_RULE: 4 calls, avg 4693ms.
 
+Relationship evidence:
+- ALL source schemas have PRIMARY KEYs but ZERO FOREIGN KEYs
+  (INFORMATION_SCHEMA.TABLE_CONSTRAINTS). SHOW IMPORTED KEYS on
+  SCH_EVERNEST_HH_SOURCE.CONTACTS returns 0 rows.
+  => SP_GET_TABLE_RELATIONSHIPS (which reads only FKs) returns EMPTY 100% of the time
+  in this environment, after paying a slow ACCOUNT_USAGE.DATABASES guard query.
+- SEM_NATIVE_VIEWS: 154 active views; 44 (29%) have HAS_LOW_CONFIDENCE_JOINS=TRUE
+  (SCH_REDTAIL_TMD_07_06_2026 41/125; SCH_EVERNEST_HH_SOURCE 3/17); 0 flagged_excluded.
+  Those 29% currently surface NO relationships and are exactly the tables that fall
+  through to the empty procedure.
 
+Cache health (this contradicts your step-7 assumption):
+- TBL_PREPARED_WORKSPACE_CONTEXTS: only 4 rows, last write 2026-07-28 (STALE).
+- TBL_PREPARED_LEARNING_CONTEXTS: 22 rows, 1 write in last 24h.
+- TBL_SEMANTIC_BUNDLES: 27 rows, written today (this tier IS healthy).
+=> The prepared-context durable tier is effectively NOT working; FIR retrieval is
+   NOT being served from cache.
 
-Safe, Cost-Controlled Workbench Performance Plan
-Summary
-Optimize the application without changing mapping logic, semantic evidence, FIR recommendations, prompts, confidence rules, or generated outputs.
+Data-capture gap:
+- TBL_WORKBENCH_CONVERSATION_TURNS: only 16 rows TOTAL since 2026-06-17, 6 in the
+  last 7 days, 5 conversations => durable conversation memory is under-persisting
+  in the deployed custom_oauth/caller-rights path.
 
-The CoCo analysis identifies useful bottlenecks, but four recommendations require adjustment:
+Observed client waterfall (real session): attributes 7-8s, relationships 6.4-12.8s,
+evaluate 5.7-6.9s, prepare 12s, autosave 9.7-14s, validate 20.8s, agent streams
+30s / 42s / 1.1min (539kB / 179kB payloads).
 
-Do not move all workloads to Medium; metadata, autosave, preview, and routine queries remain on XS.
-Do not scale the web application while Auto-Mapping shares its compute pool.
-Do not delete the legacy relationship fallback globally; skip it only where cached metadata proves it cannot return anything.
-Do not parallelize Snowflake operations through one shared session or use non-durable background jobs.
-Medium usage will be benchmark-gated because no preference was provided: each heavy workload moves only if it delivers at least 30% better p95 latency within the agreed credit budget.
+Code facts: hot endpoints are synchronous `def` handlers; learning retrieval runs ~12
+independent queries strictly serially after _get_link_scope; autosave performs 8-10
+sequential writes in-request; Snowpark Session is not safe for concurrent queries.
 
-Implementation Plan
-1. Establish performance evidence
-Add query tags and stage timings for selection, relationship discovery, semantic preparation, FIR retrieval, Auto-Mapping, autosave, agent context preparation, DBT, and test generation.
-Return Server-Timing diagnostics in non-production or admin-enabled requests.
-Record cache status, session creation/reuse, warehouse, credits, queued time, agent time-to-first-token, total response time, and output size.
-Benchmark fixed cold and warm scenarios before changing behavior.
-Confirm that the CoCo sidecar receives no traffic before removing it.
-2. Apply low-risk application optimizations
-Remove the unused CoCo sidecar after the zero-traffic check, releasing CPU and memory without changing STTM AI behavior.
-Keep one webapp instance while Auto-Mapping uses the shared pool.
-Set the user Snowflake-session cache TTL to 1,800 seconds.
-Reuse sessions by user token, role, workload, warehouse, database, and schema.
-Do not add periodic SELECT 1 health checks. Evict and recreate a session once only after a real expiration or connection error.
-Fix prepared-context durable-cache writes to use bound JSON parameters instead of SQL string interpolation.
-Log and measure durable-cache persistence failures instead of silently treating them as ordinary cache misses.
-3. Parallelize context preparation safely
-Add a bounded Snowflake session-lease pool:
-Maximum four parallel operations per request.
-Maximum twelve active leases per webapp instance.
-One separate Snowpark session per concurrent worker.
-Thirty-minute idle TTL with lazy creation.
-Sequential fallback if leases are unavailable.
-In FIR learning retrieval, resolve project/link scope first and then concurrently fetch independent evidence sources such as prior mappings, semantic learnings, corrections, curated versions, precedents, and FIR recommendations.
-Run semantic-bundle preparation and learning retrieval concurrently using separate sessions.
-Merge results in a stable deterministic order.
-Preserve every existing evidence item, recommendation, confidence value, provenance ID, and prompt input.
-Use context hashes to prove that sequential and parallel preparation produce equivalent packages.
-4. Eliminate unnecessary relationship calls
-Continue reading raw semantic-view relationships first.
-Preserve existing confidence and relationship-qualification rules.
-Call the legacy relationship procedure only when:
-Semantic evidence did not provide a relationship; and
-Cached schema capability indicates that foreign-key or legacy relationship evidence may exist.
-Cache negative capability results by database/schema and metadata version so schemas with no foreign keys do not repeatedly execute an empty procedure.
-Keep the old behavior behind a rollback flag for environments where the procedure is useful.
-5. Make autosave fast and durable
-Keep core mapping persistence synchronous:
-Workspace snapshot.
-Selected sources and target.
-Mapping rows and hardcoded values.
-Relationships and derived-source references.
-STTM header/version update.
-Retain the existing frontend debounce and add strict payload-hash deduplication and single-flight behavior so an unchanged workspace does not write again.
-Move non-authoritative projections—agent artifacts, FIR feedback events, learning projections, feature snapshots, and target-pattern updates—to durable post-save jobs.
-Add an idempotent TBL_WORKBENCH_ASYNC_JOBS table with job type, snapshot ID, idempotency key, status, lease, attempts, next-attempt time, and error details.
-Let backend instances claim and process jobs with bounded retries. A restart must resume pending or expired jobs.
-If job enqueueing fails, run the projection inline so data is never lost.
-Publishing must wait for or drain the current snapshot’s projection job; normal autosave need not wait.
-Extend the autosave response backward-compatibly with projection job ID and status.
-6. Improve streaming and UI responsiveness
-Buffer agent token deltas and update the UI at most every 50 milliseconds or once per animation frame.
-Flush immediately on completion, status changes, errors, cancellation, and unmount.
-Memoize completed messages so only the active streaming response is reparsed.
-Preserve the exact final text, markdown, SQL blocks, citations, and token order.
-Do not truncate agent responses, reduce evidence, downgrade models, or shorten reasoning prompts.
-7. Optimize FIR and semantic queries from measured profiles
-First verify how frequently SP_FIR_GET_AGENT_RECOMMENDATIONS actually runs. It should normally be served through prepared-context and learning caches rather than execute on every chat turn.
-Inspect query-operator statistics for cold executions.
-Push project, target, trigger, context, and status filters ahead of FLATTEN, joins, and ranking operations.
-Cache the final FIR recommendation package by context hash, target identity, semantic version, and learning-evidence epoch.
-Invalidate it when relevant semantic versions, approved learnings, mappings, or corrections change.
-Add clustering or search optimization only when query profiles show selective scans that justify the recurring credit cost.
-8. Separate compute workloads
-Move Auto-Mapping to the requested dedicated CPU_X64_S compute pool:
-Minimum one node.
-Maximum two nodes initially.
-One worker normally, scaling to two only under queue pressure.
-Auto-suspend when idle.
-Keep the webapp on its existing compute pool.
-After separation, load-test the webapp with the CoCo sidecar removed.
-Scale the webapp to two instances only if CPU remains above 70% or request-queue p95 remains above one second under representative concurrency.
-Do not rely on local process memory for authoritative state because multiple instances may be introduced later.
-9. Use warehouses by workload and evidence
-Add a PREPARATION workload route without changing existing API contracts:
+## Required corrections to your plan
+1. PROMOTE cache correctness to the FIRST code change, ahead of parallelization.
+   Your step 7 assumes FIR recommendations are normally cache-served; the evidence
+   shows the prepared-context durable tier holds 4 stale rows while the proc ran 39
+   times in 3 days. Parallelizing redundant calls still executes them. Deliver first:
+   (a) bound-parameter JSON writes for durable cache persistence,
+   (b) loud logging/metrics on cache-persist failures (never silently treat as a miss),
+   (c) measured cache hit-rate reporting,
+   (d) de-duplication of the FIR/learning/semantic retrieval call sites so one
+       selection computes context once and reuses it across prepare, signal
+       evaluation, and agent context assembly.
+2. TEMPER the parallelization expectation. With your cap of 4 concurrent operations
+   per request and ~11 independent learning queries (~3 waves, and any wave containing
+   the 6-11s proc is gated by it), cold learning improves roughly 16s -> 6-9s, not to
+   ~2s. Keep your ">=50% cold prepared-context improvement" gate; state the expected
+   range explicitly so nobody expects more. Your single-cluster Medium decision is
+   correct precisely because parallelism is bounded — keep it.
 
-CONTROL: XS for metadata, registries, autosave, project state, and small repeated queries.
-AUTOMAP: XS warehouse; performance isolation comes primarily from the dedicated compute pool.
-EXECUTION: XS for SQL validation and normal previews.
-PREPARATION: candidate for Medium for cold semantic composition and FIR learning preparation.
-AGENT: independently benchmark Medium for interactive agent preparation and Cortex calls.
-Medium policy:
+## Required additions
+3. Fix the procedure internals, not just the call site. SP_GET_TABLE_RELATIONSHIPS
+   begins with `SELECT COUNT(*) FROM SNOWFLAKE.ACCOUNT_USAGE.DATABASES` plus two more
+   existence checks. ACCOUNT_USAGE is multi-second. Replace with a cheap
+   INFORMATION_SCHEMA/SHOW probe or drop the guards and let SHOW ... KEYS fail
+   gracefully. Needed because your negative-capability cache will still call the proc
+   in environments where FK evidence may exist.
+4. Make the 29% low-confidence blind spot an explicit, tracked product decision:
+   either surface low-confidence joins with a "needs review" badge, or formally accept
+   that those tables show no relationships. Do not let a performance plan silently
+   ratify the gap. Keep the confidence rules themselves unchanged (as you proposed).
+5. Add a workstream for the durable conversation-memory under-persistence (16 turns
+   since June). FIR learns from turns, feedback, and corrections, so a lossy capture
+   layer starves the learning loop we are about to invest in. Treat as data-quality,
+   not performance, and fix before layering more FIR learnings on top.
+6. Add the dead-route/persistence gap: /sttm/builder/[id] is a stub returning <></>,
+   all navigation goes to /sttm/builder/new, and draft identity survives only via a
+   localStorage pointer (lost in incognito / cleared storage / another browser).
+   Recommend a durable STTM id in the URL with load-by-id on mount, and earlier
+   server-side autosave for brand-new drafts. Robustness, low priority vs latency.
+7. Note that removing the coco-agent container does NOT shrink the image: the Cortex
+   CLI (cortex.tar.gz) is baked into the sttm-builder image, so cold image pulls stay
+   slow. Recommend gating it behind a build ARG to cut cold-start time.
 
-Single cluster initially, with approximately 60-second auto-suspend.
-No multi-cluster configuration unless measured queueing remains after code parallelization.
-Enable Medium independently for PREPARATION and AGENT only when that route improves p95 latency by at least 30%.
-Retain Medium only when credits per successful fixed-workload run remain within 10% of the approved baseline or an explicitly accepted performance premium.
-If an agent call is dominated by Cortex service time and Medium provides no meaningful gain, keep it on XS.
-Never route autosave, metadata navigation, cache lookups, or routine repeated queries to Medium.
-Interfaces and Deployment
-Add optional workload value PREPARATION to warehouse routing.
-Add backward-compatible autosave fields for post_save_job_id and post_save_status.
-Add feature flags for parallel learning, parallel preparation, relationship fallback skipping, asynchronous post-save projection, stream batching, and Medium workload routing.
-Apply idempotent DDL for the asynchronous job table and cache-supporting objects.
-Runtime code must use pre-created objects and must not attempt privileged DDL.
-Optional caller-grant statements must remain non-blocking and disabled where deployment roles lack MANAGE GRANTS.
-Do not require Snowflake tasks; backend workers process durable jobs.
-Verification and Rollout
-Capture the unchanged baseline.
-Deploy instrumentation, JSON binding, session TTL, and CoCo removal.
-Enable relationship-call skipping and frontend stream batching.
-Enable parallel FIR retrieval in shadow mode and compare context hashes.
-Enable parallel semantic/learning preparation.
-Enable durable asynchronous post-save processing.
-Move Auto-Mapping to its dedicated pool.
-Benchmark Medium separately for PREPARATION and AGENT.
-Enable each Medium route only after its performance-and-credit gate passes.
-Consider webapp instance scaling only after compute-pool separation.
-Acceptance requirements:
+## Required adjustments for FIR data growth (development environment)
+8. Treat today's procedure timings as a FLOOR, not a ceiling: 6.3s avg was measured on
+   a nearly empty dataset. Cost will grow with FIR volume, so the caching and query-shape
+   fixes are more urgent, not less.
+9. Make FIR query predicates prunable NOW (push project/target/trigger/context/status
+   filters ahead of FLATTEN, joins, and ranking). Keep deferring physical clustering /
+   search optimization until profiles justify it — but re-evaluate as volume grows,
+   since retrofitting later is more expensive.
+10. Invalidate the FIR/learning cache NARROWLY (per target identity, context hash, and
+    semantic version) rather than globally on any new learning. With frequent learning
+    ingestion, a coarse epoch bump would invalidate everything and reinstate the slow
+    procedure on every turn.
+11. Make benchmarks and the credit gate ROLLING: re-baseline periodically against the
+    current build rather than validating once against a frozen number.
 
-No regression in mapping counts, column lineage, hardcoded values, relationships, derived sources, semantic evidence, recommendation schemas, evidence IDs, confidence, or generated SQL.
-Parallel and sequential context packages are semantically equivalent and deterministically ordered.
-No lost autosaves or projection jobs during process restarts, session expiration, or transient Snowflake failures.
-Cold prepared-context latency improves by at least 50%.
-Warm prepared-context p95 is below one second where cache data is valid.
-Ordinary autosave acknowledgement p95 is below three seconds; projections complete within thirty seconds p95.
-Agent time-to-first-token improves by at least 40% on the fixed test corpus without response-quality regression.
-No token loss or markdown corruption during long streamed responses.
-Credits per fixed end-to-end scenario do not increase by more than 10% unless a separately approved Medium performance premium applies.
-Every optimization can be disabled independently without rolling back unrelated fixes.
-Assumptions
-The current AI response quality, evidence coverage, and recommendation behavior are the reference contract.
-Medium routing is benchmark-gated rather than enabled globally.
-The Auto-Mapping pool will be provisioned separately, but code optimizations can be deployed before it becomes available.
-Webapp scaling remains deferred while the pool is shared.
-Existing raw semantic-view confidence rules remain unchanged.
+## Keep as-is (explicitly endorsed)
+- No blanket Medium; add the PREPARATION workload route; never route metadata,
+  autosave, cache lookups, or routine repeated queries to Medium. Additionally: expect
+  AGENT to gain little from Medium because agent latency is dominated by Cortex service
+  time and token generation (streams of 539kB/179kB), not warehouse compute — benchmark
+  it, but predict XS is sufficient there.
+- Keep ONE webapp instance until Auto-Mapping moves to its own pool; only then evaluate
+  scaling against your CPU/queue thresholds.
+- Conditional relationship-fallback skipping via a negative-capability cache keyed by
+  database/schema + metadata version, behind a rollback flag (not blanket removal).
+- Bounded Snowflake session-lease pool with one session per worker and sequential
+  fallback; no shared-session parallelism.
+- Durable idempotent async job table for post-save projections, with leases, bounded
+  retries, restart resumption, inline fallback on enqueue failure, and publish draining
+  the current snapshot's job.
+- Shadow-mode context-hash equivalence as the gate before enabling parallel retrieval.
+- No periodic SELECT 1; evict/recreate a session only after a real failure.
+- Independent feature flags and independent rollback for every optimization.
+
+## Deliverable
+Return the revised plan with: the corrected ordering (cache correctness first), the
+new workstreams, explicit expected-gain ranges per item, the flag name for each
+optimization, and the acceptance/rollback criteria per item. Call out any place where
+you disagree with the evidence above and explain why.
