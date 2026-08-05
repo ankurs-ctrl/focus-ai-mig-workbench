@@ -1,51 +1,76 @@
-# SQL-to-FIR Bundle Upgrade — Cumulative r7 to r9
+# R13 safe-performance client AVD deployment
 
-This package is for a client AVD currently running:
+This is a cumulative overlay from the R7 baseline and includes R8 through R13.
+It can be extracted over the currently deployed R12 workspace.
 
-`20260724-warehouse-cost-rollover-client-avd-r7`
+R13 adds durable prepared-context caching, FIR query pruning, faster relationship
+discovery, review-only low-confidence joins, reliable conversation persistence,
+autosave de-duplication, smoother agent streaming, durable saved-mapping routes,
+optional bounded concurrency, workload-aware warehouse routing, and rolling
+performance/credit reporting.
 
-It contains the full r8 source overlay plus all subsequent r9 SQL-to-FIR,
-semantic-bundle, preview, FIR approval, DDL, bootstrap, and deployment changes.
-The newest r9 version wins wherever the releases overlap.
+## Safe deployment sequence
 
-## Upgrade
+1. Back up the client workspace. Preserve the existing
+   `infra/snowflake/env/client.env`; do not replace it with the example file.
+2. Extract the ZIP at the repository root.
+3. Apply only the R13 Snowflake objects:
 
-1. Back up the client checkout and Snowflake metadata schema.
-2. Extract this ZIP into the repository root and overwrite matching files.
-3. Merge `CLIENT_ENV_DELTA.md` into the existing client environment file.
-4. Record the current FIR task state.
-5. Run `scripts/bootstrap_sttm_metadata_infra.ps1`.
-6. Run `scripts/deploy_spcs_client_snow_safe.ps1`.
-7. Verify the new tables and procedures, then resume the FIR task graph using
-   the rendered `infra/snowflake/fir_system/tasks/fir_tasks_resume.sql`.
+   ```powershell
+   .\scripts\bootstrap_sttm_metadata_infra.ps1 `
+     -EnvFile ".\infra\snowflake\env\client.env" `
+     -PerformanceR13Only
+   ```
 
-The bootstrap re-applies task definitions, which leaves replaced tasks
-suspended. Streams do not have a suspended/resumed state.
+   This mode creates the async-job table and installs the V2 relationship and
+   FIR recommendation procedures. It does not deploy agents, tasks, streams,
+   stages, skills, or grants, and it does not suspend existing tasks.
+4. Add the environment values from `CLIENT_ENV_DELTA.md` to the existing
+   `client.env`. Keep the four shadow features disabled initially.
+5. Rebuild and deploy the services. Do not use `-SkipBuild` because backend,
+   frontend, and Docker build behavior changed:
 
-Verify at minimum:
+   ```powershell
+   .\scripts\deploy_spcs_client_snow_safe.ps1 `
+     -EnvFile ".\infra\snowflake\env\client.env"
+   ```
 
-```sql
-SHOW TABLES LIKE 'TBL_FIR_TARGET_MAPPING_PATTERNS' IN SCHEMA <metadata_namespace>;
-SHOW TABLES LIKE 'TBL_SEMANTIC_BUNDLE_VERSIONS' IN SCHEMA <metadata_namespace>;
-SHOW PROCEDURES LIKE 'SP_FIR_PROCESS_LEARNING_QUEUE' IN SCHEMA <metadata_namespace>;
-SHOW TASKS LIKE 'TSK_FIR_%' IN SCHEMA <metadata_namespace>;
-```
+6. Hard-refresh the browser after the services are healthy.
 
-For SELECT-only uploads, provide a fully qualified target hint or select the
-target after applying the preview. After a learning job completes, an
-administrator can approve its supported output with:
+The deployment script does not apply grants unless the separately controlled
+`APPLY_CALLER_GRANTS=true` option is explicitly enabled. Leave it false in the
+client environment.
 
-`POST /workbench/fir/jobs/{learning_job_id}/approve-generated`
+## Smoke test
 
-For an end-to-end task-independent workflow, use:
+1. Open an existing STTM directly through `/sttm/builder/{id}` and confirm its
+   target columns, mappings, hardcoded values, relationships, and derived sources load.
+2. Return to table selection and reopen Mapping; the saved workspace must remain intact.
+3. Load the diagnostics endpoint as an authenticated user and confirm prepared-cache
+   metrics appear and conversation memory reports its runtime write capability.
+4. Repeat the same selection twice and confirm the second preparation is a cache hit.
+5. Confirm high-confidence joins remain active and low-confidence joins appear only
+   under review; they must not enter generated SQL until approved.
+6. Run Auto-map, validation, DBT conversion, and test generation once.
+7. Confirm the existing FIR tasks remain in their pre-deployment state.
+
+## Rolling report
+
+Run this from the repository root after representative traffic:
 
 ```powershell
-scripts\manage_client_fir_learning.ps1 workflow `
-  --file C:\mappings\mapping.sql `
-  --project-id 1101 `
-  --target-table DB.SCHEMA.TARGET `
-  --max-rounds 30
+.\.client-tools-venv\Scripts\python.exe `
+  .\scripts\report_workbench_performance.py `
+  --env-file ".\infra\snowflake\env\client.env" `
+  --days 7 `
+  --output ".\artifacts\performance-r13.json"
 ```
 
-See `docs/CLIENT_FIR_LEARNING_CLI.md` for status, watch, processing, and
-explicit approval commands.
+Use `--compare <previous-report.json>` to report rolling p95 changes. Snowflake
+`ACCOUNT_USAGE` can lag, so do not treat an immediately empty report as failure.
+
+## Rollback
+
+Each behavioral optimization has an independent environment flag. Disable the
+specific flag and redeploy; the V1 FIR and relationship procedure fallbacks remain
+available. The new async-job table is additive and does not need to be dropped.

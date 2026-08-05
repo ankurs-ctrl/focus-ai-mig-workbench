@@ -1,3 +1,7 @@
-bbi-mig-ai-workbench-20260708-1923-part1-root-scripts-infra-docs.zip	187 files	0.31 MB	sha256=ecb4481fe82900ec4967269e78461fc1690a622c791e3898e764a1972afbf21a
-bbi-mig-ai-workbench-20260708-1923-part2-frontend-source.zip	380 files	4.94 MB	sha256=42e1760b49c1e892227a639a7607acb06dc1b6d68f291dc18341b96d316eeb59
-bbi-mig-ai-workbench-20260708-1923-part3-sttm-builder-service.zip	175 files	0.47 MB	sha256=ef8e6f2dbb15217d941b1c2128d86e5b9138e44a7f500cd9c5fac91926699e20
+Release: 20260805-safe-performance-client-avd-r13-cumulative-r7
+Baseline: 20260724-warehouse-cost-rollover-client-avd-r7
+Upgrade from: 20260804-caller-runtime-resilience-client-avd-r12-cumulative-r7
+ZIP: bbi-mig-ai-workbench-20260805-safe-performance-client-avd-r13-cumulative-r7.zip
+Files: 155
+Size: 804450 bytes
+SHA-256: 599bbec1e252e17d5380da4c9799e0e253487647c7eb18ea59071abfaff5a6c7

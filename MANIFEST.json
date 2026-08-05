@@ -1,0 +1,794 @@
+{
+  "release": "20260805-safe-performance-client-avd-r13-cumulative-r7",
+  "baseline": "20260724-warehouse-cost-rollover-client-avd-r7",
+  "upgrades_from": "20260804-caller-runtime-resilience-client-avd-r12-cumulative-r7",
+  "includes": [
+    "R8 workbench reliability",
+    "R9 SQL-to-FIR bundle",
+    "R10 mapping hydration and project values",
+    "R11 agent workflow production hardening",
+    "R12 caller-runtime resilience",
+    "R13 safe, cost-controlled performance implementation"
+  ],
+  "zip": "bbi-mig-ai-workbench-20260805-safe-performance-client-avd-r13-cumulative-r7.zip",
+  "file_count": 155,
+  "size_bytes": 804450,
+  "sha256": "599bbec1e252e17d5380da4c9799e0e253487647c7eb18ea59071abfaff5a6c7",
+  "files": [
+    {
+      "path": "docs/CLIENT_FIR_LEARNING_CLI.md",
+      "size_bytes": 2767,
+      "sha256": "5b78003d57f8f2a39c8fbb397b3d5234c1bb397f7154331e44c71f3acd644500"
+    },
+    {
+      "path": "frontend/Dockerfile",
+      "size_bytes": 765,
+      "sha256": "eb91675291a5fe1ac6e1b380421122f727580b9b7d8f9c691b580eb61f91996c"
+    },
+    {
+      "path": "frontend/src/api/axiosInstance.ts",
+      "size_bytes": 4400,
+      "sha256": "98babc69ffb5c6b17acb1685f7ac1272c8a84149d9ed291e2579a003c4f9fa03"
+    },
+    {
+      "path": "frontend/src/api/routes.ts",
+      "size_bytes": 4529,
+      "sha256": "d8ad903987462b5003e411789cb6f860fabb087587360d3d5ac29b0a42176f99"
+    },
+    {
+      "path": "frontend/src/app/attributes/page.tsx",
+      "size_bytes": 132,
+      "sha256": "69c3f4e88cfd9286766f2c4842e8ab38721d8b5169496b7294be57cee92fa948"
+    },
+    {
+      "path": "frontend/src/app/sttm/builder/[id]/mapping/page.tsx",
+      "size_bytes": 257,
+      "sha256": "3bce4b5131f3e83e254d924d1baa58430ddf2fc5c3f5e32d7b1fbd9295bf7880"
+    },
+    {
+      "path": "frontend/src/app/sttm/builder/[id]/page.tsx",
+      "size_bytes": 259,
+      "sha256": "9ef981f9974a384b4b1c472532b30a780aa8a98b5eb472010201b82b83b1cb02"
+    },
+    {
+      "path": "frontend/src/app/sttm/builder/[id]/summary/page.tsx",
+      "size_bytes": 257,
+      "sha256": "1761f9dfb2c344d5a95f94fb5a3226d6c260c29f16c3e73695d97acc0c72993b"
+    },
+    {
+      "path": "frontend/src/app/sttm/builder/layout.tsx",
+      "size_bytes": 11760,
+      "sha256": "bdaea17b240668433fa76f91c271be41bfb062a256ff930a15ce443f45c99081"
+    },
+    {
+      "path": "frontend/src/app/sttm/builder/new/mapping/page.tsx",
+      "size_bytes": 97916,
+      "sha256": "eafd38a7f7d3ce6a1ec29626cf7673cbc747cbc85df8daae151fb940d14fd388"
+    },
+    {
+      "path": "frontend/src/app/sttm/builder/new/summary/page.tsx",
+      "size_bytes": 1599,
+      "sha256": "4a13c070fbb99f2b9634b44cb94c39e6aa12d6b46b81c0da186e2b622d5ff5d7"
+    },
+    {
+      "path": "frontend/src/components/ui/aia-auto-complete.tsx",
+      "size_bytes": 6691,
+      "sha256": "dd650ba2e7ce1db72ce5349c12da177485fabe9f71f707d6e408b0ccc931420c"
+    },
+    {
+      "path": "frontend/src/data/mock/db.ts",
+      "size_bytes": 13832,
+      "sha256": "fc2703eec835a47ac058a7950ba780f8ef490b8b45a195d8121c101b94ee7989"
+    },
+    {
+      "path": "frontend/src/features/ai-agent/ai-agent-panel.tsx",
+      "size_bytes": 103104,
+      "sha256": "4f2fa902606c76a7bdfce888673bc0e0d6698c524fbefa2276639be386e610b0"
+    },
+    {
+      "path": "frontend/src/features/attributes/AttributesPage.tsx",
+      "size_bytes": 9366,
+      "sha256": "f59c931d0a306ba21fc25ea47aee4c63f4cc0c46ee06129685145b2af3aed62a"
+    },
+    {
+      "path": "frontend/src/features/attributes/attributes-data.ts",
+      "size_bytes": 8221,
+      "sha256": "56429b12a7c10dba30324f90c60923572589f42a31eb03b98a801d9a54f4dc38"
+    },
+    {
+      "path": "frontend/src/features/attributes/attributes-header.tsx",
+      "size_bytes": 1946,
+      "sha256": "e8c85d80d20fb51fb205d0405554f06525a0d0856387061a6b6708c9d3c8840e"
+    },
+    {
+      "path": "frontend/src/features/attributes/attributes-table.tsx",
+      "size_bytes": 10477,
+      "sha256": "f9f4d564e7c2386c574bb3839bb874ad8ddad63debdad8fb797be3ae81cc59cb"
+    },
+    {
+      "path": "frontend/src/features/attributes/delete-attribute-modal.tsx",
+      "size_bytes": 4065,
+      "sha256": "79da838a4a714c0d173cc5b15916fe16833edebc63855d5d34f87f9e58594e86"
+    },
+    {
+      "path": "frontend/src/features/attributes/import-attributes-modal.tsx",
+      "size_bytes": 11939,
+      "sha256": "48b8c38515253ae563cd9b1b3d6f48ce00304d57d7c773b1b33c4c11a1be006d"
+    },
+    {
+      "path": "frontend/src/features/attributes/new-attribute-modal.tsx",
+      "size_bytes": 9937,
+      "sha256": "dc3a61742e19a06d2d69f30f5f2a252ce17d2504d6b618d98eac8f4331cf5c80"
+    },
+    {
+      "path": "frontend/src/features/dashboard/NewMappingDialog.tsx",
+      "size_bytes": 41401,
+      "sha256": "d50a50eafdf6f74249ee09da800b04e9f54c91fa4e0ac4a8c6f9d78b1a466afa"
+    },
+    {
+      "path": "frontend/src/features/layout/app-header.tsx",
+      "size_bytes": 22118,
+      "sha256": "03656deaa4384c4560b4fc6224b2819e49fad6bad194791f263d40302f97948f"
+    },
+    {
+      "path": "frontend/src/features/layout/app-sidebar-types.ts",
+      "size_bytes": 1318,
+      "sha256": "04acc6ef121789eb37e6af54d21d2952229876db3f8989ff6a76842c302f5d24"
+    },
+    {
+      "path": "frontend/src/features/layout/app-sidebar.tsx",
+      "size_bytes": 7405,
+      "sha256": "04222edfdf64802fcc0a9fcad4a4f49b40fd4828c8a98e42d388064290ff14e5"
+    },
+    {
+      "path": "frontend/src/features/mappings/AllMappingsPage.tsx",
+      "size_bytes": 17207,
+      "sha256": "cd3d24b0d28c2a5aba7d04bb08562cca109ef5a167fbf3535afc890a32b57dd3"
+    },
+    {
+      "path": "frontend/src/features/projects/ProjectDetailPage.tsx",
+      "size_bytes": 16011,
+      "sha256": "ed3bc21426d0461b6472fe3c9626591cd73e827f477f7062b11dcef0eb3f75fc"
+    },
+    {
+      "path": "frontend/src/features/projects/ProjectsPage.tsx",
+      "size_bytes": 5589,
+      "sha256": "7cf005a3aa21a6a78bf9274685d18e231290e3f982c529f091e71bad0a2b46ad"
+    },
+    {
+      "path": "frontend/src/features/projects/project-card.tsx",
+      "size_bytes": 4968,
+      "sha256": "80b4e521264e0344ab0ec0bbe235ab84fbd50d687d6970f9581f39c2722f7c19"
+    },
+    {
+      "path": "frontend/src/features/sttm/context/sttm-builder-context.tsx",
+      "size_bytes": 69228,
+      "sha256": "a50f8b6e265b4306a84a76470a093f5b022a889196e939b31186e3ad6c82e6d7"
+    },
+    {
+      "path": "frontend/src/features/sttm/context/workbench-context.ts",
+      "size_bytes": 15836,
+      "sha256": "2899d8cd3e8ac52678dca7394fba25c14f35195c7b27a703f91a0818c2c8da74"
+    },
+    {
+      "path": "frontend/src/features/sttm/mapping/cells/mapping-source-columns-cell.tsx",
+      "size_bytes": 24138,
+      "sha256": "3d0dd9795ea0b5f9c3be29abb9855eb77acb0cbfb5ddee2ae77a6299e810fe5a"
+    },
+    {
+      "path": "frontend/src/features/sttm/mapping/mapping-utils.ts",
+      "size_bytes": 26891,
+      "sha256": "74791cbe82c580deff7359fb901d46381f3818de504be6009f993735c5426b67"
+    },
+    {
+      "path": "frontend/src/features/sttm/mapping/source-target-attribute-mapping.tsx",
+      "size_bytes": 55768,
+      "sha256": "08194b90b71dd224fbd1a9a2ce9aa073b3b87cc1a84257a5ad4d66fdf3bffedf"
+    },
+    {
+      "path": "frontend/src/features/sttm/mapping/sql-bundle-review-panel.tsx",
+      "size_bytes": 25201,
+      "sha256": "028fc2c5ec98acc7dd860e4b64e9d0f6eb3f9c02947b88ccd3d0d20057cd347d"
+    },
+    {
+      "path": "frontend/src/features/sttm/mapping/sql-upload-workspace.ts",
+      "size_bytes": 6169,
+      "sha256": "5e49e7168fe5be8cb0319ae0fc2fab99d7651f1b291ffa1e3ec815382d83b9d5"
+    },
+    {
+      "path": "frontend/src/features/sttm/shared/saved-sttm-loader.tsx",
+      "size_bytes": 1932,
+      "sha256": "a86c975984d486a446bfc58b6fedee168e2af93797fcc7d6758a542a6f0eb5b1"
+    },
+    {
+      "path": "frontend/src/features/sttm/source-target/add-derived-modal.tsx",
+      "size_bytes": 74017,
+      "sha256": "b14c02dff179058409bb4b4a3c854dc4840a566e7379376fa041fdae30d2ccfd"
+    },
+    {
+      "path": "frontend/src/features/sttm/source-target/derived-workspace-list.tsx",
+      "size_bytes": 3467,
+      "sha256": "e336ddff0959c5745350b82be9a8c37b7c7b75c47eedc8c3e29af80b7c122bd1"
+    },
+    {
+      "path": "frontend/src/features/sttm/source-target/relationship-layout.ts",
+      "size_bytes": 9418,
+      "sha256": "0750becb45d9e62a8cdae2ee22d6ddf0e2e9606eae9e93c6e6d05defab07d994"
+    },
+    {
+      "path": "frontend/src/features/sttm/source-target/source-target-db-selection.tsx",
+      "size_bytes": 22055,
+      "sha256": "bb5274705268caf3358b69a935fc496c3d11acdf6ffbca9f75dbc6bad88cb939"
+    },
+    {
+      "path": "frontend/src/features/sttm/source-target/table-relationship-flow.tsx",
+      "size_bytes": 30633,
+      "sha256": "a08a403db25ce0f64cb4569e512c0a1c2f961a223925d12d6398f8f6fac841ab"
+    },
+    {
+      "path": "frontend/src/features/sttm/store/sttm-builder-slice.ts",
+      "size_bytes": 224190,
+      "sha256": "cec7e69f221e0bec4577441bf55cee7746a2c5a4931992069e2aa7279fa66e88"
+    },
+    {
+      "path": "frontend/src/features/sttm/summary/dbt-conversion-tab.tsx",
+      "size_bytes": 46008,
+      "sha256": "426eae458ab881f1bfa0581d534eb6a36d44c66c9920eeb2a60a274841710649"
+    },
+    {
+      "path": "frontend/src/features/sttm/summary/summary-workspace.tsx",
+      "size_bytes": 30068,
+      "sha256": "2a0e9eee168c74bcb66924082c0f92885c6cf246e5065b4560f90d8cd88edaa1"
+    },
+    {
+      "path": "frontend/src/features/sttm/types/sttm.types.ts",
+      "size_bytes": 16056,
+      "sha256": "8afe337e2ecaf8380a2155a0ef904517910ec3989a12ccfb3b1e792b6c7d5df0"
+    },
+    {
+      "path": "frontend/src/services/conversationService.ts",
+      "size_bytes": 14435,
+      "sha256": "61d3c71d856c5eb04123f81bc8580df2800518ec2a2b8f500cf76c79ee31d2c8"
+    },
+    {
+      "path": "frontend/src/services/dbService.ts",
+      "size_bytes": 28138,
+      "sha256": "87f1b125c795e8649f36a0eb09a64c49756ff68cf1ab820d5c4d51935b911993"
+    },
+    {
+      "path": "frontend/src/services/preparedContextService.ts",
+      "size_bytes": 3484,
+      "sha256": "a4116c545f56881c2daf841a4f827fb4b6ff82143c492aa8d555717958dd32d4"
+    },
+    {
+      "path": "frontend/src/services/projectService.ts",
+      "size_bytes": 16515,
+      "sha256": "652002b7470093d6f2785194752c846e022ce985b6e094747acceca032a33a40"
+    },
+    {
+      "path": "frontend/src/services/recommendationService.ts",
+      "size_bytes": 7878,
+      "sha256": "4d9447bf2c9930fa8f8599114f07ecdf55b8a244c1f85d90dcbd41d7e664eaa5"
+    },
+    {
+      "path": "frontend/src/services/workbenchService.ts",
+      "size_bytes": 17405,
+      "sha256": "3a76f56ee134029d9640fb1be2f5f7494986f82b44a5d55c4d88ccb94fab952b"
+    },
+    {
+      "path": "frontend/src/types/api-contract.ts",
+      "size_bytes": 29511,
+      "sha256": "3a2d1f4f71276b2bbe56fb1e5651f86e0a17a1c5866c9b4bf2554ca43baf1c31"
+    },
+    {
+      "path": "frontend/src/utils/icons.ts",
+      "size_bytes": 11012,
+      "sha256": "e5483a71e623ec071bd7122aedf668c8fc6aaa794527fee9b200079c1cb55df8"
+    },
+    {
+      "path": "infra/snowflake/agentic_tools/sp-get-table-relationship.sql",
+      "size_bytes": 5122,
+      "sha256": "0bab81756bcfe649d4face813c06a034dd117354e3ee65f85352b787cebef8d8"
+    },
+    {
+      "path": "infra/snowflake/agents/agent_spec_fir_system.yaml",
+      "size_bytes": 41765,
+      "sha256": "ccb9f0e8627db757b551302b76a2a874652c9e9da474bb2e31d5366a7de5eee2"
+    },
+    {
+      "path": "infra/snowflake/agents/agent_spec_manifest.json",
+      "size_bytes": 554,
+      "sha256": "65fca7a35936b80df3c09d54445a3a25f33d581d18c72cd556a0eb9bae32ee53"
+    },
+    {
+      "path": "infra/snowflake/agents/agent_spec_source_mapping.yaml",
+      "size_bytes": 23256,
+      "sha256": "6e64bc7f9838c99efcffa66ad54c1f2f2182e1a67037b0a3a2bcf5da71bce2b3"
+    },
+    {
+      "path": "infra/snowflake/agents/agent_spec_sttm_builder.yaml",
+      "size_bytes": 43792,
+      "sha256": "7267223275dd2c8320a66d1d30b461a975269ca2d298f946c5598e867d6b45d8"
+    },
+    {
+      "path": "infra/snowflake/agents/agent_spec_transformation_rule.yaml",
+      "size_bytes": 10320,
+      "sha256": "ced148a9ba5d332d547acd89eec854af5e3ec06c77671437393e45cc7bbb3622"
+    },
+    {
+      "path": "infra/snowflake/client_admin_setup_template.sql",
+      "size_bytes": 12218,
+      "sha256": "c2595eda1a05fac36cec641d13cec437e76e76e7fcf8c1704212e900a159807d"
+    },
+    {
+      "path": "infra/snowflake/create-table-ddl.sql",
+      "size_bytes": 59606,
+      "sha256": "61869c0125fabaaa243629ee788f719323f8bbd509b60355eb50fc8462f21215"
+    },
+    {
+      "path": "infra/snowflake/env/client.env.example",
+      "size_bytes": 9869,
+      "sha256": "e26e75898a7d96af0585085efbb8320c6e297bc47b2605a376d467a26bc3a98c"
+    },
+    {
+      "path": "infra/snowflake/env/dev.env.example",
+      "size_bytes": 6307,
+      "sha256": "7c4b05e00212a1666bff0aaa4295e2a998b9266110b3ad240c1dadf4469a4014"
+    },
+    {
+      "path": "infra/snowflake/fir_system/grants/fir_grants.sql",
+      "size_bytes": 12954,
+      "sha256": "7f1aebb7bc2878e89a8e6330579c2c2d7785dc4e99f40441cce3b89dd2d293e0"
+    },
+    {
+      "path": "infra/snowflake/fir_system/procedures/sp-agent-learning-helpers.sql",
+      "size_bytes": 3188,
+      "sha256": "cbea5d0d63f2c393862c515177266dc73fd1294400b0a6518fd853f0ca35ab7e"
+    },
+    {
+      "path": "infra/snowflake/fir_system/procedures/sp-fir-enrich-context.sql",
+      "size_bytes": 26271,
+      "sha256": "0f9e4eec590de8fe58d105d44ebd8bc5afd529e17c86130f5d1a7567a3e08231"
+    },
+    {
+      "path": "infra/snowflake/fir_system/procedures/sp-fir-get-agent-recommendations.sql",
+      "size_bytes": 15047,
+      "sha256": "acff1dea3d594db63a99f5b74f97552a3e4347c069170883b952b3e5b91ed006"
+    },
+    {
+      "path": "infra/snowflake/fir_system/procedures/sp-fir-invoke-agent.sql",
+      "size_bytes": 30445,
+      "sha256": "d896c06eed8fe45f9e7d16ede23cd47657e059985daba91a5d5f8e960612d55f"
+    },
+    {
+      "path": "infra/snowflake/fir_system/procedures/sp-fir-process-learning-queue.sql",
+      "size_bytes": 15195,
+      "sha256": "97264cd496fc6915c6c57c07281d96630aa7b3404387a7e2c72d229b79c1810b"
+    },
+    {
+      "path": "infra/snowflake/fir_system/procedures/sp-fir-read-documents.sql",
+      "size_bytes": 11470,
+      "sha256": "4f87d791dae3c91c127116700b26eba29aab19358c28a4a284b684ae6b9b0794"
+    },
+    {
+      "path": "infra/snowflake/fir_system/procedures/sp-fir-read-semantic-evidence.sql",
+      "size_bytes": 3107,
+      "sha256": "b716a6a35a73d13c2b75a84075ce2553f21a7506911bf193a770fb8d8740e48e"
+    },
+    {
+      "path": "infra/snowflake/fir_system/procedures/sp-fir-score-recommendations.sql",
+      "size_bytes": 3866,
+      "sha256": "851c31c9b7160e25c1da1ebb947c56b95b2192f7779ea5b00708ec93864b5b69"
+    },
+    {
+      "path": "infra/snowflake/fir_system/procedures/sp-fir-store-recommendation.sql",
+      "size_bytes": 18999,
+      "sha256": "88248132f059994077b6b3cc4ceaac669429383f47b710dcd8de98308c3151b2"
+    },
+    {
+      "path": "infra/snowflake/fir_system/streams/fir_streams.sql",
+      "size_bytes": 6510,
+      "sha256": "5ee5c0715a65fa8d4a766bc3aaf1d0ab68af4be8b9b9f063f6db04246a0c6eff"
+    },
+    {
+      "path": "infra/snowflake/fir_system/tables/fir_v2_linking_schema.sql",
+      "size_bytes": 3503,
+      "sha256": "9aef5d1cccb0d9e2708e4830b5fcb86145841fa089a984762b69ecd33f18a68c"
+    },
+    {
+      "path": "infra/snowflake/fir_system/tables/fir_v2_schema.sql",
+      "size_bytes": 65814,
+      "sha256": "2812fb52c44edc9c2656225730a93b4928eb6051f52ae542b7fb814cf84db0aa"
+    },
+    {
+      "path": "infra/snowflake/fir_system/tasks/fir_tasks.sql",
+      "size_bytes": 9545,
+      "sha256": "5757cca957e249a5282260667b3eac78d8e62e89573d193c3defbf677048c9be"
+    },
+    {
+      "path": "infra/snowflake/fir_system/tasks/fir_tasks_resume.sql",
+      "size_bytes": 853,
+      "sha256": "2147593aed115676c0663ebbfc5a1eb757a8981a6bd21d8f10a3880bffed881b"
+    },
+    {
+      "path": "infra/snowflake/migrations/20260723_warehouse_routing_conversation_artifacts.sql",
+      "size_bytes": 3148,
+      "sha256": "b1b6fc54c117c6df44f4715af7e584115e67989944cd3df385c0be4188caf85f"
+    },
+    {
+      "path": "infra/snowflake/migrations/20260731_project_attributes.sql",
+      "size_bytes": 951,
+      "sha256": "d6a132d2d1f2a4f72b7ca2e58bd83fae05ab44caa06bfe1e8cd2fc9b98e3d84d"
+    },
+    {
+      "path": "infra/snowflake/migrations/20260801_agent_artifact_jobs.sql",
+      "size_bytes": 894,
+      "sha256": "991a0e0fa3e7566c61a560e424c8f3565fcc30e94db4be8d6eaba2b6b33028a6"
+    },
+    {
+      "path": "infra/snowflake/migrations/20260805_safe_performance.sql",
+      "size_bytes": 971,
+      "sha256": "2758164f3c5bd7ee4bc3b0885c19a3abbba248ad416c48dd0b7fc96bb42e65fc"
+    },
+    {
+      "path": "infra/snowflake/scripts/deploy-fir-system.sh",
+      "size_bytes": 17151,
+      "sha256": "4ea0098f75a3b303502b237ac2b588a1bc7a61a52595707ede97f572ce1b052c"
+    },
+    {
+      "path": "infra/snowflake/service-specs/automap-worker.yaml.tmpl",
+      "size_bytes": 7349,
+      "sha256": "67db19dbdf347d1f9b2c3348a5b4b8a91d8451d8f8c44e594a5101e20380ce02"
+    },
+    {
+      "path": "infra/snowflake/service-specs/sttm-builder.yaml.tmpl",
+      "size_bytes": 7560,
+      "sha256": "b9229695df70784eafad7f5b3e4eb4a3abd2cc2e2fe304d6801e048df9c09330"
+    },
+    {
+      "path": "infra/snowflake/service-specs/webapp.yaml.tmpl",
+      "size_bytes": 9800,
+      "sha256": "8ddc992dc7f14f9dd6391cae7512df595eda46682b11a3529ef7b4c561b51e88"
+    },
+    {
+      "path": "infra/snowflake/setup-caller-grants.sql",
+      "size_bytes": 3223,
+      "sha256": "c40a124b953fa91a09d1bd8c65d00bf8ea8984048fa158900624f49c2dcacf9c"
+    },
+    {
+      "path": "scripts/bootstrap_sttm_metadata_infra.ps1",
+      "size_bytes": 4359,
+      "sha256": "f04bef448e29cfbc27dce0725273ec71fb5cff957ccf88cff0fef9aa732bd2c1"
+    },
+    {
+      "path": "scripts/bootstrap_sttm_metadata_infra.py",
+      "size_bytes": 27938,
+      "sha256": "cda5cefdb545de9f654c70d9e817c7ba1cf42701cf130bd7a959b4b38553da92"
+    },
+    {
+      "path": "scripts/deploy_spcs_client_snow.ps1",
+      "size_bytes": 37113,
+      "sha256": "a7cfedb95b4fcbe8b6d36a05f093fe1cd939d31d248fd0c8af8ac6aaff4c2188"
+    },
+    {
+      "path": "scripts/deploy_spcs_client_snow.sh",
+      "size_bytes": 32989,
+      "sha256": "152e9dba29466dae7e733e23064bd62f985fcbe03bfef39596471cb96faa67b0"
+    },
+    {
+      "path": "scripts/deploy_spcs_client_snow_safe.ps1",
+      "size_bytes": 40774,
+      "sha256": "34fb33161fa2674c5e67a6e37d383a734172826d9f014d104eb0ee4f86413ebb"
+    },
+    {
+      "path": "scripts/deploy_spcs_client_snow_single_service.ps1",
+      "size_bytes": 32039,
+      "sha256": "79776df4418888c89cae05600eacb9a03197d16fa36aa0c5a14f63ff2970d038"
+    },
+    {
+      "path": "scripts/manage_client_fir_learning.ps1",
+      "size_bytes": 481,
+      "sha256": "0b10dec0b2a6d29e182f925f31789c670d2a03a19e3c12ba89077e9040a0c37a"
+    },
+    {
+      "path": "scripts/manage_client_fir_learning.py",
+      "size_bytes": 20990,
+      "sha256": "0bc46aec9415efe0b0f9b9589d4a43e003589e72803469912d989abd4bbe3f69"
+    },
+    {
+      "path": "scripts/render_spcs_spec.py",
+      "size_bytes": 3723,
+      "sha256": "a7b58ce659378b3a49f9c0f52a767b31ba1427cf6dfa9ccf1aca589575ae99d1"
+    },
+    {
+      "path": "scripts/report_workbench_performance.py",
+      "size_bytes": 6991,
+      "sha256": "3687ea5114dc0630afc87150742b27cf509eb07b4e799c36e04857a88944ba67"
+    },
+    {
+      "path": "services/sttm-builder/.env.example",
+      "size_bytes": 5529,
+      "sha256": "1856368e4b997d5c6854d473374a48354d53264741536e42caa9ab8afa993c4d"
+    },
+    {
+      "path": "services/sttm-builder/Dockerfile",
+      "size_bytes": 990,
+      "sha256": "e3092e1e3a258f2f4d24a11867a960f53a7b99f871f05280fb0549b17d6663be"
+    },
+    {
+      "path": "services/sttm-builder/app/api/__init__.py",
+      "size_bytes": 3804,
+      "sha256": "414aca8632afc17c5868cf175e1d3beb6484ba64dcb75953264788dd9bc1f588"
+    },
+    {
+      "path": "services/sttm-builder/app/api/deps.py",
+      "size_bytes": 23009,
+      "sha256": "14ea6fa68c953cb435072b4244041ea66e089f93a3a8a5add408db3743c28946"
+    },
+    {
+      "path": "services/sttm-builder/app/core/agent_artifact_jobs.py",
+      "size_bytes": 6153,
+      "sha256": "be5e2cfe393c20aae29c9bba9592b05ab4d8559978fa149d6fa7cb56585eb453"
+    },
+    {
+      "path": "services/sttm-builder/app/core/agent_execution_context.py",
+      "size_bytes": 9782,
+      "sha256": "68bc41ec7f15f8cddd292bc6a82be2b25ea4f8a7be220799ff35c46d68752d76"
+    },
+    {
+      "path": "services/sttm-builder/app/core/async_jobs.py",
+      "size_bytes": 6036,
+      "sha256": "98014a7f8ff96126c5c691985582504755c560809b3d1776df80b2d3d8e12849"
+    },
+    {
+      "path": "services/sttm-builder/app/core/auto_mapping_proxy.py",
+      "size_bytes": 73409,
+      "sha256": "dc3235b98e614616ece84e6004b7467d6fde9716bf8089f1d278fc3226daf28b"
+    },
+    {
+      "path": "services/sttm-builder/app/core/bundle_curation.py",
+      "size_bytes": 21233,
+      "sha256": "78605bebbbc0ce4d7c5598442122c35c7221d17b235e6a969bcf974b9e0ec5a5"
+    },
+    {
+      "path": "services/sttm-builder/app/core/config.py",
+      "size_bytes": 42229,
+      "sha256": "c12366fc7204ada92d2565356e6a82c1e55250519d897ee1edbf75427d992afe"
+    },
+    {
+      "path": "services/sttm-builder/app/core/conversation.py",
+      "size_bytes": 147411,
+      "sha256": "24826e59961f96880da7338b85bf99347f240383417bf2b7d8d8f34e674c322f"
+    },
+    {
+      "path": "services/sttm-builder/app/core/conversation_continuity.py",
+      "size_bytes": 11860,
+      "sha256": "18addf56c02f7a2e03342b0232a8aa52dae341261f919f2465c3d80f7deec0e3"
+    },
+    {
+      "path": "services/sttm-builder/app/core/conversation_memory.py",
+      "size_bytes": 184755,
+      "sha256": "f1f4433db8e01bae29c8c0a3e2b72b634e8e2dd1ae901cd6ef16a79664ef5086"
+    },
+    {
+      "path": "services/sttm-builder/app/core/cortex_completion.py",
+      "size_bytes": 2176,
+      "sha256": "57b159f1e3c8094bf72b4c4f07779f44375de91527f6168f2c401d62b85d4d3e"
+    },
+    {
+      "path": "services/sttm-builder/app/core/fir_asset_resolver.py",
+      "size_bytes": 11955,
+      "sha256": "89be36857073e3581328f43da3a8db481de212ec0f69cd67866fd4c72941517b"
+    },
+    {
+      "path": "services/sttm-builder/app/core/fir_document_ingestion.py",
+      "size_bytes": 6491,
+      "sha256": "2ff4759804d294c57e207b3806f854ec0dc9f7e3c5504a51a1bb47c61b8ecb41"
+    },
+    {
+      "path": "services/sttm-builder/app/core/learning_retrieval.py",
+      "size_bytes": 75995,
+      "sha256": "44d9326c7639db67ab4a81286863e548db1548bd6287a20e82a8a0c14cb94fae"
+    },
+    {
+      "path": "services/sttm-builder/app/core/mapping_knowledge_projector.py",
+      "size_bytes": 9905,
+      "sha256": "9c76d6ff9b9be5b559134ef826106f85daf375cbbc4e97e26937720d4d845af8"
+    },
+    {
+      "path": "services/sttm-builder/app/core/mapping_sql.py",
+      "size_bytes": 68197,
+      "sha256": "4794c57b08395e8e46c472e55a05a8bec4fbb1cc6642a5ce819fd78c6bb72703"
+    },
+    {
+      "path": "services/sttm-builder/app/core/performance.py",
+      "size_bytes": 2813,
+      "sha256": "ee1b4e3632d6bc4c4e63fcd1fc7dd54c97d5f29b49bc52731c8b692dcb28db26"
+    },
+    {
+      "path": "services/sttm-builder/app/core/prepared_context.py",
+      "size_bytes": 28278,
+      "sha256": "6dc2c080fb1472a16e3cba122da36a53a1c171e8cfd93c967ea5af84577780ec"
+    },
+    {
+      "path": "services/sttm-builder/app/core/project_service.py",
+      "size_bytes": 126909,
+      "sha256": "08eed7d620cc19e013233e3c90a68f6cd6ea587eb9aa9766b0ab64572b89d163"
+    },
+    {
+      "path": "services/sttm-builder/app/core/recommendation_actions.py",
+      "size_bytes": 41895,
+      "sha256": "8c860b6800f9ca344de9977d36a578ba88fa0998fbfed5d05743db3e5a6ecf7b"
+    },
+    {
+      "path": "services/sttm-builder/app/core/semantic_context.py",
+      "size_bytes": 173476,
+      "sha256": "11f64f74dd028f19a2714f7a5db14986c05af94b0cee7c4035df3c6fb6ba20ff"
+    },
+    {
+      "path": "services/sttm-builder/app/core/semantic_knowledge_resolver.py",
+      "size_bytes": 28849,
+      "sha256": "b63674a2bd95fa122639d064abd4e62cc86032a4bf4c582c8953e73d9341cc18"
+    },
+    {
+      "path": "services/sttm-builder/app/core/snowflake.py",
+      "size_bytes": 25886,
+      "sha256": "e5907e5849a58d2f901a4db7924afa76677cc80cf83d7d05004f40009a418358"
+    },
+    {
+      "path": "services/sttm-builder/app/core/snowflake_analyst.py",
+      "size_bytes": 9442,
+      "sha256": "d0943c6fb210e0c77142590ad7d5eaa42371667276ed943f5937f635c35bdf3c"
+    },
+    {
+      "path": "services/sttm-builder/app/core/sql_parser.py",
+      "size_bytes": 54868,
+      "sha256": "cf7a649b41e8d1c8efb0421d048c8b3cae9cc4d4245091363039a8a21e77e3b9"
+    },
+    {
+      "path": "services/sttm-builder/app/core/sttm_builder.py",
+      "size_bytes": 210627,
+      "sha256": "252560c9e2fd4d6f8fb2a2d28fd0f3833a05b9fb758524633769db8676f1d9e1"
+    },
+    {
+      "path": "services/sttm-builder/app/core/table_selection.py",
+      "size_bytes": 30453,
+      "sha256": "5f21998203dabc755eaded5630b352576e7a9681c984d1d3faeecb9231a04b20"
+    },
+    {
+      "path": "services/sttm-builder/app/core/target_mapping_patterns.py",
+      "size_bytes": 72937,
+      "sha256": "f30cf69f1244874e1348832c0f9b1c718561d5bc1d8cb0a8bb19bcb67ba924c7"
+    },
+    {
+      "path": "services/sttm-builder/app/core/warehouse_routing.py",
+      "size_bytes": 3750,
+      "sha256": "401eb1b6225aede6abfc2e1bc49484dea0c53c0f3792ce226c61f6cdc93c18b3"
+    },
+    {
+      "path": "services/sttm-builder/app/main.py",
+      "size_bytes": 5756,
+      "sha256": "4e40e41bb8600d176801d1e6325bbaf0d93f31770c9ee6a27ef34cdf6065404c"
+    },
+    {
+      "path": "services/sttm-builder/app/routers/bundle_curation.py",
+      "size_bytes": 2440,
+      "sha256": "8c4975aece1cbffcfbe13c1e71debcfa8e2c6e8f1590734c6c9995942e7eea23"
+    },
+    {
+      "path": "services/sttm-builder/app/routers/conversation.py",
+      "size_bytes": 10257,
+      "sha256": "05fb98811d696eb9b27a399669470f14bcf4e9a9d85426d293b9d2bf14855da3"
+    },
+    {
+      "path": "services/sttm-builder/app/routers/dbt_conversion.py",
+      "size_bytes": 4640,
+      "sha256": "efb52ff21f4c73bb68af26310481b7d9e93ea5c82b0f51392843cc35f8541d40"
+    },
+    {
+      "path": "services/sttm-builder/app/routers/diagnostics.py",
+      "size_bytes": 926,
+      "sha256": "a1faf3ec08c26805ecef8a28ab3a177ea72ec53f16d71e8d84508816674bba09"
+    },
+    {
+      "path": "services/sttm-builder/app/routers/fir_learning.py",
+      "size_bytes": 21643,
+      "sha256": "5bb25cf96aa6a7cf0595ae6d62005f0fd853b65cb0f3d66cefd0297b3740f545"
+    },
+    {
+      "path": "services/sttm-builder/app/routers/prepared_context.py",
+      "size_bytes": 2329,
+      "sha256": "458fc98279f484db42b6980f83ff6837de43f2704ae83cfbc6afe9b4e6b064a6"
+    },
+    {
+      "path": "services/sttm-builder/app/routers/projects.py",
+      "size_bytes": 16286,
+      "sha256": "5e1c61485590015262d2d0e525123e606c7266aa54828170d79c67fe30a1032c"
+    },
+    {
+      "path": "services/sttm-builder/app/routers/recommendation_actions.py",
+      "size_bytes": 11322,
+      "sha256": "a874105a116caecd1e36a44fb3c20e88678aff0edc0b98ae8a3ee105810779f5"
+    },
+    {
+      "path": "services/sttm-builder/app/routers/sttm_builder.py",
+      "size_bytes": 7569,
+      "sha256": "8fb8304278f5f09d55cddb65eee0a94f863c8dc74b901faf9c19e87b64d1f054"
+    },
+    {
+      "path": "services/sttm-builder/app/routers/table_selection.py",
+      "size_bytes": 7897,
+      "sha256": "d64bd9f3505ff77cd03b919c873601ba80fd114dc27a29479f6709793dc4e65e"
+    },
+    {
+      "path": "services/sttm-builder/app/routers/test_case_generation.py",
+      "size_bytes": 3980,
+      "sha256": "86cf38acab6178f6654fc0873f259262a5958f61b7e529649a2e934ddcd5cb60"
+    },
+    {
+      "path": "services/sttm-builder/app/routers/upload.py",
+      "size_bytes": 36175,
+      "sha256": "a856d5ebc9dc2a553c9c85fd3e4e3b41d8f2ff7267ec7ebe47eccb918e567d9f"
+    },
+    {
+      "path": "services/sttm-builder/app/schema/bundle_curation.py",
+      "size_bytes": 1712,
+      "sha256": "1a89d1367d03cc1e73c89e7a1aac1c37e7465a66d4aef48c4a2c64af6bd9bb1e"
+    },
+    {
+      "path": "services/sttm-builder/app/schema/conversation.py",
+      "size_bytes": 15774,
+      "sha256": "b8d5e284a6a5b13ed9ba261f7cab5a598e9eba35db2cefa286d70bc9a2bda130"
+    },
+    {
+      "path": "services/sttm-builder/app/schema/fir_patterns.py",
+      "size_bytes": 3320,
+      "sha256": "f0a9f8279c39ed99ae7f18fa7afaf9eb80433e25009c7fbeea2d28128127c5a3"
+    },
+    {
+      "path": "services/sttm-builder/app/schema/mapping_sql.py",
+      "size_bytes": 5506,
+      "sha256": "a7e739256aaf1af980b7653d7f59f0b87e6dd5357df1cd1dafd2186b10ea54b1"
+    },
+    {
+      "path": "services/sttm-builder/app/schema/prepared_context.py",
+      "size_bytes": 1872,
+      "sha256": "d7ecc5318c0b7df75b55e071e40162273bc437d3517dd0a3a7fd78559a82fcf0"
+    },
+    {
+      "path": "services/sttm-builder/app/schema/project.py",
+      "size_bytes": 8126,
+      "sha256": "5157cee8d8453acd5f5d886ee2c8f43c2aa7d3c29908c3ce2aa1a875aff15f43"
+    },
+    {
+      "path": "services/sttm-builder/app/schema/recommendation_actions.py",
+      "size_bytes": 3204,
+      "sha256": "2708a8355daa92c76a72662e484ef1664eb2c371c85fd9f95cd42d844e7b62dc"
+    },
+    {
+      "path": "services/sttm-builder/app/schema/sttm_builder.py",
+      "size_bytes": 47656,
+      "sha256": "defd5366966bc83eea73f699f0e526ab034c35302039d9ef0b28d91766b9323a"
+    },
+    {
+      "path": "services/sttm-builder/app/schema/table_selection.py",
+      "size_bytes": 1823,
+      "sha256": "684f97f6d4034bc7f1690cedc242b70fac68c02c7c115e9307d57d0ba1e6ca34"
+    },
+    {
+      "path": "services/sttm-builder/app/schema/workspace_context.py",
+      "size_bytes": 14900,
+      "sha256": "3169a526ad9b5925bfcc72d52ebe36f701f7bfda009b75ac3c897a25087f023f"
+    },
+    {
+      "path": "README_CLIENT_AVD.md",
+      "size_bytes": 3320,
+      "sha256": "43ff10c12f612ff8bd8cd5c58df8e6c5ebff6c8885918bc518d383aa0ab42e92"
+    },
+    {
+      "path": "CLIENT_ENV_DELTA.md",
+      "size_bytes": 1333,
+      "sha256": "38c033416280846b8ef60513198fe9179b67203281efcb6a54abd94939ed2d9e"
+    }
+  ]
+}
