@@ -1,37 +1,9 @@
-R14 is an overlay on R13:
-If the client source already has R13, extract R14 directly over it.
-If not, apply the R13 cumulative package first, followed by the R14 overlay.
-Until the new pool is available, retain the existing configuration:
-SNOWFLAKE_COMPUTE_POOL=<current_small_compute_pool>
-AUTO_MAPPING_COMPUTE_POOL=<current_small_compute_pool>
-Add these R14 variables to client.env:
-# Cortex payload protection
-AGENT_PAYLOAD_BUDGET_V1=true
-AUTO_MAPPING_PAYLOAD_BUDGET_V1=true
-AGENT_OVERSIZE_RETRY_V1=true
-AGENT_OUTBOUND_MESSAGE_MAX_CHARS=60000
-AGENT_OUTBOUND_MESSAGE_MAX_BYTES=65536
-AGENT_THREAD_CONTEXT_MAX_CHARS=80000
-
-# Backend caches
-BACKEND_READ_CACHE_V1=true
-BACKEND_PROJECT_SUMMARY_CACHE_SECONDS=300
-BACKEND_RECOMMENDATION_CACHE_SECONDS=15
-
-# Snowflake write optimization
-STTM_SOURCE_BULK_WRITE_V1=true
-
-# Do not show review-only low-confidence relationships
-LOW_CONFIDENCE_JOIN_REVIEW_V1=false
-For now, keep internal parallel preparation disabled because the webapp and Auto-Mapping still share the Small pool:
-SNOWFLAKE_SESSION_LEASE_POOL_V1=false
-LEARNING_PARALLEL_V1=false
-PREPARE_PARALLEL_V1=false
-R14 will still provide:
-Five-minute sliding project/dashboard cache.
-Short recommendation cache.
-Prepared-context reuse and single-flight behavior.
-Cortex payload-size protection.
-Auto-Mapping payload batching.
-Reduced source-persistence statements.
-Safer JSON persistence.
+Just finished the demo. It was good, they were asking good questions as well. 
+ 
+Gopal and Chris helped with setting context of the application and how its going to help. I was not able to show all features due to time constraints but showed them the important one's, and also the output document.
+ 
+They are interested in back testing and understanding the accuracy of the tool. And how it improves, after feeding more learnings. They had good questions if the tool is capable of learning through other data models, documents etc. - Which it is. 
+ 
+So Gopal and Chris asked John Spyers to ask his team to test the application. 
+ 
+Mark's ending note was the tool is good, he doesn't want to get too excited before seeing the actual accuracy/result of the tool. Gopal answered we are on it and will have that by end of this month. 
