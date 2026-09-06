@@ -1,747 +1,346 @@
-Let me extract the complete `mapping_sql.py` delta versus the newest zip so nothing is missing from the handoff.Scratch files removed (the remaining `??` match is a pre-existing unrelated file). Here is the complete handoff.
-
----
-
-# Resync Handoff — `ffp_ai_mig_workbench`
-
-## 0. Baseline, scope, and what is provably missing
-
-**Reference baseline:** `Downloads/bbi-mig-ai-workbench-20260805-safe-performance-client-avd-r13-cumulative-r7.zip` (2026-08-05 08:03). This is the newest zip that contains any of the affected files. The newer `20260806-...-r14-delta-r13.zip` contains **none** of them.
-
-**Three files changed in this session.** Confirmed two independent ways:
-
-*File mtimes — a clean 44-minute gap isolates the session:*
-```
-8/6/2026 3:32:42 PM   services/sttm-builder/tests/unit/core/test_mapping_sql.py
-8/6/2026 3:30:04 PM   frontend/src/features/sttm/source-target/filter-conditions.tsx
-8/6/2026 3:29:49 PM   services/sttm-builder/app/core/mapping_sql.py
-------------------------- gap -------------------------
-8/6/2026 2:45:47 PM   frontend/src/app/sttm/builder/new/mapping/page.tsx
-8/6/2026 2:44:18 PM   frontend/src/features/sttm/mapping/mapping-utils.ts
-```
-
-*Zip diff on `mapping_sql.py`: 7 hunks, 257 insertions / 1 deletion. Exactly 3 hunks are this session's.*
-
-**Baseline coverage per file:**
-
-| File | In 8/5 zip? | Current size | Delta reproducible below? |
-|---|---|---|---|
-| `services/sttm-builder/app/core/mapping_sql.py` | **Yes** (68,197 B) | 1,779 lines | **Yes — complete, all 7 hunks** |
-| `frontend/src/features/sttm/source-target/filter-conditions.tsx` | **No** | 1,531 lines | Changed region only |
-| `services/sttm-builder/tests/unit/core/test_mapping_sql.py` | **No** (untracked in git) | 959 lines | Session additions only |
-
-**Critical scope warning for Codex:** the working tree is **263 changed files / 41,580 insertions / 11,703 deletions** uncommitted vs git HEAD. `mapping_sql.py` alone is **228 lines ahead of the 8/5 zip from prior sessions**, independent of this session. Applying only the Section 2 hunks will produce a *compiling but functionally broken* result — see the hard dependency in §2.2. A full source zip is the only complete resync path; §2 exists so the one file where this session's logic lives can be reconstructed exactly if needed.
-
----
-
-## 1. Prerequisites already present in the 8/5 baseline
-
-Verified — do **not** add these, they already exist:
-
-```python
-line   3: import json
-line   4: import logging
-line   5: import re
-line   7: from typing import Any, Literal
-line  10: from sqlglot import exp, parse_one
-line 684: def _relation_output_columns(node: RelationNode) -> set[str]:   # @staticmethod
-```
-
-The new code in §2 uses `Any`, `exp`, `parse_one`, and `_relation_output_columns`. All resolve against the baseline, so the delta is self-contained.
-
----
-
-## 2. `services/sttm-builder/app/core/mapping_sql.py` — complete delta vs 8/5 zip
-
-Seven hunks. **Hunks 2.4, 2.5, 2.6 are this session's fix.** Hunks 2.1, 2.2, 2.3, 2.7 are prior-session work that is also absent from every zip and must be applied for the session fix to function.
-
-### 2.1 — Import block (the file's only deletion)
-
-Baseline line 28. **Replace** this single line:
-
-```python
-I'll explore the repo first to understand its structure before explaining it.Now let me break this down simply.
-
-## What is this repo?
-
-**ffp-ipaas-mvp** = **FFP's iPaaS (Integration Platform as a Service)** — but not a generic SaaS iPaaS product like MuleSoft or Zapier. It's a **custom-built, Python-based integration pipeline** running on Azure that moves data between two systems:
-
-- **Salesforce** (source — where client/household records are created)
-- **Orion** (target — a wealth-management platform)
-
-Think of it as **plumbing**: when a household is created in Salesforce, this system picks up that event, transforms it, sends it to Orion through an API gateway, tracks every step, retries failures, and reports back to Salesforce whether it succeeded.
-
-### Why "iPaaS"?
-Normally you'd buy an iPaaS tool (MuleSoft, Boomi, Workato) to do this kind of point-to-point integration. Here, FFP built their own lightweight version using **Azure Service Bus queues + Azure Container Apps + Cosmos DB**, instead of buying one.
-
-## How it actually works (the pipeline)
-
-```
-Salesforce ──event──> [Listener] ──> inbound-queue
-                                          │
-                                          ▼
-                                    [inbound] (logs it, creates tracker)
-                                          │
-                                          ▼
-                                   processing-queue
-                                          │
-                                          ▼
-                                    [processing] (passthrough today)
-                                          │
-                                          ▼
-                                    outbound-queue
-                                          │
-                                          ▼
-                                    [outbound] ──> APIM ──> Orion
-                                          │
-                                          ▼
-                                    feedback-queue ──> [feedback] ──> back to Salesforce
-
-    (any failure anywhere) ──> Dead Letter Queue ──> [retry] ──> replay or give up
-```
-
-Each box (`inbound`, `processing`, `outbound`, `retry`, `feedback`) is its **own independent microservice/container** — they don't call each other directly, they just pick messages off a queue, do their job, and drop the result on the next queue. This is called **queue-based choreography**.
-
-**Example flow (household creation):**
-1. Salesforce fires "household X created" event.
-2. `inbound` writes it down in Cosmos DB (a NoSQL database) so nothing is lost, and creates a "tracker" document to follow its progress.
-3. `outbound` runs a small declarative "flow" defined in a YAML file (`flows/household_create_v1.yaml`):
-   - `POST` create client in Orion (via APIM gateway)
-   - `GET` that client back
-   - tweak a flag
-   - `PUT` update it
-4. If it all succeeds → `feedback` tells Salesforce "done, here's the Orion ID."
-5. If anything fails → it lands in a **Dead Letter Queue**, and the `retry` service decides whether to try again or mark it permanently failed.
-
-## Tech stack
-- **Language:** Python 3.12 everywhere
-- **Messaging:** Azure Service Bus (queues)
-- **Database:** Azure Cosmos DB (tracks every message's state)
-- **Gateway:** Azure API Management (APIM) — sits between this system and Orion
-- **Deployment:** Docker containers → Azure Container Apps
-- **CI/CD:** GitHub Actions
-
-## Important finding: no Snowflake, no MCP, no Next.js exists yet
-I searched the entire codebase — **zero references** to Snowflake, MCP, or Node/Next.js. This is a **greenfield addition**: you're not modifying an existing Snowflake integration, you're building one from scratch, alongside the existing Python pipeline.
-
-Also worth noting: `fastapi`/`uvicorn` are listed as dependencies but **no API server actually exists** in this repo today — everything here is queue consumers, not HTTP services.
-
----
-
-Now for your build: **MCP servers connecting to Snowflake** + a **Next.js chatbot** that talks to those MCP servers. This is genuinely new architecture work with real design decisions (where does the MCP server run, how does it relate to this existing pipeline, what does the chatbot need to query in Snowflake, auth model, etc.), so I'd like to switch to plan mode to design this properly before writing code.
-```
-
-Context: immediately follows the `from app.schema.mapping_sql import (...)` block and precedes `from app.core.sql_parser import parse_sql_document`.
-
-### 2.2 — Pull expression-referenced relations into the FROM clause `[HARD DEPENDENCY OF §2.4]`
-
-Baseline line ~299, inside the per-mapping loop of `MappingSqlService.compile`. **Insert** the block between `_validate_expression_aliases` and `select_items.append`:
-
-```python
-            expression = self._normalize_expression_namespace(expression, nodes, aliases)
-            self._validate_expression_aliases(expression, alias_to_id, nodes)
-            # A relation an expression reads from must be joined, even when it was
-            # never listed as a source dependency. Without this the alias passes
-            # validation (the relation does exist in the graph) but never reaches
-            # the FROM clause, and Snowflake rejects the finished query with
-            # "invalid identifier <alias>.<column>".
-            required_relation_ids.update(
-                self._expression_relation_ids(expression, alias_to_id)
-            )
-            select_items.append(f"  {expression} AS {target}")
-            target_columns.append(target)
-```
-
-**Why this is load-bearing for §2.4:** the §2.4 fix rewrites `ADDRESSES.COUNTRY` → `addresses_18.COUNTRY`. This hunk is what then adds `DB.CRM.ADDRESSES` to `required_relation_ids` so it reaches the JOIN. Without it the alias resolves, passes validation, and is never joined — Snowflake rejects the query with `invalid identifier addresses_18.COUNTRY`. The test at §4.4 asserts the JOIN directly and will fail if this hunk is missing.
-
-### 2.3 — Derived-source join inheritance loop
-
-Baseline line ~315, in `compile`, immediately after `disconnected = required_relation_ids - connected_ids` and **before** the existing `if disconnected:` error block:
-
-```python
-        connected_ids, ordered_edges = self._connected_join_plan(driving_id, required_relation_ids, edges)
-        disconnected = required_relation_ids - connected_ids
-        if disconnected:
-            # A derived source has no foreign keys and is not in the semantic
-            # registry, so relationship discovery yields no edge for it and any
-            # target mapped to its output is uncompilable - even when the table
-            # it was built from is joined correctly right next to it. Where the
-            # derived source still exposes that parent's join columns, the
-            # parent's edge is re-projected onto it.
-            #
-            # This runs only for relations that are already disconnected, so a
-            # graph that compiles today cannot gain an edge or change its join
-            # plan. Nothing is inferred: an edge is inherited only when every
-            # join column on the parent's side survives in the derived output.
-            inherited_ids = {edge.edge_id for edge in edges}
-            # Bounded because one inherited edge can connect a relation that
-            # another derived source then inherits from in turn.
-            for _ in range(len(nodes)):
-                inherited = self._lineage_inherited_edges(
-                    disconnected_ids=disconnected,
-                    nodes=nodes,
-                    edges=graph.edges,
-                    connected_ids=connected_ids,
-                    existing_edge_ids=inherited_ids,
-                )
-                if not inherited:
-                    break
-                inherited_ids.update(edge.edge_id for edge in inherited)
-                edges = edges + inherited
-                connected_ids, ordered_edges = self._connected_join_plan(
-                    driving_id, required_relation_ids, edges
-                )
-                disconnected = required_relation_ids - connected_ids
-                if not disconnected:
-                    break
-        if disconnected:
-            disconnected_labels = []
-```
-
-Note the resulting **two consecutive `if disconnected:` blocks** — the second is the pre-existing error path and must remain.
-
-### 2.4 — `_normalize_expression_namespace`: short-form collection `[THIS SESSION]`
-
-Baseline line ~632. Insert after `replacements: list[tuple[str, str]] = []`, before `for relation_id, node in nodes.items():`:
-
-```python
-        normalized = expression
-        replacements: list[tuple[str, str]] = []
-        # Short forms - a bare table name, or SCHEMA.TABLE - are collected apart
-        # from the fully-qualified identities. Transformation rules routinely
-        # qualify a column with just the table name (ADDRESSES.COUNTRY), which
-        # matches none of the fully-qualified forms below, so the qualifier
-        # survived untouched and was then rejected as an undefined alias.
-        # Rewriting one is only sound while a single relation claims it, so
-        # ambiguous short forms are dropped and left to fail with the existing
-        # message rather than silently resolving to the wrong relation.
-        short_form_owners: dict[str, set[str]] = {}
-
-        def collect_short_forms(name: str | None, relation_id: str) -> None:
-            parts = [part for part in str(name or "").split(".") if part]
-            if len(parts) < 2:
-                return
-            for candidate in (parts[-1], ".".join(parts[-2:])):
-                short_form_owners.setdefault(candidate.upper(), set()).add(relation_id)
-
-        for relation_id, node in nodes.items():
-```
-
-### 2.5 / 2.6 — Node loop calls + ambiguity guard `[THIS SESSION]`
-
-Baseline lines ~637-640. Add the two `collect_short_forms(...)` calls and the `reserved` block:
-
-```python
-        for relation_id, node in nodes.items():
-            alias = aliases[relation_id]
-            replacements.append((relation_id, alias))
-            if node.table:
-                replacements.append((node.table.qualified_name, alias))
-                collect_short_forms(node.table.qualified_name, relation_id)
-            if node.physical_view_name:
-                replacements.append((node.physical_view_name, alias))
-                collect_short_forms(node.physical_view_name, relation_id)
-
-        # An alias, or a name already carrying its own full identity, keeps the
-        # meaning it already has instead of being reinterpreted as a short form.
-        reserved = {alias.upper() for alias in aliases.values()}
-        reserved.update(source.upper() for source, _ in replacements)
-        for candidate, owners in short_form_owners.items():
-            if len(owners) != 1 or candidate in reserved:
-                continue
-            replacements.append((candidate, aliases[next(iter(owners))]))
-
-        for source, alias in sorted(replacements, key=lambda item: len(item[0]), reverse=True):
-            normalized = re.sub(
-                rf"(?i)(?<![A-Za-z0-9_$]){re.escape(source)}\.",
-                f"{alias}.",
-                normalized,
-            )
-        return normalized
-```
-
-**The `sorted(..., reverse=True)` rewrite loop is unchanged from baseline** and must not be altered — descending source length is what makes `DB.CRM.ADDRESSES` rewrite before `CRM.ADDRESSES` before `ADDRESSES`, so a longer form is never shadowed by a shorter one.
-
-**Verified final state for §2.4-2.6** is `mapping_sql.py:673-723`. Baseline was lines 632-647 — identical minus the three insertions above.
-
-**Bug fixed:** compile returned HTTP 400 `Undefined SQL alias in mapping expression: ADDRESSES`. `_normalize_expression_namespace` only matched three fully-qualified forms per node (`relation_id`, `node.table.qualified_name`, `node.physical_view_name`). Rules written by hand or by the STTM AI routinely qualify with just the table name, so the qualifier survived rewriting and was rejected by `_validate_expression_aliases`. Ambiguous short forms are deliberately left to fail rather than bound to a guessed relation.
-
-**Deployed and confirmed live:** `CAST(MAPPER_REFERRAL_MASTER.SALESFORCEID AS VARCHAR)` compiles.
-
-### 2.7 — Three new helper methods (180 lines)
-
-Baseline line ~733, after `_connected_join_plan` returns (`return connected, ordered`) and **before** `_ordered_cte_nodes`:
-
-```python
-    @staticmethod
-    def _expression_relation_ids(expression: str, alias_to_id: dict[str, str]) -> set[str]:
-        """Relations an expression reads from, resolved through their SQL aliases."""
-        scrubbed = re.sub(r"'(?:''|[^'])*'", "''", expression)
-        found: set[str] = set()
-        for qualifier, _column in re.findall(
-            r"(?<![$\w])([A-Za-z_][A-Za-z0-9_$]*)\s*\.\s*([A-Za-z_][A-Za-z0-9_$]*)",
-            scrubbed,
-        ):
-            relation_id = alias_to_id.get(qualifier.upper())
-            if relation_id is not None:
-                found.add(relation_id)
-        return found
-
-    @staticmethod
-    def _derived_source_aliases(node: RelationNode) -> dict[str, str]:
-        """SQL alias -> qualified table name, read from the derived source's own SQL.
-
-        Column lineage is recorded against the SQL aliases the derived source used
-        ("c.ID"), so those aliases have to be resolved back to real tables before
-        lineage can be attributed to a parent relation.
-        """
-        if not node.sql_text:
-            return {}
-        try:
-            statement = parse_one(node.sql_text, read="snowflake")
-        except Exception:
-            return {}
-        alias_map: dict[str, str] = {}
-        for table in statement.find_all(exp.Table):
-            qualified = ".".join(
-                part for part in (table.catalog, table.db, table.name) if part
-            ).upper()
-            alias = str(table.alias_or_name or "").strip().upper()
-            if alias and qualified:
-                alias_map[alias] = qualified
-        return alias_map
-
-    @classmethod
-    def _derived_output_column_for_parent(
-        cls,
-        node: RelationNode,
-        base_id: str,
-        parent_column: str,
-    ) -> str | None:
-        """Name the derived source exposes for a parent table's join column.
-
-        Derived sources routinely rename columns ("c.ID AS contact_id"), so the
-        parent's column name is not usable directly. Returns None whenever the
-        column cannot be attributed unambiguously, which makes the caller leave
-        the relation disconnected rather than join on the wrong column.
-        """
-        target = str(parent_column or "").strip().upper()
-        if not target:
-            return None
-        available = cls._relation_output_columns(node)
-        base_upper = base_id.upper()
-        base_short = base_upper.rsplit(".", 1)[-1]
-        lineage = [
-            item
-            for item in node.column_semantics
-            if isinstance(item, dict) and item.get("source_columns")
-        ]
-        if lineage:
-            alias_map = cls._derived_source_aliases(node)
-
-            def qualifier_is_base(qualifier: str) -> bool:
-                resolved = alias_map.get(qualifier)
-                if resolved is not None:
-                    return resolved == base_upper or resolved.rsplit(".", 1)[-1] == base_short
-                # Unaliased references appear as the table's own name.
-                return qualifier in {base_upper, base_short}
-
-            matches: set[str] = set()
-            for item in lineage:
-                name = str(item.get("name") or "").strip().upper()
-                if not name or name not in available:
-                    continue
-                for source in item.get("source_columns") or []:
-                    text = str(source or "").strip().upper()
-                    qualifier, separator, column = text.rpartition(".")
-                    if separator:
-                        if column == target and qualifier_is_base(qualifier):
-                            matches.add(name)
-                    elif text == target and len(node.base_relation_ids) == 1:
-                        matches.add(name)
-            # Two outputs carrying the same source column is ambiguous, not a match.
-            return next(iter(matches)) if len(matches) == 1 else None
-        # No column-level lineage recorded. A bare name match is only unambiguous
-        # when the derived source has exactly one parent, otherwise an identically
-        # named column from a different parent could be picked.
-        if len(node.base_relation_ids) == 1 and target in available:
-            return target
-        return None
-
-    @classmethod
-    def _lineage_inherited_edges(
-        cls,
-        *,
-        disconnected_ids: set[str],
-        nodes: dict[str, RelationNode],
-        edges: list[Any],
-        connected_ids: set[str],
-        existing_edge_ids: set[str],
-    ) -> list[RelationEdge]:
-        """Re-project a parent table's join onto a derived source built from it.
-
-        Only ever called for relations that are already disconnected, and only
-        emits an edge when the derived source still exposes every join column the
-        parent used. A derived source that projected those columns away yields
-        nothing, so the caller fails with its original error rather than joining
-        on a guess - silently wrong rows are worse than a refusal to compile.
-        """
-        inherited: list[RelationEdge] = []
-        for relation_id in sorted(disconnected_ids):
-            node = nodes.get(relation_id)
-            if node is None or node.kind != RelationNodeKind.DERIVED_SOURCE:
-                continue
-            if not cls._relation_output_columns(node):
-                continue
-            for base_id in node.base_relation_ids:
-                if base_id == relation_id or base_id not in nodes:
-                    continue
-                for edge in edges:
-                    if edge.left_relation_id == base_id:
-                        other_id, base_on_left = edge.right_relation_id, True
-                    elif edge.right_relation_id == base_id:
-                        other_id, base_on_left = edge.left_relation_id, False
-                    else:
-                        continue
-                    # The far side must already reach the driving relation,
-                    # otherwise the inherited edge would not connect anything.
-                    if other_id == relation_id or other_id not in connected_ids:
-                        continue
-                    if not edge.conditions:
-                        continue
-                    # Rewrite the parent's side of every condition to the name the
-                    # derived source actually exposes. If any single column cannot
-                    # be resolved the whole edge is abandoned - a partially
-                    # translated join would silently match the wrong rows.
-                    rewritten: list[RelationshipConditionItem] = []
-                    for condition in edge.conditions:
-                        parent_column = (
-                            condition.left_column if base_on_left else condition.right_column
-                        )
-                        derived_column = cls._derived_output_column_for_parent(
-                            node, base_id, parent_column
-                        )
-                        if derived_column is None:
-                            rewritten = []
-                            break
-                        rewritten.append(
-                            RelationshipConditionItem(
-                                left_column=derived_column if base_on_left else condition.left_column,
-                                operator=condition.operator,
-                                right_column=condition.right_column if base_on_left else derived_column,
-                            )
-                        )
-                    if not rewritten:
-                        continue
-                    edge_id = f"lineage:{relation_id}:{edge.edge_id}"
-                    if edge_id in existing_edge_ids:
-                        continue
-                    existing_edge_ids.add(edge_id)
-                    inherited.append(
-                        RelationEdge(
-                            edge_id=edge_id,
-                            # The derived source takes the parent's own side of
-                            # the join so an outer join keeps its direction.
-                            left_relation_id=relation_id if base_on_left else other_id,
-                            right_relation_id=other_id if base_on_left else relation_id,
-                            join_type=edge.join_type,
-                            conditions=rewritten,
-                            additional_predicate=edge.additional_predicate,
-                            provenance="DERIVED_LINEAGE",
-                            validation_status=edge.validation_status,
-                        )
-                    )
-        return inherited
-
-    @staticmethod
-    def _ordered_cte_nodes(nodes: list[RelationNode], required_ids: set[str]) -> list[RelationNode]:
-```
-
-Requires `RelationNode.sql_text`, `.column_semantics`, `.base_relation_ids` and `RelationEdge.provenance`, `.additional_predicate`, `.validation_status` on the schema in `app/schema/sttm_builder.py` — that schema file is itself **532 lines changed** vs HEAD, so verify those fields exist before applying.
-
----
-
-## 3. `frontend/src/features/sttm/source-target/filter-conditions.tsx` `[THIS SESSION]`
-
-**No baseline exists in any zip — copy this file whole.** The changed region is reproduced for review only.
-
-**Bug fixed:** Run Preview / Validate Query failed the entire request with `Failed to list columns in 'DERIVED'.'DERIVED'.'FamilyHOH'`. Derived sources sit on the canvas under a synthetic `database:"DERIVED"`, `schema:"DERIVED"`, `tag:"Derived"` identity — a display construct, not a real object. `handleValidatePreviewSql` mapped every canvas table into `source_tables`, so the backend validator (`app/routers/table_selection.py:601-624`, `_list_columns`) tried to read columns from a database literally named `DERIVED` and threw.
-
-**Verified final state — `filter-conditions.tsx:974-996`, inside `handleValidatePreviewSql`:**
-
-```ts
-    const tableById = new Map(tables.map((table) => [table.id, table]));
-    const toTableRef = (table: TableMeta | undefined) => ({
-      database: table?.database ?? "",
-      schema: table?.schema ?? "",
-      table: table?.name ?? "",
-    });
-    // Derived sources are placed on the canvas under a synthetic DERIVED.DERIVED
-    // namespace, which is a display identity rather than a real object. Sending
-    // one as a source table made the validator try to read its columns from a
-    // database named DERIVED and fail the whole preview. The SQL already refers
-    // to derived sources by their own physical view or inlined CTE, so they are
-    // simply left out here.
-    const isSyntheticDerived = (table: TableMeta) =>
-      table.tag === "Derived" ||
-      (table.database ?? "").toUpperCase() === "DERIVED";
-    const sourceTables = tables
-      .filter((table) => !isSyntheticDerived(table))
-      .map((table) => toTableRef(table))
-      .filter((table) => table.database && table.schema && table.table);
-    const drivingTableMeta = drivingTableId ? tableById.get(drivingTableId) : undefined;
-    const drivingTable = toTableRef(
-      drivingTableMeta && !isSyntheticDerived(drivingTableMeta) ? drivingTableMeta : undefined,
-    );
-```
-
-**Changes relative to pre-edit state** — *this description is from my own edit record; unlike §2 there is no zip to verify it against:*
-- `tableById` and `toTableRef` already existed, unchanged.
-- **Added** `isSyntheticDerived` and its comment.
-- `sourceTables` previously had **no** `.filter((table) => !isSyntheticDerived(table))` — it went straight from `tables` to `.map(toTableRef)`.
-- `drivingTable` was previously `toTableRef(drivingTableId ? tableById.get(drivingTableId) : undefined)`; now routed via `drivingTableMeta` with the guard.
-
-The `dbService.validateDerivedSource({...})` call at line 1002 is **unchanged**, including its existing `drivingTable.database && drivingTable.schema && drivingTable.table` truthiness check — that is what makes an excluded driving table degrade to "no driving table" instead of sending empty strings.
-
-Predicate is intentionally two-part: `tag === "Derived"` is canonical, `database === "DERIVED"` is a fallback for tables whose tag was lost in serialisation. No physical table matches either.
-
----
-
-## 4. `services/sttm-builder/tests/unit/core/test_mapping_sql.py` `[THIS SESSION]`
-
-**Untracked in git (`??`) and in no zip — copy this file whole (959 lines).** Session additions below.
-
-### 4.1 — `import pytest` as line 1
-
-Was missing; two of the new tests failed with `NameError: name 'pytest' is not defined`.
-
-### 4.2 — Placeholder-in-expression regression (line 789)
-
-Covers `Session variable '$BACKUPOWNERID' does not exist`. A project attribute nested in a larger expression must be inlined as a quoted literal, never left as a `$Name` session-variable reference.
-
-```python
-def test_compile_resolves_a_project_attribute_placeholder_inside_an_expression() -> None:
-    """A project attribute can appear inside a larger expression rather than as a
-    standalone constant. Left unsubstituted it reaches Snowflake as a session
-    variable reference and the query fails with "does not exist"."""
-    service = MappingSqlService(session=_Session(), analyst_client=_Analyst())
-    graph = RelationGraphContext(
-        nodes=[
-            RelationNode(
-                relation_id="DB.CRM.CONTACTS",
-                kind=RelationNodeKind.PHYSICAL_TABLE,
-                alias="contacts_9",
-                table=TableRef(database="DB", schema="CRM", table="CONTACTS"),
-            )
-        ],
-        value_bindings=[
-            ValueBinding(
-                binding_id="backup-owner",
-                value="$BackupOwnerID",
-                is_placeholder=True,
-                resolution_status="project_attribute",
-                resolved_value="005Qi00000ZBGiAIAX",
-            )
-        ],
-    )
-
-    response = service.compile(
-        MappingSqlCompileRequest(
-            relation_graph=graph,
-            target_table=TableRef(database="DB", schema="CRM", table="TARGET"),
-            driving_relation_id="DB.CRM.CONTACTS",
-            validate_with_explain=False,
-            mappings=[
-                MappingSqlMappingItem(
-                    target_column="OWNERID",
-                    source_columns=["DB.CRM.CONTACTS.ID"],
-                    source_dependencies=["DB.CRM.CONTACTS.ID"],
-                    expression="COALESCE(contacts_9.ID, $BackupOwnerID)",
-                    status="MAPPED",
-                )
-            ],
-        )
-    )
-
-    assert response.ready is True
-    assert response.unresolved_placeholders == []
-    assert "$BackupOwnerID" not in response.preview_sql
-    assert "COALESCE(contacts_9.ID, '005Qi00000ZBGiAIAX')" in response.preview_sql
-```
-
-### 4.3 — Shared helpers for §2.4-2.6 (line 838)
-
-```python
-def _bare_qualifier_graph(second_schema: str = "CRM") -> RelationGraphContext:
-    return RelationGraphContext(
-        nodes=[
-            RelationNode(
-                relation_id="DB.CRM.CONTACTS",
-                kind=RelationNodeKind.PHYSICAL_TABLE,
-                alias="contacts_9",
-                table=TableRef(database="DB", schema="CRM", table="CONTACTS"),
-            ),
-            RelationNode(
-                relation_id=f"DB.{second_schema}.ADDRESSES",
-                kind=RelationNodeKind.PHYSICAL_TABLE,
-                alias="addresses_18",
-                table=TableRef(database="DB", schema=second_schema, table="ADDRESSES"),
-            ),
-        ],
-        edges=[
-            RelationEdge(
-                edge_id="contacts-addresses",
-                left_relation_id="DB.CRM.CONTACTS",
-                right_relation_id=f"DB.{second_schema}.ADDRESSES",
-                join_type="LEFT",
-                conditions=[
-                    RelationshipConditionItem(
-                        left_column="ID", right_column="ADDRESSABLE_ID", operator="="
-                    )
-                ],
-            )
-        ],
-    )
-
-
-def _bare_qualifier_request(
-    graph: RelationGraphContext, expression: str
-) -> MappingSqlCompileRequest:
-    return MappingSqlCompileRequest(
-        relation_graph=graph,
-        target_table=TableRef(database="DB", schema="CRM", table="TARGET"),
-        driving_relation_id="DB.CRM.CONTACTS",
-        validate_with_explain=False,
-        mappings=[
-            MappingSqlMappingItem(
-                target_column="BILLINGCOUNTRY",
-                source_columns=["DB.CRM.CONTACTS.ID"],
-                source_dependencies=["DB.CRM.CONTACTS.ID"],
-                expression=expression,
-                status="MAPPED",
-            )
-        ],
-    )
-```
-
-### 4.4 — Four tests (lines 890-957)
-
-```python
-def test_compile_resolves_a_bare_table_name_qualifier_to_its_alias() -> None:
-    """Transformation rules routinely qualify a column with just the table name.
-    That qualifier matches no fully-qualified relation identity, so before this
-    it was reported as an undefined alias instead of being resolved."""
-    service = MappingSqlService(session=_Session(), analyst_client=_Analyst())
-
-    response = service.compile(
-        _bare_qualifier_request(
-            _bare_qualifier_graph(),
-            "NULLIF(UPPER(TRIM(ADDRESSES.COUNTRY)), '')",
-        )
-    )
-
-    assert response.ready is True
-    assert "addresses_18.COUNTRY" in response.preview_sql
-    assert "ADDRESSES.COUNTRY" not in response.preview_sql
-    # Resolving the qualifier also has to bring the relation into the FROM clause.
-    assert "LEFT JOIN DB.CRM.ADDRESSES AS addresses_18" in response.preview_sql
-
-
-def test_compile_resolves_a_schema_qualified_table_name_to_its_alias() -> None:
-    service = MappingSqlService(session=_Session(), analyst_client=_Analyst())
-
-    response = service.compile(
-        _bare_qualifier_request(
-            _bare_qualifier_graph(),
-            "TRIM(CRM.ADDRESSES.COUNTRY)",
-        )
-    )
-
-    assert response.ready is True
-    assert "addresses_18.COUNTRY" in response.preview_sql
-
-
-def test_compile_still_rejects_an_unknown_bare_table_name() -> None:
-    service = MappingSqlService(session=_Session(), analyst_client=_Analyst())
-
-    with pytest.raises(ValueError, match="Undefined SQL alias in mapping expression: PHONES"):
-        service.compile(
-            _bare_qualifier_request(_bare_qualifier_graph(), "TRIM(PHONES.NUMBER)")
-        )
-
-
-def test_compile_refuses_an_ambiguous_bare_table_name() -> None:
-    """The same table name in two schemas cannot be resolved from the bare name
-    alone, so it must keep failing loudly rather than pick a relation."""
-    service = MappingSqlService(session=_Session(), analyst_client=_Analyst())
-    graph = _bare_qualifier_graph(second_schema="BILLING")
-    graph.nodes.append(
-        RelationNode(
-            relation_id="DB.SHIPPING.ADDRESSES",
-            kind=RelationNodeKind.PHYSICAL_TABLE,
-            alias="addresses_21",
-            table=TableRef(database="DB", schema="SHIPPING", table="ADDRESSES"),
-        )
-    )
-
-    with pytest.raises(ValueError, match="Undefined SQL alias in mapping expression: ADDRESSES"):
-        service.compile(
-            _bare_qualifier_request(graph, "TRIM(ADDRESSES.COUNTRY)")
-        )
-
-    # Disambiguating with the schema still resolves.
-    response = service.compile(
-        _bare_qualifier_request(graph, "TRIM(BILLING.ADDRESSES.COUNTRY)")
-    )
-    assert response.ready is True
-    assert "addresses_18.COUNTRY" in response.preview_sql
-```
-
-`RelationEdge` and `RelationshipConditionItem` were already imported by pre-existing tests in this file — no import changes beyond `pytest`.
-
----
-
-## 5. Verification
-
-```powershell
-# This module — expect 24 passed
-cd services\sttm-builder
-.venv\Scripts\python.exe -m pytest tests\unit\core\test_mapping_sql.py -q
-
-# Full backend — expect 260 passed, 6 pre-existing failures
-.venv\Scripts\python.exe -m pytest tests\unit -q `
-  --ignore=tests\unit\auth\test_custom_oauth.py `
-  --ignore=tests\unit\core\test_semantic_registry_native.py
-
-# Frontend typecheck — expect exit 0
-cd ..\..\frontend
-npx tsc --noEmit -p tsconfig.json
-```
-
-The 6 expected failures are unrelated to this work: `test_coco_runtime` (file-mode `0600` is a no-op on Windows), 2× `test_evernest_reliability`, `test_learning_retrieval_links`, 2× `test_semantic_knowledge_resolver` — all from untracked fixtures or a missing docs SQL file.
-
-**Deployment:** both containers (Next.js frontend and the `sttm-builder` FastAPI service) are hosted by the single SPCS service `FFP_HDP_DLAB_DB_DEV.SCH_STTM_METADATA.AI_WORKBENCH_OKTA_WEBAPP_DEV_V4` on compute pool `WORKBENCH_COMPUTE_POOL_DEV`. One deploy covers both; there is no separate frontend release step.
-
----
-
-## 6. Diagnosed but deliberately NOT changed — do not "helpfully" fix
-
-Listed so Codex does not touch these out of band.
-
-1. **Positional relation-alias instability (root cause of `Undefined relation or alias in dependency: addresses_18.CITY`).** `compilerRelationAlias` at `frontend/src/features/sttm/mapping/mapping-utils.ts:16` derives the `_N` suffix from **array position** in `sourceTables`; derived sources index at `sourceTables.length + index`. Adding or removing any source table renumbers every downstream alias, invalidating aliases already frozen into `TBL_STTM_ATTRIBUTES.SOURCE_COLUMN`. Three near-duplicate generators exist: this one, plus `stableRelationAlias` at `features/sttm/context/workbench-context.ts:172` and `features/sttm/store/sttm-builder-slice.ts:247`. The two `stableRelationAlias` copies include a trailing `.replace(/^_+|_+$/g,"")` that the compile copy lacks — a latent divergence. The backend never generates aliases; `mapping_sql.py:231-239` consumes `node.alias` verbatim, only sanitising via `_safe_sql_identifier` and rejecting duplicates.
-
-2. **Source-value preview alias mismatch (why Data Preview shows no source values).** `_execute_source_value_preview` at `mapping_sql.py:1282-1291` pastes stored compiler aliases (`contacts_9.GLOBAL_ID`) onto the **alias-less** FROM chain produced by `buildFallbackSourceQuerySql` at `mapping-utils.ts:672,705`, which emits bare `FROM <db.schema.table>` with no aliases and omits derived sources entirely. Two independent alias namespaces → `invalid identifier 'CONTACTS_9.GLOBAL_ID'`. One bad select item kills all columns, so every source value is blank. Also `_normalize_source_foundation_sql:1363` wraps non-`SELECT *` input as `FROM (...) AS SOURCE_FOUNDATION`, hiding inner aliases — a second landmine on the same path.
-
-3. **Live `NameError` risk.** `mapping_sql.py:1212-1217` — the `elif` branch after the `if source_aliases:` check references an undefined local `validation_error`. Reached only when `source_aliases` is empty. Untouched.
-
-4. **`BillingAddress_v2` derived-view fanout.** OR-joins against `STATE_CODES` (168 rows / 62 distinct) and `COUNTRY_CODES` (266 / 248) inflate 1,242 → 29,656 rows (23.9×). On STTM 2105 this compounds to 2,621 contacts → 39,140 rows (14.93×, worst single contact 198).
-
-5. **Data-quality items in STTM 1801, fixable in the UI without a deploy:** `Referral__c` compiles to the string literal `'NULL.'` rather than SQL `NULL`; `OwnerId` emits `LongType()` integer `2` instead of a Salesforce ID with no `$BackupOwnerID` fallback; both `addresses_1` (physical, unfiltered) and `addresses_17` (derived, `IS_PRIMARY=1`) are joined, so address fields split across two relations and produce mismatched rows — all address fields should point at `addresses_17` only.
-
-6. **Locked bad semantic relationship.** `contacts_9.SALUTATION_ID = contact_personal_profiles_5.CONTACT_ID` joins a salutation ID to a contact ID. Sourced from `SEM_NATIVE_VIEWS.CA_YAML_MODEL` with `locked: true`, so it is not editable from the canvas.
-
----
-
-## 7. Bottom line for Codex
-
-Sections 2-4 fully reconstruct this session's work **only if** the target already carries the rest of the uncommitted tree. Given 263 changed files / 41,580 insertions vs HEAD, and given that `filter-conditions.tsx` and `test_mapping_sql.py` have no baseline in any zip, **the reliable resync is a fresh full-source zip of the working tree** — matching the `20260717-1730-complete-source.zip` pattern, excluding `node_modules`, `.venv`, `.next`, `__pycache__`. Say the word and I'll produce it.
+The backend is the MCP Gateway. There's no separate "Streamlit backend" and "Next.js backend" — both frontends are just two different UIs calling the same one backend service (the gateway from Prompt 3A/3B), which exposes POST /api/chat. Streamlit calls it directly from Python; Next.js calls it through a thin proxy API route. That's already in both frontend prompts via BACKEND_URL — I just hadn't spelled out explicitly that it's the same backend for both. It is.
+
+Here's the full picture and every final prompt, in build order.
+
+How it all connects
+Streamlit UI  ─┐
+               ├──► MCP Gateway (the shared backend, /api/chat) ─┬─► Snowflake MCP Server ─► Cortex Agent ─► Semantic Model ─► sample data (READS)
+Next.js UI    ─┘                                                  └─► IPaaS MCP Server ─► Account/Household API ─► own sample data (ACTIONS)
+
+Build order: Account/Household API → IPaaS MCP Server → Snowflake data/semantic model/agent/MCP (via Coco) → Gateway → either/both frontends.
+
+1. Account & Household API (real logic, fictional data — the iPaaS-side downstream system)
+Build a properly-implemented FastAPI service representing the downstream
+systems iPaaS talks to (Schwab/Fidelity for account data, Orion for
+household/client creation). The API logic itself must be real and
+production-shaped — only the underlying data is fictional/sample data.
+
+DATA LAYER: SQLite (or in-memory dict) seeded with sample clients,
+accounts, and households. Use the SAME client names/IDs as the Snowflake
+sample data (e.g. reuse "John Doe", "Jane Smith" etc. — coordinate the
+exact list once the Snowflake side is seeded) so the demo narrative is
+coherent across both flows.
+
+Seed at least:
+- one client/household with a normal, healthy account (fast, clean path)
+- one household whose downstream dependency is genuinely unreliable
+  (see retry logic below), so creating/updating it naturally takes
+  several real retries — no forced/scripted slowness anywhere
+
+ENDPOINTS:
+
+GET /accounts/{client_id}/cash_balance
+  -> {client_id, balance, currency, as_of, source_system: "Schwab"}
+  -> 404 if not found
+
+POST /households
+  Body: {client_id, household_name}
+  -> creates a household record, status "pending_verification"
+  -> {household_id, status}
+
+GET /households/{household_id}
+  -> {household_id, client_id, entityOptions, status}
+  -> 404 if not found
+
+PUT /households/{household_id}
+  Body: {entityOptions}
+  -> calls an internal "orion_apply_update" function with a REAL failure
+     mode: for households seeded as "unreliable," this genuinely raises
+     a transient error (simulated timeout/503) some percentage of calls
+     (env var UNRELIABLE_FAILURE_RATE, default 0.6)
+  -> implements REAL retry logic: exponential backoff, real
+     max_retry_count (env var MAX_RETRIES, default 3), genuinely
+     re-attempts rather than faking a delay
+  -> exhausts retries -> real 503 with clear error body
+  -> succeeds -> {household_id, status: "active", orion_client_id}
+
+Log every request/response with timestamp, real elapsed duration_ms, and
+(for PUT) actual retry attempts taken.
+
+AUTH: API key via header X-API-Key, checked against env var API_KEY.
+
+Package as its own container (Dockerfile, port 8080) for Azure Container
+Apps. README with run instructions, env vars, and which pre-seeded
+client_id/household_id naturally hits the "fast" vs "several real
+retries" case.
+2. IPaaS MCP Server (wraps #1)
+Build a minimal MCP server in Python (official `mcp` SDK) exposing two
+tools that call the real API from #1 (env vars API_BASE_URL, API_KEY):
+
+Tool: get_account_snapshot
+  - input: client_id, account_type (default "cash_balance")
+  - calls GET {API_BASE_URL}/accounts/{client_id}/{account_type}
+  - returns {client_id, account_type, value, as_of, source_system, duration_ms}
+
+Tool: create_household
+  - input: client_id, household_name
+  - calls POST /households, then GET /households/{id}, then PUT
+    /households/{id} against the real API — no scenario parameter,
+    whatever happens (including retries) is the API's real behavior
+  - surfaces real per-step timing and, if retries occurred, the actual
+    retry count and per-attempt duration:
+    {household_id, orion_client_id, status,
+     steps: [{name, http_status, duration_ms, retry_attempt}, ...],
+     total_duration_ms}
+
+No synthetic timing injected anywhere in this layer — pass through
+whatever the real API returns/took.
+
+Package as its own container (Dockerfile, port 8090) for Azure Container
+Apps. README with run instructions and env vars.
+3. Snowflake sample data + semantic model + agent + MCP server (for Coco, your real account)
+You have access to my Snowflake account (I'll provide account identifier,
+role, warehouse, and database/schema separately). Build a complete demo
+environment for a wealth-management chatbot proof of concept. Show me
+the SQL as you go so I can review before running anything.
+
+1. SCHEMA & SAMPLE DATA
+   Create schema DEMO_FAST_SYNC with these tables, populated with
+   realistic, professional-looking but entirely fictional data (no real
+   client PII):
+   - CLIENTS (client_id PK, first_name, last_name, email, phone,
+     date_of_birth, client_since, risk_profile, advisor_name)
+   - HOUSEHOLDS (household_id PK, household_name, primary_client_id FK,
+     created_at, status, orion_client_id nullable)
+   - ACCOUNTS (account_id PK, client_id FK, account_type
+     [Individual/Joint/IRA/Trust], custodian [Schwab/Fidelity],
+     account_number_masked, opened_at, status)
+   - HOLDINGS (holding_id PK, account_id FK, ticker, security_name,
+     asset_class, quantity, market_value, as_of_date)
+   - TRANSACTIONS (transaction_id PK, account_id FK, transaction_type
+     [buy/sell/deposit/withdrawal], amount, transaction_date, description)
+   - CASH_BALANCES (account_id FK, balance, currency, as_of_timestamp)
+
+   Populate with 15-20 clients, 2-3 accounts each, realistic holdings
+   (tickers like AAPL/MSFT/VTI/bond funds), varied balances typical of a
+   wealth-management book (tens of thousands to low millions). Include
+   client names matching the ones seeded in the separate iPaaS
+   Account/Household API (I'll share that list) so the same "John Doe"
+   works in both the read path and the action path.
+
+2. SEMANTIC MODEL
+   Build a Cortex Analyst semantic model/semantic view over these
+   tables, with business-friendly names/descriptions per table, column,
+   and relationship (e.g. "total portfolio value" as a defined metric,
+   "household" as an entity joining clients/accounts), tuned so
+   questions like "what is John Doe's portfolio value" resolve cleanly.
+
+3. CORTEX AGENT
+   Create a Cortex Agent (WEALTH_DEMO_AGENT) wrapping this semantic
+   model, with an instruction prompt describing its purpose and
+   guardrails: read-only, no fabricated numbers, always cite the
+   specific account/household used.
+
+4. MANAGED MCP SERVER
+   Create a Snowflake-managed MCP server exposing WEALTH_DEMO_AGENT as
+   its tool. Generate a programmatic access token scoped to a read-only
+   service role limited to the DEMO_FAST_SYNC schema.
+
+5. VERIFICATION
+   Give me sample natural-language questions to test directly against
+   the agent/MCP server, plus the SQL to check the underlying data, so I
+   can sanity-check correctness before wiring up the chatbot.
+
+Ask me for anything missing before running anything.
+4A. MCP Gateway — custom (this IS the shared backend, recommended for Monday)
+Build a FastAPI service acting as an MCP client gateway in front of two
+MCP servers — this is the single backend BOTH the Streamlit UI and the
+Next.js UI will call:
+  1. Snowflake-managed MCP server from #3 (env vars SNOWFLAKE_MCP_URL,
+     SNOWFLAKE_MCP_TOKEN) — read/lookup path
+  2. The IPaaS MCP server from #2 (env var IPAAS_MCP_URL) — action path
+
+Expose: POST /api/chat {message, session_id} ->
+{answer, path: "snowflake"|"ipaas", trace: [{step, target, ms}], total_ms}
+
+Routing: classify_intent(message) -> "lookup" | "action" (simple
+keyword/regex classifier, swappable for an LLM-based router later).
+Lookups -> Snowflake MCP tool. Actions (create/update household, "get me
+ready for tomorrow's call with X") -> IPaaS MCP tool. No scenario-forcing
+field — whichever client_id/household_id is mentioned determines real
+behavior.
+
+For each request: call the right MCP tool, use its real timing/retry
+data to build the trace, generate a natural-language answer via a
+single LLM call (provider-agnostic — Cortex Complete or Claude via
+Bedrock, chosen by env var LLM_PROVIDER), return answer + trace.
+
+Graceful fallback: if the Snowflake MCP server is unreachable, catch the
+error and return a friendly "data source unavailable" message.
+
+Enable CORS for both the Streamlit and Next.js frontends' origins (env
+var ALLOWED_ORIGINS, comma-separated).
+
+Package as its own container for Azure Container Apps. Include a
+docker-compose.yml running this gateway + the Account/Household API +
+the IPaaS MCP server together for local end-to-end testing.
+4B. MCP Gateway — Azure APIM (production-track alternative)
+I have two MCP-compatible backends: a Snowflake-managed MCP server, and
+the custom IPaaS MCP server from #2 (running as an Azure Container App).
+Write the Azure API Management config (Bicep or ARM template plus policy
+XML) to:
+- Expose the IPaaS MCP server as a governed remote MCP server via APIM's
+  built-in MCP gateway ("Existing MCP server" mode)
+- Apply key-based or OAuth auth on inbound requests to APIM
+- Add rate limiting and Application Insights logging with correlation
+  IDs for end-to-end tracing
+- Document the equivalent steps to also front the Snowflake-managed MCP
+  server, noting current limitations (APIM supports MCP tools only, not
+  resources/prompts)
+Include a README on how a client (Streamlit or Next.js) points at the
+APIM endpoint instead of hitting each MCP server directly.
+5. Frontend — Streamlit (calls the gateway from #4A/4B as its backend)
+Build a Streamlit chatbot app. Backend: POST to {BACKEND_URL}/api/chat
+(the MCP Gateway from #4) with {message, session_id}, expecting
+{answer, path, trace, total_ms} — abstract this behind a swappable
+function.
+
+VISUAL STYLE (matches the companion "iPaaS Flow Console" dashboard):
+- Fonts: "IBM Plex Sans" body, "IBM Plex Mono" numbers/timings/IDs
+- Colors: bg #eef1f6, surface #ffffff, sunken #e3e8f0, ink #0f1a2a,
+  ink2 #4a5a6f, accent #0e6f7a, navy #1c2b57
+- Status colors: done #2f7fd4, running #0f9d58, failed #d1453f,
+  retry #d9860f, idle #8b98a9
+- Dark mode: bg #0a1018, surface #141d2a, ink #e3ebf6, accent #3ec4cf
+- Dense, technical-monitoring aesthetic — uppercase small-caps section
+  labels, rounded chips, subtle shadows
+
+FUNCTIONALITY:
+- Chat interface (input + history) as the main view
+- Each response shows a collapsible trace panel: path taken, per-hop
+  name + duration in ms (mono font), waterfall-style bars
+- A persistent "Timings Log" panel: running table of every question
+  this session — timestamp, question (truncated), path, total_ms, mini
+  duration bar; sortable/filterable by path; running average total_ms
+  per path shown at top, so the Snowflake-vs-iPaaS contrast is visible
+  at a glance
+- Sidebar: session reset button
+
+Deliverable: single well-commented Streamlit app file, requirements.txt,
+README with run instructions.
+6. Frontend — Next.js (calls the same gateway; multi-screen)
+Build a Next.js (App Router, TypeScript, Tailwind) app calling the SAME
+backend as the Streamlit version — the MCP Gateway from #4 — via a proxy
+API route. Multiple screens, shared theme:
+- Fonts: "IBM Plex Sans" body, "IBM Plex Mono" numbers (next/font)
+- Tailwind theme: bg #eef1f6, surface #ffffff, sunken #e3e8f0,
+  ink #0f1a2a, ink2 #4a5a6f, accent #0e6f7a, navy #1c2b57, status colors
+  done #2f7fd4/running #0f9d58/failed #d1453f/retry #d9860f/idle #8b98a9,
+  dark: variant bg #0a1018/surface #141d2a/ink #e3ebf6/accent #3ec4cf
+- Shared top nav/sidebar linking the screens below
+
+SCREEN 1 — Chat (/)
+- Chat interface, collapsible per-message trace panel (path, per-hop
+  ms, waterfall bars)
+- app/api/chat/route.ts proxies POST to {BACKEND_URL}/api/chat with
+  {message, session_id}, returns {answer, path, trace, total_ms}
+
+SCREEN 2 — Timings Log (/timings)
+- Persistent table of every question asked this session across all
+  screens: timestamp, question, path, total_ms, expandable per-hop
+  breakdown; sortable/filterable by path; running average total_ms per
+  path shown prominently — this screen exists specifically to make the
+  "Snowflake sub-second vs iPaaS multi-second" contrast obvious live
+- Shared client-side state (React context) with Screen 1, no backend
+  persistence needed
+
+SCREEN 3 — Flow Console (/flow)
+- I will attach the existing "iPaaS Flow Console" HTML/CSS/JS file —
+  port it faithfully into React components: topology graph
+  (nodes/edges), live status dots, aggregate vs. trace mode toggle,
+  filter bar (event type/client id/status/sequence), bottom detail
+  drawer for request/response on row click, zoom controls — matching
+  its exact color tokens/fonts rather than reinterpreting it
+- Preserve whatever data source it currently expects (static/mock) —
+  just re-platform it, don't redesign it
+
+Deliverable: full project structure (app/, components/, lib/,
+tailwind.config, next.config), README, .env.example (BACKEND_URL + any
+other vars).
+
+That's the complete, final set — 6 build artifacts total, two of them (gateway options) are alternatives rather than both-required, and both frontends are optional alternatives to each other, not sequential steps.
+
+Why datga layer is sqlite and not snwoflake itself?
+
+Because that API isn't standing in for Snowflake — it's standing in for Schwab/Fidelity/Orion, which are genuinely different systems in real life, not Snowflake tables. That distinction is actually load-bearing for the demo, for three reasons:
+
+1. It's what makes the "two paths" story true, not just decorative.
+The whole point Vivek wants to prove is: "one path (Snowflake) is a direct semantic-layer read; the other path (iPaaS) has to hop out to real external systems, and that's why it's slower." If the iPaaS path's "external system" is secretly also just a Snowflake table, you're not actually demonstrating two different architectures — you're demonstrating one data source with two labels on it. Someone technical in the room (sounds like Chris's team will have people like that) could reasonably ask "wait, isn't that also just Snowflake?"
+
+2. Snowflake isn't built for the workload this API needs.
+The Account/Household API needs cheap, fast, repeated point writes (create household → get → put update, with real retries) — classic OLTP behavior. Snowflake is an analytics warehouse: it's excellent at the semantic-layer read side, but a warehouse can have cold-start/spin-up latency on the first query and isn't designed for many small transactional writes. That's exactly the kind of variance that would sneak into your "8 seconds happy path, 45 seconds with retries" numbers and make them look staged rather than real — the opposite of what you want.
+
+3. It matches what's actually true in production.
+In the real system, Orion and Schwab/Fidelity are not Snowflake — they're the actual custodian/wealth platforms. Snowflake only enters the picture as the analytics/semantic layer on top. SQLite here isn't a shortcut so much as it's playing the role of "some other system's database," which is architecturally honest to what iPaaS actually talks to.
+
+That said — if you'd rather run one piece of infrastructure instead of two for the demo, that's a legitimate call too. You'd lose the clean separation above, but you could put the account/household tables in a separate Snowflake schema from the semantic-model data (not the same tables), and have the mock API hit that schema via plain SQL instead of SQLite. It'd still work for Thursday, just with slightly less crisp storytelling and a bit more latency variance to manage.
+
+Want me to adjust Prompt 1 to that Snowflake-backed version, or keep SQLite as-is?
+
+No, you are right...but can we use cosmos db for this? he mentioned cosmos db right? But yes If I dont have access then sqllite...
+
+So in what order I need to givr prompts or give all toghether...are we setting up full context?
+
+Yes — good catch, and yes he did (twice, actually: it's the actual DB the real iPaaS pipeline uses for tracking, and it's specifically what Yaswanth's Flow Console HTML is built from). Using Cosmos DB here would be more authentic than SQLite, for a similar reason to the earlier point: the real Orion/Schwab-adjacent tracking already lives in Cosmos, so if your mock API also uses Cosmos, you're not introducing a new, unrelated piece of tech just for the demo — you're extending the same stack the rest of the system already runs on.
+
+One caveat, though — it carries the same kind of risk as the Snowflake connectivity question: you need write access to create a new container (or a new database within the existing account), and that access isn't guaranteed to be available by Monday. So the practical move is: try Cosmos first, but don't let it block you — build the data layer behind a small interface so it can fall back to SQLite instantly if access doesn't come through in time, rather than being a rewrite.
+
+Revised Prompt 1 — Account/Household API, Cosmos-backed with SQLite fallback
+Build a properly-implemented FastAPI service representing the downstream
+systems iPaaS talks to (Schwab/Fidelity for account data, Orion for
+household/client creation). The API logic itself must be real and
+production-shaped — only the underlying data is fictional.
+
+DATA LAYER: implement a repository interface (e.g. AccountRepository,
+HouseholdRepository) with two implementations, selected by env var
+DATA_BACKEND=cosmos|sqlite (default sqlite):
+- CosmosRepository: Azure Cosmos DB SDK, containers `accounts` and
+  `households`, partition key /client_id, connection via
+  COSMOS_ENDPOINT + managed identity (no connection strings)
+- SqliteRepository: local SQLite file, same schema/shape
+Both must expose identical methods so the API layer never knows which
+one is active. This lets me switch backends with one env var if Cosmos
+access isn't granted in time.
+
+Seed data (same for either backend): sample clients, accounts, and
+households — reuse the SAME client names/IDs as the Snowflake sample
+data (coordinate the exact list once that's seeded).
+
+Seed at least:
+- one client/household with a normal, healthy account (fast, clean path)
+- one household whose downstream dependency is genuinely unreliable
+  (see retry logic below) — no forced/scripted slowness anywhere
+
+ENDPOINTS: [same as before — GET /accounts/{client_id}/cash_balance,
+POST /households, GET /households/{household_id}, PUT /households/{household_id}
+with real retry logic: exponential backoff, env vars
+UNRELIABLE_FAILURE_RATE (default 0.6) and MAX_RETRIES (default 3)]
+
+Log every request/response with timestamp, real elapsed duration_ms, and
+(for PUT) actual retry attempts taken.
+
+AUTH: API key via header X-API-Key, checked against env var API_KEY.
+
+Package as its own container (Dockerfile, port 8080) for Azure Container
+Apps. README covering both backend modes, run instructions, env vars,
+and which pre-seeded client_id/household_id naturally hits "fast" vs
+"several real retries."
+
+Worth a quick message to Vivek/Yaswanth today asking whether you can get a new container in the existing ffp-ipaas-db-dev Cosmos account (or a fresh dev one) — if yes by tomorrow, great; if it's uncertain, just build against SQLite now and flip the env var later. Don't wait to find out before starting.
+
+On ordering — give them one at a time, in dependency order, with a shared context brief first
+
+Giving everything to Coco/Codex at once is risky here specifically because several prompts share things that don't exist yet until an earlier step runs — client names, IDs, exact field shapes, real URLs/tokens. If the agent has to invent those independently in five different sessions, they won't match each other, and you'll spend Tuesday reconciling mismatched schemas instead of testing the demo.
+
+Recommended approach:
+
+Write one shared context brief first (a short doc, not a build prompt) — the overall architecture, the demo goal and timing story, the tech stack per piece, and a locked-in list of sample client/household names & IDs everyone reuses. Give this to the agent at the start of every session (or check it into the repo as CONTEXT.md if it has repo access, so it's always in scope).
+Then run the build prompts one at a time, in this order:
+Account/Household API (Cosmos+SQLite fallback)
+IPaaS MCP Server (wraps the above — needs its real URL/port)
+Snowflake sample data + semantic model + agent + MCP (independent of the above two, but must use the same client names from the context brief)
+MCP Gateway (needs the real MCP URLs/tokens from the two prior MCP servers)
+Frontend — Streamlit and/or Next.js (needs the real gateway URL/contract)
+After each step, paste the real outputs (URLs, IDs, exact response shapes) back into the context brief before moving to the next prompt, so later steps aren't guessing.
+
+Want me to draft that shared context brief now, with a locked sample client/household list, so every subsequent prompt references the same names and IDs?
