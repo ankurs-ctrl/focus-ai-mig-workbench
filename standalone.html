@@ -1,0 +1,622 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style><title>iPaaS Flow Console</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --bg:#eef1f6; --surface:#ffffff; --surface-2:#f6f8fc; --sunken:#e3e8f0;
+  --ink:#0f1a2a; --ink-2:#4a5a6f; --ink-3:#7d8b9d;
+  --line:#d2dae6; --line-2:#b4c1d2;
+  --accent:#0e6f7a; --navy:#1c2b57;
+  --done:#2f7fd4; --run:#0f9d58; --fail:#d1453f; --retry:#d9860f; --idle:#8b98a9; --off:#a9b4c3;
+  --done-w:#e4eefb; --run-w:#e0f4e9; --fail-w:#fbe6e5; --retry-w:#fbf0dc;
+  --shadow:0 1px 2px rgba(16,32,56,.06), 0 6px 18px rgba(16,32,56,.07);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0a1018; --surface:#141d2a; --surface-2:#1a2432; --sunken:#0e1622;
+    --ink:#e3ebf6; --ink-2:#9fb0c6; --ink-3:#6e8096;
+    --line:#263345; --line-2:#35455c;
+    --accent:#3ec4cf; --navy:#93a8dc;
+    --done:#5ba5f0; --run:#35d68b; --fail:#f4756f; --retry:#efa93b; --idle:#71829a; --off:#4e5d72;
+    --done-w:#15304d; --run-w:#0f3a2a; --fail-w:#3d1d1e; --retry-w:#3a2a12;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0a1018; --surface:#141d2a; --surface-2:#1a2432; --sunken:#0e1622;
+  --ink:#e3ebf6; --ink-2:#9fb0c6; --ink-3:#6e8096;
+  --line:#263345; --line-2:#35455c;
+  --accent:#3ec4cf; --navy:#93a8dc;
+  --done:#5ba5f0; --run:#35d68b; --fail:#f4756f; --retry:#efa93b; --idle:#71829a; --off:#4e5d72;
+  --done-w:#15304d; --run-w:#0f3a2a; --fail-w:#3d1d1e; --retry-w:#3a2a12;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 6px 20px rgba(0,0,0,.35);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:14px; line-height:1.45;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace}
+.num{font-variant-numeric:tabular-nums}
+
+/* ---------- shell ---------- */
+.wrap{max-width:1500px;margin:0 auto;padding:20px 20px 0}
+.topbar{display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap;margin-bottom:4px}
+.brandline{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+h1{font-size:21px;font-weight:600;letter-spacing:-.015em;margin:0;text-wrap:balance}
+.kicker{font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--accent)}
+.sub{color:var(--ink-2);font-size:12.5px;margin:6px 0 0}
+.protochip{display:inline-flex;align-items:center;gap:6px;font-size:10.5px;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--retry);background:var(--retry-w);border:1px solid var(--retry);
+  border-radius:3px;padding:3px 8px}
+
+/* ---------- controls ---------- */
+.controls{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:16px 0 12px}
+.ctl{display:flex;align-items:center;gap:7px;background:var(--surface);border:1px solid var(--line);
+  border-radius:6px;padding:5px 10px;box-shadow:var(--shadow)}
+.ctl label{font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+select,input[type=text]{font-family:inherit;font-size:12.5px;color:var(--ink);background:transparent;
+  border:0;outline:none;padding:1px 0}
+select{cursor:pointer}
+input[type=text]{min-width:210px}
+.seg{display:flex;background:var(--sunken);border:1px solid var(--line);border-radius:6px;padding:2px;gap:2px}
+.seg button{font:inherit;font-size:12px;font-weight:500;border:0;background:transparent;color:var(--ink-2);
+  padding:4px 12px;border-radius:4px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow);font-weight:600}
+.seg button:focus-visible,.btn:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{font:inherit;font-size:12px;font-weight:500;background:var(--surface);border:1px solid var(--line);
+  color:var(--ink-2);border-radius:6px;padding:6px 12px;cursor:pointer;box-shadow:var(--shadow)}
+.btn:hover{border-color:var(--line-2);color:var(--ink)}
+.live{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ink-2);margin-left:auto}
+.pip{width:7px;height:7px;border-radius:50%;background:var(--run);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.pip{animation:none}}
+
+/* ---------- inventory strip ---------- */
+.inv{display:flex;gap:0;background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  overflow-x:auto;box-shadow:var(--shadow);margin-bottom:14px}
+.inv div{padding:10px 18px;border-right:1px solid var(--line);white-space:nowrap;flex:0 0 auto}
+.inv div:last-child{border-right:0}
+.inv b{display:block;font-size:19px;font-weight:600;letter-spacing:-.02em;line-height:1.1}
+.inv span{font-size:10.5px;font-weight:500;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3)}
+.inv .muted b{color:var(--off)}
+
+/* ---------- canvas ---------- */
+.stage{background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);
+  overflow-x:auto;overflow-y:hidden;padding:0}
+.canvas{position:relative;width:1640px;height:600px;transform-origin:0 0}
+.canvas svg{position:absolute;inset:0;width:1640px;height:600px}
+.edge{fill:none;stroke:var(--line-2);stroke-width:1.6}
+.edge.flow{stroke:var(--done);stroke-width:2}
+.edge.dashy{stroke-dasharray:5 4}
+.edge.muted{stroke:var(--off);stroke-dasharray:4 5;stroke-width:1.4;opacity:.75}
+.elabel{font-family:"IBM Plex Mono",monospace;font-size:9px;fill:var(--ink-3);text-anchor:middle}
+.elabel.big{font-size:11px;font-weight:600;fill:var(--ink-2);font-variant-numeric:tabular-nums}
+.elabel.q{fill:var(--accent);font-size:8.5px;letter-spacing:.03em}
+
+/* ---------- node ---------- */
+.node{position:absolute;width:176px;height:116px;background:var(--surface);border:1px solid var(--line);
+  border-radius:7px;box-shadow:var(--shadow);padding:9px 11px;cursor:pointer;
+  display:flex;flex-direction:column;justify-content:space-between;transition:border-color .12s,transform .12s}
+.node:hover{border-color:var(--accent);transform:translateY(-1px)}
+.node.sel{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent),var(--shadow)}
+.node.off{border-style:dashed;border-color:var(--off);
+  background:repeating-linear-gradient(135deg,transparent 0 7px,var(--sunken) 7px 8px),var(--surface)}
+.node.off .nname,.node.off .nbig,.node.off .nsub,.node.off .nsecond{color:var(--off)}
+.nhead{display:flex;align-items:flex-start;gap:8px}
+.dot{width:11px;height:11px;border-radius:50%;flex:0 0 auto;margin-top:3px}
+.dot.done{background:var(--done)} .dot.run{background:var(--run)} .dot.fail{background:var(--fail)}
+.dot.retry{background:var(--retry)} .dot.idle{background:var(--idle)}
+.dot.offd{background:transparent;border:1.5px solid var(--off);position:relative}
+.dot.offd::after{content:"";position:absolute;inset:-1px;border-top:1.5px solid var(--off);
+  transform:rotate(-45deg);top:50%}
+.nmetric{flex:1;min-width:0}
+.nbig{font-size:22px;font-weight:600;letter-spacing:-.02em;line-height:1.05;font-variant-numeric:tabular-nums}
+.nbig em{font-size:10.5px;font-weight:500;font-style:normal;color:var(--ink-2);margin-left:5px;letter-spacing:0}
+.nsecond{font-size:10.5px;color:var(--ink-2);margin-top:2px;font-variant-numeric:tabular-nums}
+.nfoot{display:flex;align-items:flex-end;justify-content:space-between;gap:6px}
+.nname{font-size:12.5px;font-weight:600;color:var(--navy);line-height:1.15}
+.nsub{font-size:9.5px;font-style:italic;color:var(--ink-3);margin-top:1px}
+.nicon{font-size:15px;opacity:.5;line-height:1}
+.offchip{position:absolute;top:-8px;right:8px;font-size:8.5px;font-weight:700;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--surface);background:var(--off);border-radius:3px;padding:2px 6px}
+.expander{position:absolute;bottom:-11px;left:50%;transform:translateX(-50%);font-size:9.5px;font-weight:600;
+  letter-spacing:.05em;text-transform:uppercase;background:var(--surface);border:1px solid var(--line);
+  color:var(--ink-2);border-radius:11px;padding:2px 9px;cursor:pointer;white-space:nowrap;z-index:3}
+.expander:hover{border-color:var(--accent);color:var(--accent)}
+
+/* ---------- orion hop panel ---------- */
+.hops{position:absolute;left:948px;top:224px;width:340px;background:var(--surface);border:1px solid var(--accent);
+  border-radius:7px;box-shadow:var(--shadow);padding:10px 12px;z-index:4}
+.hops h4{margin:0 0 2px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--accent)}
+.hops p{margin:0 0 8px;font-size:10.5px;color:var(--ink-3)}
+.hop{display:grid;grid-template-columns:12px 1fr auto;gap:8px;align-items:center;padding:5px 0;
+  border-top:1px solid var(--line)}
+.hop .dot{margin:0}
+.hopname{font-size:11px;font-family:"IBM Plex Mono",monospace;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hopname small{display:block;color:var(--ink-3);font-size:9.5px}
+.hopmeta{font-size:10px;font-variant-numeric:tabular-nums;color:var(--ink-2);text-align:right;white-space:nowrap}
+
+/* ---------- legend + queues ---------- */
+.below{display:grid;grid-template-columns:minmax(280px,1fr) minmax(320px,1.35fr);gap:14px;margin:14px 0 0}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);padding:13px 15px}
+.panel h3{margin:0 0 10px;font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3)}
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:7px 16px}
+.lg{display:flex;align-items:flex-start;gap:8px;font-size:11.5px}
+.lg .dot{margin-top:2px}
+.lg b{font-weight:600;display:block}
+.lg span{color:var(--ink-3);font-size:10.5px}
+table{width:100%;border-collapse:collapse}
+.qt th{font-size:9.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);
+  text-align:right;padding:0 0 5px;border-bottom:1px solid var(--line)}
+.qt th:first-child{text-align:left}
+.qt td{padding:5px 0;font-size:12px;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.qt td:first-child{text-align:left;font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink-2)}
+.qt tr:last-child td{border-bottom:0}
+.warnv{color:var(--fail);font-weight:600}
+.zero{color:var(--ink-3)}
+
+/* ---------- drawer ---------- */
+.drawer{margin:14px 0 24px;background:var(--surface);border:1px solid var(--line);border-radius:8px;
+  box-shadow:var(--shadow);overflow:hidden}
+.dhead{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:11px 15px;background:var(--surface-2);
+  border-bottom:1px solid var(--line)}
+.dhead h3{margin:0;font-size:13.5px;font-weight:600}
+.dhead .tag{font-size:10.5px;color:var(--ink-3)}
+.dfilters{display:flex;gap:7px;flex-wrap:wrap;margin-left:auto}
+.dfilters .ctl{box-shadow:none;padding:4px 9px}
+.dbody{display:grid;grid-template-columns:minmax(340px,1fr) minmax(360px,1.05fr);gap:0}
+.dlist{border-right:1px solid var(--line);max-height:340px;overflow:auto}
+.mt th{position:sticky;top:0;background:var(--surface);z-index:1;font-size:9.5px;font-weight:600;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--ink-3);text-align:left;padding:8px 12px;border-bottom:1px solid var(--line)}
+.mt td{padding:7px 12px;font-size:11.5px;border-bottom:1px solid var(--line);white-space:nowrap}
+.mt tr{cursor:pointer}
+.mt tr:hover td{background:var(--surface-2)}
+.mt tr.on td{background:var(--sunken)}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;border-radius:3px;padding:2px 7px}
+.pill.done{background:var(--done-w);color:var(--done)} .pill.run{background:var(--run-w);color:var(--run)}
+.pill.fail{background:var(--fail-w);color:var(--fail)} .pill.retry{background:var(--retry-w);color:var(--retry)}
+.detail{padding:0;max-height:340px;overflow:auto}
+.dtabs{display:flex;gap:0;border-bottom:1px solid var(--line);background:var(--surface-2);
+  position:sticky;top:0;z-index:1;overflow-x:auto}
+.dtabs button{font:inherit;font-size:10.5px;font-family:"IBM Plex Mono",monospace;border:0;background:transparent;
+  color:var(--ink-3);padding:8px 11px;cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+.dtabs button[aria-pressed="true"]{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+.io{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line)}
+.io section{background:var(--surface);padding:10px 12px;min-width:0}
+.io h5{margin:0 0 7px;font-size:9.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-3);
+  display:flex;justify-content:space-between;gap:8px}
+pre{margin:0;font-family:"IBM Plex Mono",monospace;font-size:10.5px;line-height:1.55;white-space:pre;
+  overflow-x:auto;color:var(--ink-2)}
+pre .k{color:var(--accent)} pre .s{color:var(--ink)} pre .n{color:var(--done)}
+pre .add{display:block;background:var(--run-w);color:var(--run);font-weight:600;margin:0 -12px;padding:0 12px}
+.emptyd{padding:26px 16px;color:var(--ink-3);font-size:12px;text-align:center}
+.foot{color:var(--ink-3);font-size:11px;padding:0 4px 26px;text-align:center}
+.foot b{color:var(--ink-2);font-weight:600}
+
+@media (max-width:900px){
+  .dbody,.below,.io{grid-template-columns:1fr}
+  .dlist{border-right:0;border-bottom:1px solid var(--line)}
+  .legend{grid-template-columns:1fr}
+}
+</style></head><body>
+
+<div class="wrap">
+  <header class="topbar">
+    <div>
+      <div class="kicker">iPaaS Observability &middot; DAG Live View</div>
+      <div class="brandline">
+        <h1>Household Create &mdash; Salesforce to Orion</h1>
+        <span class="protochip">Prototype &middot; simulated data</span>
+      </div>
+      <p class="sub">Every number on this page is generated in the browser. It shows <em>what the view does</em>, not what the pipeline did &mdash; the field names, endpoints and correlation IDs are taken from <span class="mono">ffp-ipaas-db-dev</span> so the shapes are real.</p>
+    </div>
+  </header>
+
+  <div class="controls">
+    <div class="ctl"><label for="flow">Flow</label>
+      <select id="flow"><option>household_create_v1</option><option disabled>ach_transfer_v1 &mdash; not configured</option></select></div>
+    <div class="ctl"><label for="win">Window</label>
+      <select id="win"><option value="1">Last 1 min</option><option value="5" selected>Last 5 min</option><option value="15">Last 15 min</option></select></div>
+    <div class="seg" role="group" aria-label="View mode">
+      <button id="mAgg" aria-pressed="true">Aggregate</button>
+      <button id="mTrace" aria-pressed="false">Trace</button>
+    </div>
+    <div class="ctl" id="traceBox" hidden><label for="corr">correlation_id</label>
+      <input type="text" id="corr" class="mono" value="ab024adb-59a6-4ffe-bf5c-ec45090e31b6"></div>
+    <button class="btn" id="zoom">Fit to width</button>
+    <div class="live"><span class="pip" id="pip"></span><span id="tick">streaming &middot; 2s</span></div>
+  </div>
+
+  <div class="inv" id="inv"></div>
+
+  <div class="stage"><div class="canvas" id="canvas">
+    <svg viewBox="0 0 1640 600" aria-hidden="true">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,1 L9,5 L0,9 z" fill="var(--line-2)"/></marker>
+        <marker id="ahf" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,1 L9,5 L0,9 z" fill="var(--done)"/></marker>
+        <marker id="aho" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M0,1 L9,5 L0,9 z" fill="var(--off)"/></marker>
+      </defs>
+      <g id="edges"></g>
+      <g id="elabels"></g>
+    </svg>
+    <div id="nodes"></div>
+  </div></div>
+
+  <div class="below">
+    <div class="panel">
+      <h3>Node state &mdash; six codes</h3>
+      <div class="legend">
+        <div class="lg"><span class="dot done"></span><div><b>Completed</b><span>step in completed_steps[]</span></div></div>
+        <div class="lg"><span class="dot run"></span><div><b>In progress</b><span>received, not yet finished</span></div></div>
+        <div class="lg"><span class="dot fail"></span><div><b>Failed</b><span>audit status ERROR or DLQ</span></div></div>
+        <div class="lg"><span class="dot retry"></span><div><b>Retry wait</b><span>next_retry_time in future</span></div></div>
+        <div class="lg"><span class="dot idle"></span><div><b>Idle / waiting</b><span>in the flow, no traffic now</span></div></div>
+        <div class="lg"><span class="dot offd"></span><div><b>Not in this flow</b><span>deployed, this use case skips it</span></div></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Service Bus &mdash; ffp-ipaas-servicebus-dev</h3>
+      <table class="qt"><thead><tr><th>Queue</th><th>Active</th><th>Dead-letter</th><th>Scheduled</th></tr></thead>
+      <tbody id="qbody"></tbody></table>
+    </div>
+  </div>
+
+  <div class="drawer">
+    <div class="dhead">
+      <h3 id="dTitle">Select a component</h3>
+      <span class="tag" id="dTag">Click any box in the graph to inspect the messages that passed through it.</span>
+      <div class="dfilters">
+        <div class="ctl"><label for="fEvent">Event</label><select id="fEvent"></select></div>
+        <div class="ctl"><label for="fStatus">Status</label><select id="fStatus"></select></div>
+        <div class="ctl"><label for="fClient">Client id</label><input type="text" id="fClient" class="mono" placeholder="any" style="min-width:110px"></div>
+        <div class="ctl"><label for="fSeq">Msg #</label><input type="text" id="fSeq" class="mono" placeholder="any" style="min-width:70px"></div>
+      </div>
+    </div>
+    <div class="dbody">
+      <div class="dlist"><table class="mt"><thead><tr>
+        <th>#</th><th>correlation_id</th><th>Client</th><th>Status</th><th>Duration</th><th>Received</th>
+      </tr></thead><tbody id="mbody"></tbody></table></div>
+      <div class="detail" id="detail"><div class="emptyd">Select a message to see the request sent and the response received.</div></div>
+    </div>
+  </div>
+
+  <p class="foot"><b>Reading the graph:</b> solid arrows are forward flow, dashed are return and retry paths, and the arc over Processing is the live route this use case actually takes. Rates are mean queue-to-receipt latency derived from <span class="mono">src_payload_tracker.timestamps</span>.</p>
+</div>
+
+<script>
+/* ============================ flow config ============================
+   In the real app this object is a JSON file mounted into the container.
+   Adding ACH means adding an entry here, not touching component code.   */
+const NODE_W=176, NODE_H=116;
+const NODES=[
+  {id:'salesforce',x:20,  y:96, name:'Salesforce',      sub:'Pub/Sub &bull; publish + subscribe', icon:'☁', kind:'source',   metric:'arrivals'},
+  {id:'listener',  x:252, y:96, name:'Listener App',    sub:'ACA &bull; decode Avro',            icon:'▦', kind:'aca',      metric:'processed'},
+  {id:'inbound',   x:484, y:96, name:'Inbound App',     sub:'ACA &bull; cleanse + validate',     icon:'▦', kind:'aca',      metric:'processed'},
+  {id:'processing',x:716, y:96, name:'Processing App',  sub:'ACA &bull; enrichment',             icon:'▦', kind:'aca',      metric:'processed', notInFlow:true},
+  {id:'outbound',  x:948, y:96, name:'Outbound App',    sub:'ACA &bull; Orion 4-hop sequence',   icon:'▦', kind:'aca',      metric:'processed', hops:true},
+  {id:'apim',      x:1180,y:96, name:'APIM',            sub:'Outbound facade',                   icon:'☁', kind:'gateway',  metric:'processed'},
+  {id:'orion',     x:1412,y:96, name:'Orion',           sub:'System of record',                  icon:'⚙', kind:'external', metric:'await'},
+  {id:'retry',     x:484, y:350,name:'Retry App',       sub:'ACA &bull; read DLQ, resend',       icon:'▦', kind:'aca',      metric:'reprocessed'},
+  {id:'feedback',  x:1080,y:350,name:'Feedback App',    sub:'ACA &bull; Avro-encode, publish',   icon:'▦', kind:'aca',      metric:'await'}
+];
+const EDGES=[
+  {id:'e1', d:'M196,154 H252',                          cls:'flow', lx:224, q:'pub/sub',        rate:true},
+  {id:'e2', d:'M428,154 H484',                          cls:'flow', lx:456, q:'inbound-q',      rate:true},
+  {id:'e3', d:'M660,138 C730,54 880,54 944,146',        cls:'flow', lx:802, ly:44, q:'outbound-q  —  bypasses Processing', rate:true, arc:true},
+  {id:'e4', d:'M660,172 H716',                          cls:'muted',lx:688, q:'proc-q'},
+  {id:'e5', d:'M892,172 H948',                          cls:'muted',lx:920, q:'—'},
+  {id:'e6', d:'M1124,154 H1180',                        cls:'flow', lx:1152,q:'https',          rate:true},
+  {id:'e7', d:'M1356,154 H1412',                        cls:'flow', lx:1384,q:'4 hops',         rate:true},
+  {id:'e8', d:'M1036,212 V408 H666',                    cls:'dashy',lx:860, ly:400, q:'retry-q &bull; on failure'},
+  {id:'e9', d:'M572,350 V218',                          cls:'dashy',lx:572, ly:284, q:'re-enqueue', side:true},
+  {id:'e10',d:'M1090,212 V300 H1168 V344',              cls:'dashy',lx:1140,ly:292, q:'response-q → feedback-q'},
+  {id:'e11',d:'M1168,466 V548 H108 V218',               cls:'dashy',lx:640, ly:540, q:'Avro-encode → Publish RPC to Salesforce'}
+];
+const QUEUES=['inbound-queue','processing-queue','outbound-queue','response-queue','feedback-queue','retry-queue'];
+/* stages a message actually visits in THIS flow (processing is skipped) */
+const PATH=['salesforce','listener','inbound','outbound','apim','orion','feedback'];
+
+/* ============================ fixtures ============================ */
+const CLIENTS=[
+  ['John Doe','Mr.','204821'],['Siri Apple','Ms.','198344'],['Yash Gupta','Mr.','204902'],
+  ['Maria Alvarez','Mrs.','203118'],['Deepak Rao','Mr.','205077'],['Hannah Weiss','Ms.','201960'],
+  ['Tom Okafor','Mr.','204455'],['Lin Zhao','Ms.','206014']
+];
+const SEED_IDS=['ab024adb-59a6-4ffe-bf5c-ec45090e31b6','2163e7da-ab78-478e-8895-4b1f6813082e',
+  '120ba7c2-c996-4666-947d-43e363a91ae1','7e0e7a61-4fa6-4d3f-8597-c72de9c4a31d',
+  'e990762a-4e22-46ff-b347-6d1c0a9f2210','f15ca3f3-9d11-4bd5-abb2-77c1e0b4d833',
+  'c61b184e-46bd-4af8-9770-2b1aa5c9e004','b79f0682-7f13-426d-9f61-30a2f0c88e15'];
+const hex=n=>Array.from({length:n},()=>'0123456789abcdef'[Math.floor(Math.random()*16)]).join('');
+const uuid=()=>`${hex(8)}-${hex(4)}-${hex(4)}-${hex(4)}-${hex(12)}`;
+let seq=71;
+function makeMsg(i,forceStage,forceStatus){
+  const c=CLIENTS[i%CLIENTS.length];
+  return {
+    seq:++seq,
+    corr:SEED_IDS[i]||uuid(),
+    client:c[0], salutation:c[1], orionId:c[2],
+    stage:forceStage!==undefined?forceStage:0,
+    status:forceStatus||'run',            // run | done | fail | retry
+    retry:0, hop:0,
+    dur:380+Math.floor(Math.random()*900),
+    at:new Date(Date.now()-Math.floor(Math.random()*260000))
+  };
+}
+let MSGS=[];
+(function seedPop(){
+  const plan=[[6,'done'],[6,'done'],[6,'done'],[6,'done'],[5,'done'],[4,'run'],[3,'run'],
+              [3,'fail'],[2,'retry'],[6,'done'],[6,'done'],[1,'done'],[4,'run'],[6,'done']];
+  plan.forEach((p,i)=>MSGS.push(makeMsg(i,p[0],p[1])));
+})();
+
+/* ============================ state ============================ */
+let mode='agg', selected='outbound', selMsg=null, hopsOpen=false, zoomFit=true, activeHop=0;
+const $=id=>document.getElementById(id);
+
+/* ============================ simulation ============================ */
+function tick(){
+  // advance
+  MSGS.forEach(m=>{
+    if(m.status==='done'&&m.stage>=PATH.length-1) return;
+    if(m.status==='fail'){ if(Math.random()<.45){m.status='retry'; m.retry++;} return; }
+    if(m.status==='retry'){ if(Math.random()<.5){m.status='run'; m.stage=Math.max(2,m.stage-1);} return; }
+    if(Math.random()<.55){
+      m.stage++;
+      m.dur+=120+Math.floor(Math.random()*260);
+      if(m.stage>=PATH.length-1){ m.stage=PATH.length-1; m.status='done'; }
+      else if(m.stage===3&&Math.random()<.07){ m.status='fail'; }
+      else m.status='run';
+    }
+  });
+  // retire + inject
+  if(MSGS.length>26) MSGS=MSGS.slice(-24);
+  if(Math.random()<.75) MSGS.push(makeMsg(Math.floor(Math.random()*CLIENTS.length),0,'run'));
+  render();
+}
+
+/* ============================ derived metrics ============================ */
+function nodeStats(id){
+  if(id==='processing') return {state:'off',big:0,unit:'',second:'not used by household_create_v1'};
+  const idx=PATH.indexOf(id);
+  const at=MSGS.filter(m=>m.stage===idx);
+  const past=MSGS.filter(m=>m.stage>idx||(m.stage===idx&&m.status==='done'));
+  const fail=at.filter(m=>m.status==='fail').length;
+  const rtry=at.filter(m=>m.status==='retry').length;
+  const run=at.filter(m=>m.status==='run').length;
+  const done=past.length;
+  if(id==='retry'){
+    const n=MSGS.filter(m=>m.status==='retry').length;
+    return {state:n?'retry':'idle',big:n,unit:n===1?'msg in retry wait':'msgs in retry wait',
+            second:`${MSGS.filter(m=>m.retry>0).length} re-processed today`};
+  }
+  if(id==='feedback'){
+    const w=MSGS.filter(m=>m.stage===PATH.length-2&&m.status!=='fail').length;
+    const s=MSGS.filter(m=>m.stage===PATH.length-1&&m.status==='done').length;
+    return {state:w?'run':(s?'done':'idle'),big:w,unit:w===1?'waiting response':'waiting responses',
+            second:`${s} sent to Salesforce`};
+  }
+  if(id==='salesforce'){
+    const n=MSGS.length;
+    return {state:'done',big:n,unit:`msgs in ${$('win').value} min`,second:'Pub/Sub subscribe stream open'};
+  }
+  if(id==='orion'){
+    const w=at.length;
+    return {state:w?'run':'idle',big:w,unit:w===1?'waiting response':'waiting responses',
+            second:`${done} response${done===1?'':'s'} received`};
+  }
+  let state='idle';
+  if(fail) state='fail'; else if(rtry) state='retry'; else if(run) state='run'; else if(done) state='done';
+  const big=run||done;
+  return {state,big,unit:run?(run===1?'msg in-progress':'msgs in-progress'):(big===1?'msg processed':'msgs processed'),
+          second:run?`${done} msgs processed`:(fail?`${fail} failed · needs attention`:`${done} completed`)};
+}
+function traceStats(id){
+  const m=MSGS.find(x=>x.corr.startsWith($('corr').value.trim().slice(0,8)))||MSGS[0];
+  const idx=PATH.indexOf(id);
+  if(id==='processing') return {state:'off',big:'—',unit:'',second:'skipped by this flow'};
+  if(idx<0) return {state:m.status==='retry'?'retry':'idle',big:m.retry,unit:'retries',second:m.retry?'re-enqueued to inbound-q':'no retry'};
+  if(idx<m.stage) return {state:'done',big:Math.round(m.dur/PATH.length),unit:'ms in stage',second:'completed'};
+  if(idx===m.stage) return {state:m.status,big:Math.round(m.dur/PATH.length),unit:'ms elapsed',second:'current stage'};
+  return {state:'idle',big:'—',unit:'',second:'not reached'};
+}
+
+/* ============================ render ============================ */
+const DOTCLS={done:'done',run:'run',fail:'fail',retry:'retry',idle:'idle',off:'offd'};
+function render(){
+  // nodes
+  $('nodes').innerHTML=NODES.map(n=>{
+    const s=mode==='agg'?nodeStats(n.id):traceStats(n.id);
+    const off=s.state==='off';
+    return `<div class="node ${off?'off':''} ${selected===n.id?'sel':''}" data-id="${n.id}"
+      style="left:${n.x}px;top:${n.y}px" role="button" tabindex="0" aria-label="${n.name}">
+      ${off?'<span class="offchip">Not in this flow</span>':''}
+      <div class="nhead"><span class="dot ${DOTCLS[s.state]}"></span>
+        <div class="nmetric"><div class="nbig">${s.big}<em>${s.unit}</em></div>
+        <div class="nsecond">${s.second}</div></div></div>
+      <div class="nfoot"><div><div class="nname">${n.name}</div><div class="nsub">${n.sub}</div></div>
+        <div class="nicon">${n.icon}</div></div>
+      ${n.hops?`<span class="expander" data-hops="1">${hopsOpen?'▲ hide':'▼'} Orion hops (4)</span>`:''}
+    </div>`;
+  }).join('') + (hopsOpen?hopPanel():'');
+
+  // edges
+  $('edges').innerHTML=EDGES.map(e=>{
+    const cls=e.cls==='muted'?'edge muted':(e.cls==='flow'?'edge flow':'edge dashy');
+    const mk=e.cls==='muted'?'aho':(e.cls==='flow'?'ahf':'ah');
+    return `<path class="${cls}" d="${e.d}" marker-end="url(#${mk})"/>`;
+  }).join('');
+
+  $('elabels').innerHTML=EDGES.map(e=>{
+    const base=e.ly||(e.arc?44:138);
+    const rate=e.rate?(180+Math.floor(Math.random()*90)):null;
+    if(e.side) return `<text class="elabel" x="${e.lx+34}" y="${e.ly}">${e.q}</text>`;
+    let out=`<text class="elabel q" x="${e.lx}" y="${base}">${e.q}</text>`;
+    if(rate) out+=`<text class="elabel big" x="${e.lx}" y="${base+(e.arc?15:34)}">${rate}</text>
+                   <text class="elabel" x="${e.lx}" y="${base+(e.arc?26:45)}">ms/msg</text>`;
+    return out;
+  }).join('');
+
+  // inventory
+  const active=NODES.filter(n=>!n.notInFlow).length;
+  $('inv').innerHTML=[
+    ['6','ACA apps deployed'],['5','active in this flow'],['1','idle (Processing)',true],
+    ['6','Service Bus queues'],['6','dead-letter queues'],['3','external systems'],
+    ['4','Orion API hops'],['5','Cosmos containers'],[String(MSGS.length),'msgs in window']
+  ].map(r=>`<div class="${r[2]?'muted':''}"><b>${r[0]}</b><span>${r[1]}</span></div>`).join('');
+
+  // queues
+  $('qbody').innerHTML=QUEUES.map(q=>{
+    const idle=q==='processing-queue';
+    const a=idle?0:Math.floor(Math.random()*3);
+    const d=q==='retry-queue'?1:(q==='inbound-queue'?1:0);
+    return `<tr><td>${q}${idle?' <span style="color:var(--off)">&middot; unused</span>':''}</td>
+      <td class="${a?'':'zero'}">${a}</td><td class="${d?'warnv':'zero'}">${d}</td><td class="zero">0</td></tr>`;
+  }).join('');
+
+  if(selected) renderDrawer();
+}
+
+function hopPanel(){
+  const HOPS=[
+    ['POST /v1/Portfolio/Clients/verbose/','orion_create_client','201',412],
+    ['GET  /v1/Portfolio/Clients/verbose/{id}','?expand=billing&entityOptions&portfolio','200',268],
+    ['SET  entityOptions[690RIONCON]','in-memory — Orion rejects this on create','—',2],
+    ['PUT  /v1/Portfolio/Clients/verbose/{id}','orion_update_client','200',492]
+  ];
+  const cur=MSGS.filter(m=>m.stage===3).length?1:0;
+  return `<div class="hops"><h4>Inside Outbound App</h4>
+    <p>The four Orion hops are steps of one stage, not peer nodes &mdash; they share one tracker document.</p>
+    ${HOPS.map((h,i)=>`<div class="hop"><span class="dot ${i<=2||!cur?'done':'run'}"></span>
+      <div class="hopname">${h[0]}<small>${h[1]}</small></div>
+      <div class="hopmeta">${h[2]} &middot; ${h[3]} ms</div></div>`).join('')}</div>`;
+}
+
+/* ============================ drawer ============================ */
+function reqFor(n,m){
+  if(n==='outbound'||n==='apim'||n==='orion') return orionIO(m);
+  const body={correlation_id:m.corr,sequence_number:m.seq,message_type:'HOUSEHOLD_CREATION',
+    source_system:'SALESFORCE',target_system:'ORION',operation:'NEW_CLIENT',
+    raw_payload:{client:{name:m.client,id:0,portfolio:{representativeId:101,isActive:true,
+      firstname:m.client.split(' ')[0],lastname:m.client.split(' ')[1]}}}};
+  const res={status:'ACCEPTED',enqueued_to:n==='listener'?'inbound-queue':'outbound-queue',
+    idempotency_key:m.at.toISOString(),flow_id:'household_create_v1'};
+  return [[`${n} — message in`,body],[`${n} — message out`,res]];
+}
+function orionIO(m){
+  const tabs=[
+    ['orion_create_client',
+     {portfolio:{zip:'200002',state:'NY',Salutation:m.salutation,representativeId:652,
+       name:`${m.client} Report`,lastname:m.client.split(' ')[1],firstname:m.client.split(' ')[0],
+       isUsResident:true,isQualifiedInvestor:false}},
+     {id:Number(m.orionId),name:m.client,entityOptions:[],portfolio:{representativeId:652}}],
+    ['orion_get_client',
+     {method:'GET',url:`/v1/Portfolio/Clients/verbose/${m.orionId}?expand=billing&expand=entityOptions&expand=portfolio`},
+     {id:Number(m.orionId),name:m.client,entityOptions:[{code:'690RIONCON',value:'False'}],
+      portfolio:{representativeId:652}}],
+    ['orion_update_client',
+     {id:Number(m.orionId),name:m.client,entityOptions:[{code:'690RIONCON',value:'True'}],
+      portfolio:{representativeId:652}},
+     {id:Number(m.orionId),name:m.client,entityOptions:[{code:'690RIONCON',value:'True'}],
+      portfolio:{representativeId:652}}]
+  ];
+  return tabs.map(t=>[t[0],t[1],t[2]]);
+}
+function jsonHL(o,mark){
+  let s=JSON.stringify(o,null,2)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/"([^"]+)":/g,'<span class="k">"$1"</span>:')
+    .replace(/: "([^"]*)"/g,': <span class="s">"$1"</span>')
+    .replace(/: (\d+|true|false)/g,': <span class="n">$1</span>');
+  if(mark) s=s.split('\n').map(l=>l.includes('690RIONCON')||l.includes('"True"')?`<span class="add">${l}</span>`:l).join('\n');
+  return s;
+}
+function renderDrawer(){
+  const n=NODES.find(x=>x.id===selected);
+  const off=!!n.notInFlow;
+  $('dTitle').textContent=n.name;
+  $('dTag').innerHTML=off
+    ? 'Deployed and healthy, but <b>no message in <span class="mono">household_create_v1</span> is routed here</b> — Inbound writes straight to <span class="mono">outbound-queue</span>.'
+    : `Messages that passed through <span class="mono">${n.id}</span> in the selected window.`;
+
+  const ev=$('fEvent').value, st=$('fStatus').value,
+        cl=$('fClient').value.trim(), sq=$('fSeq').value.trim();
+  let rows=off?[]:MSGS.filter(m=>{
+    if(st!=='any'&&m.status!==st) return false;
+    if(cl&&!m.orionId.includes(cl)) return false;
+    if(sq&&String(m.seq)!==sq) return false;
+    return true;
+  }).slice().reverse();
+
+  $('mbody').innerHTML=rows.length?rows.map(m=>`<tr data-corr="${m.corr}" class="${selMsg===m.corr?'on':''}">
+    <td class="mono">${m.seq}</td>
+    <td class="mono" title="${m.corr}">${m.corr.slice(0,8)}…</td>
+    <td>${m.client}</td>
+    <td><span class="pill ${m.status}">${{done:'Completed',run:'In progress',fail:'Failed',retry:'Retry wait'}[m.status]}</span></td>
+    <td class="mono num">${m.dur} ms</td>
+    <td class="mono">${m.at.toLocaleTimeString('en-US',{hour12:false})}</td></tr>`).join('')
+    : `<tr><td colspan="6" class="emptyd">${off?'No messages — this component is not part of household_create_v1.':'No messages match these filters.'}</td></tr>`;
+
+  const m=MSGS.find(x=>x.corr===selMsg);
+  if(!m||off){ $('detail').innerHTML=`<div class="emptyd">${off?'Nothing to inspect here.':'Select a message to see the request sent and the response received.'}</div>`; return; }
+  const io=reqFor(selected,m);
+  const isOrion=io.length===3&&io[0][0].startsWith('orion');
+  const tabs=io.map((t,i)=>`<button data-hop="${i}" aria-pressed="${activeHop===i}">${t[0]}</button>`).join('');
+  if(isOrion){
+    const t=io[Math.min(activeHop,2)];
+    $('detail').innerHTML=`<div class="dtabs">${tabs}</div><div class="io">
+      <section><h5>Request sent <span class="mono">step_io.${t[0]}_request</span></h5><pre>${jsonHL(t[1],activeHop===2)}</pre></section>
+      <section><h5>Response received <span class="mono">step_io.${t[0]}_response</span></h5><pre>${jsonHL(t[2],activeHop>=1)}</pre></section></div>
+      <p style="margin:0;padding:9px 12px;border-top:1px solid var(--line);font-size:11px;color:var(--ink-3)">
+      Highlighted line is the only field that changes between the GET and the PUT &mdash; <span class="mono">entityOptions[690RIONCON] &rarr; "True"</span>. Orion rejects it on create, which is why hops 2&ndash;4 exist.</p>`;
+  } else {
+    $('detail').innerHTML=`<div class="io">
+      <section><h5>${io[0][0]}</h5><pre>${jsonHL(io[0][1])}</pre></section>
+      <section><h5>${io[1][0]}</h5><pre>${jsonHL(io[1][1])}</pre></section></div>`;
+  }
+}
+
+/* ============================ wiring ============================ */
+$('fEvent').innerHTML='<option value="any">any</option><option>HOUSEHOLD_CREATION</option><option disabled>ACH_TRANSFER</option>';
+$('fStatus').innerHTML='<option value="any">any</option><option value="done">Completed</option><option value="run">In progress</option><option value="fail">Failed</option><option value="retry">Retry wait</option>';
+
+document.addEventListener('click',e=>{
+  const hp=e.target.closest('[data-hops]');
+  if(hp){ hopsOpen=!hopsOpen; selected='outbound'; selMsg=selMsg||MSGS[MSGS.length-1].corr; render(); return; }
+  const nd=e.target.closest('.node');
+  if(nd){ selected=nd.dataset.id; selMsg=null; activeHop=0; render();
+          document.querySelector('.drawer').scrollIntoView({behavior:'smooth',block:'nearest'}); return; }
+  const tr=e.target.closest('.mt tr[data-corr]');
+  if(tr){ selMsg=tr.dataset.corr; activeHop=0; renderDrawer(); return; }
+  const hb=e.target.closest('[data-hop]');
+  if(hb){ activeHop=Number(hb.dataset.hop); renderDrawer(); return; }
+});
+document.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&e.target.classList.contains('node')){ e.target.click(); }
+});
+['fEvent','fStatus','fClient','fSeq'].forEach(id=>$(id).addEventListener('input',()=>selected&&renderDrawer()));
+$('mAgg').onclick=()=>{mode='agg';$('mAgg').setAttribute('aria-pressed','true');$('mTrace').setAttribute('aria-pressed','false');$('traceBox').hidden=true;render();};
+$('mTrace').onclick=()=>{mode='trace';$('mTrace').setAttribute('aria-pressed','true');$('mAgg').setAttribute('aria-pressed','false');$('traceBox').hidden=false;render();};
+$('corr').addEventListener('input',()=>mode==='trace'&&render());
+$('win').addEventListener('change',render);
+$('zoom').onclick=()=>{
+  zoomFit=!zoomFit;
+  const c=$('canvas'), avail=c.parentElement.clientWidth;
+  if(zoomFit){ const s=Math.min(1,avail/1640); c.style.transform=`scale(${s})`; c.style.height=(600*s)+'px'; $('zoom').textContent='Actual size'; }
+  else { c.style.transform='none'; c.style.height='600px'; $('zoom').textContent='Fit to width'; }
+};
+selMsg=MSGS[MSGS.length-1].corr;
+render();
+(function applyFit(){const c=$('canvas'),s=Math.min(1,c.parentElement.clientWidth/1640);
+ c.style.transform=`scale(${s})`;c.style.height=(600*s)+'px';$('zoom').textContent='Actual size';})();
+addEventListener('resize',()=>{if(zoomFit){const c=$('canvas'),s=Math.min(1,c.parentElement.clientWidth/1640);
+ c.style.transform=`scale(${s})`;c.style.height=(600*s)+'px';}});
+setInterval(tick,2000);
+</script>
+</body></html>
