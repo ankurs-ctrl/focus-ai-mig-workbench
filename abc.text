@@ -60,19 +60,75 @@ Seven hunks. **Hunks 2.4, 2.5, 2.6 are this session's fix.** Hunks 2.1, 2.2, 2.3
 Baseline line 28. **Replace** this single line:
 
 ```python
-from app.schema.sttm_builder import RelationGraphContext, RelationNode, RelationNodeKind
+I'll explore the repo first to understand its structure before explaining it.Now let me break this down simply.
+
+## What is this repo?
+
+**ffp-ipaas-mvp** = **FFP's iPaaS (Integration Platform as a Service)** — but not a generic SaaS iPaaS product like MuleSoft or Zapier. It's a **custom-built, Python-based integration pipeline** running on Azure that moves data between two systems:
+
+- **Salesforce** (source — where client/household records are created)
+- **Orion** (target — a wealth-management platform)
+
+Think of it as **plumbing**: when a household is created in Salesforce, this system picks up that event, transforms it, sends it to Orion through an API gateway, tracks every step, retries failures, and reports back to Salesforce whether it succeeded.
+
+### Why "iPaaS"?
+Normally you'd buy an iPaaS tool (MuleSoft, Boomi, Workato) to do this kind of point-to-point integration. Here, FFP built their own lightweight version using **Azure Service Bus queues + Azure Container Apps + Cosmos DB**, instead of buying one.
+
+## How it actually works (the pipeline)
+
+```
+Salesforce ──event──> [Listener] ──> inbound-queue
+                                          │
+                                          ▼
+                                    [inbound] (logs it, creates tracker)
+                                          │
+                                          ▼
+                                   processing-queue
+                                          │
+                                          ▼
+                                    [processing] (passthrough today)
+                                          │
+                                          ▼
+                                    outbound-queue
+                                          │
+                                          ▼
+                                    [outbound] ──> APIM ──> Orion
+                                          │
+                                          ▼
+                                    feedback-queue ──> [feedback] ──> back to Salesforce
+
+    (any failure anywhere) ──> Dead Letter Queue ──> [retry] ──> replay or give up
 ```
 
-with:
+Each box (`inbound`, `processing`, `outbound`, `retry`, `feedback`) is its **own independent microservice/container** — they don't call each other directly, they just pick messages off a queue, do their job, and drop the result on the next queue. This is called **queue-based choreography**.
 
-```python
-from app.schema.sttm_builder import (
-    RelationEdge,
-    RelationGraphContext,
-    RelationNode,
-    RelationNodeKind,
-    RelationshipConditionItem,
-)
+**Example flow (household creation):**
+1. Salesforce fires "household X created" event.
+2. `inbound` writes it down in Cosmos DB (a NoSQL database) so nothing is lost, and creates a "tracker" document to follow its progress.
+3. `outbound` runs a small declarative "flow" defined in a YAML file (`flows/household_create_v1.yaml`):
+   - `POST` create client in Orion (via APIM gateway)
+   - `GET` that client back
+   - tweak a flag
+   - `PUT` update it
+4. If it all succeeds → `feedback` tells Salesforce "done, here's the Orion ID."
+5. If anything fails → it lands in a **Dead Letter Queue**, and the `retry` service decides whether to try again or mark it permanently failed.
+
+## Tech stack
+- **Language:** Python 3.12 everywhere
+- **Messaging:** Azure Service Bus (queues)
+- **Database:** Azure Cosmos DB (tracks every message's state)
+- **Gateway:** Azure API Management (APIM) — sits between this system and Orion
+- **Deployment:** Docker containers → Azure Container Apps
+- **CI/CD:** GitHub Actions
+
+## Important finding: no Snowflake, no MCP, no Next.js exists yet
+I searched the entire codebase — **zero references** to Snowflake, MCP, or Node/Next.js. This is a **greenfield addition**: you're not modifying an existing Snowflake integration, you're building one from scratch, alongside the existing Python pipeline.
+
+Also worth noting: `fastapi`/`uvicorn` are listed as dependencies but **no API server actually exists** in this repo today — everything here is queue consumers, not HTTP services.
+
+---
+
+Now for your build: **MCP servers connecting to Snowflake** + a **Next.js chatbot** that talks to those MCP servers. This is genuinely new architecture work with real design decisions (where does the MCP server run, how does it relate to this existing pipeline, what does the chatbot need to query in Snowflake, auth model, etc.), so I'd like to switch to plan mode to design this properly before writing code.
 ```
 
 Context: immediately follows the `from app.schema.mapping_sql import (...)` block and precedes `from app.core.sql_parser import parse_sql_document`.
