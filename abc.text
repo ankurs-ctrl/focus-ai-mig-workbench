@@ -1,44 +1,103 @@
-Do not rely on `deploy_spcs_client_snow_safe.ps1` alone for FIR. It deploys the application/services; FIR’s Snowflake tables, procedures, streams, grants, and tasks need their own deployment step.
+Here's the complete list of changes I made **after** the zip extraction, organized by category, with exact code.
 
-Yes, this ZIP changes Snowflake-side FIR assets:
+## 1. Repo file — real, permanent code fix
 
-- FIR stream definitions and stream recreation handling.
-- FIR grants.
-- `SP_FIR_INVOKE_AGENT` timeout/execution behavior.
-- FIR learning/retrieval behavior used by the agents.
-- New CRM target-contract support in application metadata.
-- Semantic registry/model assets and related agent specifications.
+**`scripts/deploy_spcs_client_snow_safe.ps1`** — the `Invoke-Checked` function
 
-Recommended client deployment order:
+**Problem:** Under Windows PowerShell 5.1, when this script's output is captured (background job, `*>` redirect, transcript), `$ErrorActionPreference = "Stop"` (set earlier in the same file) causes *any* stderr text from `snow.exe` — even a routine "Initiating login request..." SSO message — to be treated as a fatal error, aborting the whole deployment even though `snow.exe` actually succeeded (exit code 0). This is what caused several of the retries.
 
-1. Extract the ZIP into the repository root.
-
-2. Merge the target settings from `TARGET-CONTRACT-ENV.example` into the client’s existing environment/secrets. Do not overwrite `.env.local`.
-
-3. Deploy FIR objects first, while tasks remain suspended:
-
+**Before:**
 ```powershell
-bash ./infra/snowflake/scripts/deploy-fir-system.sh --skip-tasks
+function Invoke-Checked {
+    param(
+        [scriptblock]$Command,
+        [string]$Description
+    )
+
+    Write-Host ""
+    Write-Host "==> $Description"
+    & $Command
+    $exitCode = $LASTEXITCODE
+
+    if ($null -ne $exitCode -and $exitCode -ne 0) {
+        throw "$Description failed with exit code $exitCode"
+    }
+}
 ```
 
-4. Because your client FIR streams are disabled/stale, recreate them only after confirming FIR tasks are suspended:
-
+**After:**
 ```powershell
-bash ./infra/snowflake/scripts/deploy-fir-system.sh --recreate-streams
+function Invoke-Checked {
+    param(
+        [scriptblock]$Command,
+        [string]$Description
+    )
+
+    Write-Host ""
+    Write-Host "==> $Description"
+
+    # Native commands (e.g. snow.exe) write routine progress/warning text to
+    # stderr. Under Windows PowerShell 5.1, when this script's own output is
+    # captured/redirected (Start-Job, *>, transcripts, etc.), those benign
+    # stderr lines get promoted into terminating NativeCommandError exceptions
+    # while $ErrorActionPreference = "Stop" is active, even though the actual
+    # process exit code is 0. Temporarily relax the preference around the call
+    # and rely solely on $LASTEXITCODE (below) to detect real failures.
+    $previousEap = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $Command
+    } finally {
+        $ErrorActionPreference = $previousEap
+    }
+    $exitCode = $LASTEXITCODE
+
+    if ($null -ne $exitCode -and $exitCode -ne 0) {
+        throw "$Description failed with exit code $exitCode"
+    }
+}
+```
+This is the only actual source-code change I made in the repo. Everything else below is config or ad-hoc deployment tooling.
+
+## 2. Env files (gitignored — not in git, but real config that matters)
+
+**`services/sttm-builder/.env.local`** and **`infra/snowflake/env/client.env`** — both got the same block appended (merged from the zip's `TARGET-CONTRACT-ENV.example`, with real table names after you confirmed the schema):
+```
+CRM_TARGET_DATABASE=FFP_HDP_DLAB_DB_DEV
+CRM_TARGET_SCHEMA=SCH_EVERNEST_TARGET
+CRM_TARGET_TABLES=EVERNEST_HHS_TARGET,EVERNEST_BIZ_ACCOUNTS_TARGET,EVERNEST_ALERTS_TARGET,EVERNEST_CALLS_TARGET,EVERNEST_BIZ_CONTACTS_TARGET,EVERNEST_MEETINGS_TARGET,EVERNEST_NOTES_TARGET,EVERNEST_PERSON_ACCOUNTS_TARGET,EVERNEST_TASKS_TARGET
+CRM_TARGET_CONTRACT_VERSION=1.0
+CRM_TARGET_CONTRACT_JSON=
 ```
 
-This resets stream offsets. It is appropriate here because you said FIR streams are disabled; it avoids resuming tasks against old stream positions.
-
-5. Deploy/redeploy the application normally:
-
-```powershell
-.\scripts\deploy_spcs_client_snow_safe.ps1
+**`.env.local` only** — one line fixed permanently:
+```diff
+- APP_NAME=BBI AI Migration Workbench API
++ APP_NAME="BBI AI Migration Workbench API"
 ```
+Reason: this file gets `source`'d by bash in `deploy-fir-system.sh`; the unquoted value with spaces made bash try to run "AI" as a command. Quoting is harmless for the app itself (Python's env-loader strips quotes).
 
-6. After confirming the app is healthy and the FIR tables/procedures/streams exist, resume FIR tasks:
-
-```powershell
-bash ./infra/snowflake/scripts/deploy-fir-system.sh --tasks-only --resume-tasks
+**`.env.local` only, temporary — already reverted back to empty:**
 ```
+SNOWFLAKE_PASSWORD=unused-connection-uses-snow-cli-sso-profile   ← set temporarily, then reverted to empty
+```
+This was only needed to satisfy a non-empty check in the deploy script; the value is never actually used since our connection goes through the `snow` CLI's SSO profile, not a password.
 
-You do not need to run the full initial bootstrap script if the client environment already has the existing STTM/FIR base tables. The FIR deploy script is additive and handles the upgraded FIR schema/procedures. Run the semantic-model bootstrap only if the client does not already have the semantic registry / `AGT_SEMANTIC_MODEL_V2` assets, or if deployment reports they are missing.
+## 3. Ad-hoc deployment scripts (NOT part of the repo — personal working files in `C:\Users\ankur.sinha\`)
+
+This is what `deploy_fir_native_continue.ps1` (the file you attached) is — one of several throwaway PowerShell scripts I wrote to actually run the FIR deployment, because `infra/snowflake/scripts/deploy-fir-system.sh` (the real repo script) couldn't run cleanly in this environment (WSL couldn't reliably call the Windows `snow.exe` for large SQL files, and kept re-triggering browser logins per file). These scripts just replicate that bash script's exact file list and placeholder substitution, calling `snow.exe sql -f <file>` natively on Windows instead.
+
+None of these are committed anywhere or part of your codebase — they're just how I executed the deployment steps. The ones that exist:
+- `deploy_fir_native.ps1` / `deploy_fir_native_continue.ps1` — run the FIR tables/streams/procedures/cortex-search/grants in order
+- `run_fir_grants_patched.ps1`, `fir_grants_patched.sql` — grants file with 2 broken statements skipped (see below)
+- `run_fir_recreate_streams.ps1`, `fir_streams_recreate.sql` — stream recreation with the broken health-view statement skipped
+- `compare_grant_signatures.ps1` — diagnostic script that cross-checked all 26 procedure grants against actual deployed signatures
+
+## 4. Bugs found in the delta package itself (not fixed in the repo — worked around only for this deployment)
+
+I did **not** edit `infra/snowflake/fir_system/grants/fir_grants.sql` or `fir_streams.sql` in the repo. I only skipped the broken statements in my throwaway copies so the deployment could complete:
+
+- `fir_grants.sql` line ~173: `SP_FIR_READ_PENDING_RECORDS(INTEGER, VARCHAR)` — stale signature; actual procedure takes 6 args. I used the corrected 6-arg version only in my ad-hoc copy.
+- `fir_streams.sql` / `fir_grants.sql`: the `VW_FIR_STREAM_HEALTH` view can't be created because our role lacks access to `INFORMATION_SCHEMA.STREAMS` — skipped in my ad-hoc copies.
+
+**These two bugs still exist in the actual repo SQL files.** If someone re-runs `deploy-fir-system.sh` from the repo as-is, they'll hit the same two failures I hit. Want me to fix those two files directly in the repo now, so this doesn't bite anyone again?
