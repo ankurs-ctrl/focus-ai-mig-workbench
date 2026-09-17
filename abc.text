@@ -1,346 +1,391 @@
-The backend is the MCP Gateway. There's no separate "Streamlit backend" and "Next.js backend" — both frontends are just two different UIs calling the same one backend service (the gateway from Prompt 3A/3B), which exposes POST /api/chat. Streamlit calls it directly from Python; Next.js calls it through a thin proxy API route. That's already in both frontend prompts via BACKEND_URL — I just hadn't spelled out explicitly that it's the same backend for both. It is.
-
-Here's the full picture and every final prompt, in build order.
-
-How it all connects
-Streamlit UI  ─┐
-               ├──► MCP Gateway (the shared backend, /api/chat) ─┬─► Snowflake MCP Server ─► Cortex Agent ─► Semantic Model ─► sample data (READS)
-Next.js UI    ─┘                                                  └─► IPaaS MCP Server ─► Account/Household API ─► own sample data (ACTIONS)
-
-Build order: Account/Household API → IPaaS MCP Server → Snowflake data/semantic model/agent/MCP (via Coco) → Gateway → either/both frontends.
-
-1. Account & Household API (real logic, fictional data — the iPaaS-side downstream system)
-Build a properly-implemented FastAPI service representing the downstream
-systems iPaaS talks to (Schwab/Fidelity for account data, Orion for
-household/client creation). The API logic itself must be real and
-production-shaped — only the underlying data is fictional/sample data.
-
-DATA LAYER: SQLite (or in-memory dict) seeded with sample clients,
-accounts, and households. Use the SAME client names/IDs as the Snowflake
-sample data (e.g. reuse "John Doe", "Jane Smith" etc. — coordinate the
-exact list once the Snowflake side is seeded) so the demo narrative is
-coherent across both flows.
-
-Seed at least:
-- one client/household with a normal, healthy account (fast, clean path)
-- one household whose downstream dependency is genuinely unreliable
-  (see retry logic below), so creating/updating it naturally takes
-  several real retries — no forced/scripted slowness anywhere
-
-ENDPOINTS:
-
-GET /accounts/{client_id}/cash_balance
-  -> {client_id, balance, currency, as_of, source_system: "Schwab"}
-  -> 404 if not found
-
-POST /households
-  Body: {client_id, household_name}
-  -> creates a household record, status "pending_verification"
-  -> {household_id, status}
-
-GET /households/{household_id}
-  -> {household_id, client_id, entityOptions, status}
-  -> 404 if not found
-
-PUT /households/{household_id}
-  Body: {entityOptions}
-  -> calls an internal "orion_apply_update" function with a REAL failure
-     mode: for households seeded as "unreliable," this genuinely raises
-     a transient error (simulated timeout/503) some percentage of calls
-     (env var UNRELIABLE_FAILURE_RATE, default 0.6)
-  -> implements REAL retry logic: exponential backoff, real
-     max_retry_count (env var MAX_RETRIES, default 3), genuinely
-     re-attempts rather than faking a delay
-  -> exhausts retries -> real 503 with clear error body
-  -> succeeds -> {household_id, status: "active", orion_client_id}
-
-Log every request/response with timestamp, real elapsed duration_ms, and
-(for PUT) actual retry attempts taken.
-
-AUTH: API key via header X-API-Key, checked against env var API_KEY.
-
-Package as its own container (Dockerfile, port 8080) for Azure Container
-Apps. README with run instructions, env vars, and which pre-seeded
-client_id/household_id naturally hits the "fast" vs "several real
-retries" case.
-2. IPaaS MCP Server (wraps #1)
-Build a minimal MCP server in Python (official `mcp` SDK) exposing two
-tools that call the real API from #1 (env vars API_BASE_URL, API_KEY):
-
-Tool: get_account_snapshot
-  - input: client_id, account_type (default "cash_balance")
-  - calls GET {API_BASE_URL}/accounts/{client_id}/{account_type}
-  - returns {client_id, account_type, value, as_of, source_system, duration_ms}
-
-Tool: create_household
-  - input: client_id, household_name
-  - calls POST /households, then GET /households/{id}, then PUT
-    /households/{id} against the real API — no scenario parameter,
-    whatever happens (including retries) is the API's real behavior
-  - surfaces real per-step timing and, if retries occurred, the actual
-    retry count and per-attempt duration:
-    {household_id, orion_client_id, status,
-     steps: [{name, http_status, duration_ms, retry_attempt}, ...],
-     total_duration_ms}
-
-No synthetic timing injected anywhere in this layer — pass through
-whatever the real API returns/took.
-
-Package as its own container (Dockerfile, port 8090) for Azure Container
-Apps. README with run instructions and env vars.
-3. Snowflake sample data + semantic model + agent + MCP server (for Coco, your real account)
-You have access to my Snowflake account (I'll provide account identifier,
-role, warehouse, and database/schema separately). Build a complete demo
-environment for a wealth-management chatbot proof of concept. Show me
-the SQL as you go so I can review before running anything.
-
-1. SCHEMA & SAMPLE DATA
-   Create schema DEMO_FAST_SYNC with these tables, populated with
-   realistic, professional-looking but entirely fictional data (no real
-   client PII):
-   - CLIENTS (client_id PK, first_name, last_name, email, phone,
-     date_of_birth, client_since, risk_profile, advisor_name)
-   - HOUSEHOLDS (household_id PK, household_name, primary_client_id FK,
-     created_at, status, orion_client_id nullable)
-   - ACCOUNTS (account_id PK, client_id FK, account_type
-     [Individual/Joint/IRA/Trust], custodian [Schwab/Fidelity],
-     account_number_masked, opened_at, status)
-   - HOLDINGS (holding_id PK, account_id FK, ticker, security_name,
-     asset_class, quantity, market_value, as_of_date)
-   - TRANSACTIONS (transaction_id PK, account_id FK, transaction_type
-     [buy/sell/deposit/withdrawal], amount, transaction_date, description)
-   - CASH_BALANCES (account_id FK, balance, currency, as_of_timestamp)
-
-   Populate with 15-20 clients, 2-3 accounts each, realistic holdings
-   (tickers like AAPL/MSFT/VTI/bond funds), varied balances typical of a
-   wealth-management book (tens of thousands to low millions). Include
-   client names matching the ones seeded in the separate iPaaS
-   Account/Household API (I'll share that list) so the same "John Doe"
-   works in both the read path and the action path.
-
-2. SEMANTIC MODEL
-   Build a Cortex Analyst semantic model/semantic view over these
-   tables, with business-friendly names/descriptions per table, column,
-   and relationship (e.g. "total portfolio value" as a defined metric,
-   "household" as an entity joining clients/accounts), tuned so
-   questions like "what is John Doe's portfolio value" resolve cleanly.
-
-3. CORTEX AGENT
-   Create a Cortex Agent (WEALTH_DEMO_AGENT) wrapping this semantic
-   model, with an instruction prompt describing its purpose and
-   guardrails: read-only, no fabricated numbers, always cite the
-   specific account/household used.
-
-4. MANAGED MCP SERVER
-   Create a Snowflake-managed MCP server exposing WEALTH_DEMO_AGENT as
-   its tool. Generate a programmatic access token scoped to a read-only
-   service role limited to the DEMO_FAST_SYNC schema.
-
-5. VERIFICATION
-   Give me sample natural-language questions to test directly against
-   the agent/MCP server, plus the SQL to check the underlying data, so I
-   can sanity-check correctness before wiring up the chatbot.
-
-Ask me for anything missing before running anything.
-4A. MCP Gateway — custom (this IS the shared backend, recommended for Monday)
-Build a FastAPI service acting as an MCP client gateway in front of two
-MCP servers — this is the single backend BOTH the Streamlit UI and the
-Next.js UI will call:
-  1. Snowflake-managed MCP server from #3 (env vars SNOWFLAKE_MCP_URL,
-     SNOWFLAKE_MCP_TOKEN) — read/lookup path
-  2. The IPaaS MCP server from #2 (env var IPAAS_MCP_URL) — action path
-
-Expose: POST /api/chat {message, session_id} ->
-{answer, path: "snowflake"|"ipaas", trace: [{step, target, ms}], total_ms}
-
-Routing: classify_intent(message) -> "lookup" | "action" (simple
-keyword/regex classifier, swappable for an LLM-based router later).
-Lookups -> Snowflake MCP tool. Actions (create/update household, "get me
-ready for tomorrow's call with X") -> IPaaS MCP tool. No scenario-forcing
-field — whichever client_id/household_id is mentioned determines real
-behavior.
-
-For each request: call the right MCP tool, use its real timing/retry
-data to build the trace, generate a natural-language answer via a
-single LLM call (provider-agnostic — Cortex Complete or Claude via
-Bedrock, chosen by env var LLM_PROVIDER), return answer + trace.
-
-Graceful fallback: if the Snowflake MCP server is unreachable, catch the
-error and return a friendly "data source unavailable" message.
-
-Enable CORS for both the Streamlit and Next.js frontends' origins (env
-var ALLOWED_ORIGINS, comma-separated).
-
-Package as its own container for Azure Container Apps. Include a
-docker-compose.yml running this gateway + the Account/Household API +
-the IPaaS MCP server together for local end-to-end testing.
-4B. MCP Gateway — Azure APIM (production-track alternative)
-I have two MCP-compatible backends: a Snowflake-managed MCP server, and
-the custom IPaaS MCP server from #2 (running as an Azure Container App).
-Write the Azure API Management config (Bicep or ARM template plus policy
-XML) to:
-- Expose the IPaaS MCP server as a governed remote MCP server via APIM's
-  built-in MCP gateway ("Existing MCP server" mode)
-- Apply key-based or OAuth auth on inbound requests to APIM
-- Add rate limiting and Application Insights logging with correlation
-  IDs for end-to-end tracing
-- Document the equivalent steps to also front the Snowflake-managed MCP
-  server, noting current limitations (APIM supports MCP tools only, not
-  resources/prompts)
-Include a README on how a client (Streamlit or Next.js) points at the
-APIM endpoint instead of hitting each MCP server directly.
-5. Frontend — Streamlit (calls the gateway from #4A/4B as its backend)
-Build a Streamlit chatbot app. Backend: POST to {BACKEND_URL}/api/chat
-(the MCP Gateway from #4) with {message, session_id}, expecting
-{answer, path, trace, total_ms} — abstract this behind a swappable
-function.
-
-VISUAL STYLE (matches the companion "iPaaS Flow Console" dashboard):
-- Fonts: "IBM Plex Sans" body, "IBM Plex Mono" numbers/timings/IDs
-- Colors: bg #eef1f6, surface #ffffff, sunken #e3e8f0, ink #0f1a2a,
-  ink2 #4a5a6f, accent #0e6f7a, navy #1c2b57
-- Status colors: done #2f7fd4, running #0f9d58, failed #d1453f,
-  retry #d9860f, idle #8b98a9
-- Dark mode: bg #0a1018, surface #141d2a, ink #e3ebf6, accent #3ec4cf
-- Dense, technical-monitoring aesthetic — uppercase small-caps section
-  labels, rounded chips, subtle shadows
-
-FUNCTIONALITY:
-- Chat interface (input + history) as the main view
-- Each response shows a collapsible trace panel: path taken, per-hop
-  name + duration in ms (mono font), waterfall-style bars
-- A persistent "Timings Log" panel: running table of every question
-  this session — timestamp, question (truncated), path, total_ms, mini
-  duration bar; sortable/filterable by path; running average total_ms
-  per path shown at top, so the Snowflake-vs-iPaaS contrast is visible
-  at a glance
-- Sidebar: session reset button
-
-Deliverable: single well-commented Streamlit app file, requirements.txt,
-README with run instructions.
-6. Frontend — Next.js (calls the same gateway; multi-screen)
-Build a Next.js (App Router, TypeScript, Tailwind) app calling the SAME
-backend as the Streamlit version — the MCP Gateway from #4 — via a proxy
-API route. Multiple screens, shared theme:
-- Fonts: "IBM Plex Sans" body, "IBM Plex Mono" numbers (next/font)
-- Tailwind theme: bg #eef1f6, surface #ffffff, sunken #e3e8f0,
-  ink #0f1a2a, ink2 #4a5a6f, accent #0e6f7a, navy #1c2b57, status colors
-  done #2f7fd4/running #0f9d58/failed #d1453f/retry #d9860f/idle #8b98a9,
-  dark: variant bg #0a1018/surface #141d2a/ink #e3ebf6/accent #3ec4cf
-- Shared top nav/sidebar linking the screens below
-
-SCREEN 1 — Chat (/)
-- Chat interface, collapsible per-message trace panel (path, per-hop
-  ms, waterfall bars)
-- app/api/chat/route.ts proxies POST to {BACKEND_URL}/api/chat with
-  {message, session_id}, returns {answer, path, trace, total_ms}
-
-SCREEN 2 — Timings Log (/timings)
-- Persistent table of every question asked this session across all
-  screens: timestamp, question, path, total_ms, expandable per-hop
-  breakdown; sortable/filterable by path; running average total_ms per
-  path shown prominently — this screen exists specifically to make the
-  "Snowflake sub-second vs iPaaS multi-second" contrast obvious live
-- Shared client-side state (React context) with Screen 1, no backend
-  persistence needed
-
-SCREEN 3 — Flow Console (/flow)
-- I will attach the existing "iPaaS Flow Console" HTML/CSS/JS file —
-  port it faithfully into React components: topology graph
-  (nodes/edges), live status dots, aggregate vs. trace mode toggle,
-  filter bar (event type/client id/status/sequence), bottom detail
-  drawer for request/response on row click, zoom controls — matching
-  its exact color tokens/fonts rather than reinterpreting it
-- Preserve whatever data source it currently expects (static/mock) —
-  just re-platform it, don't redesign it
-
-Deliverable: full project structure (app/, components/, lib/,
-tailwind.config, next.config), README, .env.example (BACKEND_URL + any
-other vars).
-
-That's the complete, final set — 6 build artifacts total, two of them (gateway options) are alternatives rather than both-required, and both frontends are optional alternatives to each other, not sequential steps.
-
-Why datga layer is sqlite and not snwoflake itself?
-
-Because that API isn't standing in for Snowflake — it's standing in for Schwab/Fidelity/Orion, which are genuinely different systems in real life, not Snowflake tables. That distinction is actually load-bearing for the demo, for three reasons:
-
-1. It's what makes the "two paths" story true, not just decorative.
-The whole point Vivek wants to prove is: "one path (Snowflake) is a direct semantic-layer read; the other path (iPaaS) has to hop out to real external systems, and that's why it's slower." If the iPaaS path's "external system" is secretly also just a Snowflake table, you're not actually demonstrating two different architectures — you're demonstrating one data source with two labels on it. Someone technical in the room (sounds like Chris's team will have people like that) could reasonably ask "wait, isn't that also just Snowflake?"
-
-2. Snowflake isn't built for the workload this API needs.
-The Account/Household API needs cheap, fast, repeated point writes (create household → get → put update, with real retries) — classic OLTP behavior. Snowflake is an analytics warehouse: it's excellent at the semantic-layer read side, but a warehouse can have cold-start/spin-up latency on the first query and isn't designed for many small transactional writes. That's exactly the kind of variance that would sneak into your "8 seconds happy path, 45 seconds with retries" numbers and make them look staged rather than real — the opposite of what you want.
-
-3. It matches what's actually true in production.
-In the real system, Orion and Schwab/Fidelity are not Snowflake — they're the actual custodian/wealth platforms. Snowflake only enters the picture as the analytics/semantic layer on top. SQLite here isn't a shortcut so much as it's playing the role of "some other system's database," which is architecturally honest to what iPaaS actually talks to.
-
-That said — if you'd rather run one piece of infrastructure instead of two for the demo, that's a legitimate call too. You'd lose the clean separation above, but you could put the account/household tables in a separate Snowflake schema from the semantic-model data (not the same tables), and have the mock API hit that schema via plain SQL instead of SQLite. It'd still work for Thursday, just with slightly less crisp storytelling and a bit more latency variance to manage.
-
-Want me to adjust Prompt 1 to that Snowflake-backed version, or keep SQLite as-is?
-
-No, you are right...but can we use cosmos db for this? he mentioned cosmos db right? But yes If I dont have access then sqllite...
-
-So in what order I need to givr prompts or give all toghether...are we setting up full context?
-
-Yes — good catch, and yes he did (twice, actually: it's the actual DB the real iPaaS pipeline uses for tracking, and it's specifically what Yaswanth's Flow Console HTML is built from). Using Cosmos DB here would be more authentic than SQLite, for a similar reason to the earlier point: the real Orion/Schwab-adjacent tracking already lives in Cosmos, so if your mock API also uses Cosmos, you're not introducing a new, unrelated piece of tech just for the demo — you're extending the same stack the rest of the system already runs on.
-
-One caveat, though — it carries the same kind of risk as the Snowflake connectivity question: you need write access to create a new container (or a new database within the existing account), and that access isn't guaranteed to be available by Monday. So the practical move is: try Cosmos first, but don't let it block you — build the data layer behind a small interface so it can fall back to SQLite instantly if access doesn't come through in time, rather than being a rewrite.
-
-Revised Prompt 1 — Account/Household API, Cosmos-backed with SQLite fallback
-Build a properly-implemented FastAPI service representing the downstream
-systems iPaaS talks to (Schwab/Fidelity for account data, Orion for
-household/client creation). The API logic itself must be real and
-production-shaped — only the underlying data is fictional.
-
-DATA LAYER: implement a repository interface (e.g. AccountRepository,
-HouseholdRepository) with two implementations, selected by env var
-DATA_BACKEND=cosmos|sqlite (default sqlite):
-- CosmosRepository: Azure Cosmos DB SDK, containers `accounts` and
-  `households`, partition key /client_id, connection via
-  COSMOS_ENDPOINT + managed identity (no connection strings)
-- SqliteRepository: local SQLite file, same schema/shape
-Both must expose identical methods so the API layer never knows which
-one is active. This lets me switch backends with one env var if Cosmos
-access isn't granted in time.
-
-Seed data (same for either backend): sample clients, accounts, and
-households — reuse the SAME client names/IDs as the Snowflake sample
-data (coordinate the exact list once that's seeded).
-
-Seed at least:
-- one client/household with a normal, healthy account (fast, clean path)
-- one household whose downstream dependency is genuinely unreliable
-  (see retry logic below) — no forced/scripted slowness anywhere
-
-ENDPOINTS: [same as before — GET /accounts/{client_id}/cash_balance,
-POST /households, GET /households/{household_id}, PUT /households/{household_id}
-with real retry logic: exponential backoff, env vars
-UNRELIABLE_FAILURE_RATE (default 0.6) and MAX_RETRIES (default 3)]
-
-Log every request/response with timestamp, real elapsed duration_ms, and
-(for PUT) actual retry attempts taken.
-
-AUTH: API key via header X-API-Key, checked against env var API_KEY.
-
-Package as its own container (Dockerfile, port 8080) for Azure Container
-Apps. README covering both backend modes, run instructions, env vars,
-and which pre-seeded client_id/household_id naturally hits "fast" vs
-"several real retries."
-
-Worth a quick message to Vivek/Yaswanth today asking whether you can get a new container in the existing ffp-ipaas-db-dev Cosmos account (or a fresh dev one) — if yes by tomorrow, great; if it's uncertain, just build against SQLite now and flip the env var later. Don't wait to find out before starting.
-
-On ordering — give them one at a time, in dependency order, with a shared context brief first
-
-Giving everything to Coco/Codex at once is risky here specifically because several prompts share things that don't exist yet until an earlier step runs — client names, IDs, exact field shapes, real URLs/tokens. If the agent has to invent those independently in five different sessions, they won't match each other, and you'll spend Tuesday reconciling mismatched schemas instead of testing the demo.
-
-Recommended approach:
-
-Write one shared context brief first (a short doc, not a build prompt) — the overall architecture, the demo goal and timing story, the tech stack per piece, and a locked-in list of sample client/household names & IDs everyone reuses. Give this to the agent at the start of every session (or check it into the repo as CONTEXT.md if it has repo access, so it's always in scope).
-Then run the build prompts one at a time, in this order:
-Account/Household API (Cosmos+SQLite fallback)
-IPaaS MCP Server (wraps the above — needs its real URL/port)
-Snowflake sample data + semantic model + agent + MCP (independent of the above two, but must use the same client names from the context brief)
-MCP Gateway (needs the real MCP URLs/tokens from the two prior MCP servers)
-Frontend — Streamlit and/or Next.js (needs the real gateway URL/contract)
-After each step, paste the real outputs (URLs, IDs, exact response shapes) back into the context brief before moving to the next prompt, so later steps aren't guessing.
-
-Want me to draft that shared context brief now, with a locked sample client/household list, so every subsequent prompt references the same names and IDs?
+Let me verify the current state of each fixed location before writing this up, to make sure the snippets are accurate.Confirmed accurate. Now let me check the other two file-completion fixes and the `_quote_literal` bug location before writing the full summary.Now compiling the full comprehensive breakdown.All verified against the live files. Here's the complete breakdown.
+
+# Code Changes I Made This Session
+
+## 1. Core production bug fix — Cortex Analyst identifier quoting
+
+**File**: `services/sttm-builder/app/core/semantic_context.py`
+
+**Problem**: semantic view YAML built column references as `expr: BillingCity` (unquoted). Snowflake case-folds unquoted identifiers to uppercase, but the physical column was created as `"BillingCity"` (quote-preserved mixed case) — so Cortex Analyst generated SQL referencing a nonexistent `BILLINGCITY` column, failing with `invalid logical column name` / `invalid identifier`.Let me verify the current state of each fixed location before writing this up, to make sure the snippets are accurate.Confirmed accurate. Now let me check the other two file-completion fixes and the `_quote_literal` bug location before writing the full summary.Now compiling the full comprehensive breakdown.All verified against the live files. Here's the complete breakdown.
+
+# Code Changes I Made This Session
+
+## 1. Core production bug fix — Cortex Analyst identifier quoting
+
+**File**: `services/sttm-builder/app/core/semantic_context.py`
+
+**Problem**: semantic view YAML built column references as `expr: BillingCity` (unquoted). Snowflake case-folds unquoted identifiers to uppercase, but the physical column was created as `"BillingCity"` (quote-preserved mixed case) — so Cortex Analyst generated SQL referencing a nonexistent `BILLINGCITY` column, failing with `invalid logical column name` / `invalid identifier`.
+
+**Fix** — added a helper (new code, line 3843):
+```python
+def _quoted_column_expr(column_name: str) -> str:
+    """Quote a physical column reference so mixed-case/quoted-identifier columns
+    (e.g. "BillingCity") resolve correctly instead of being folded to uppercase
+    by Snowflake's unquoted-identifier rules."""
+    escaped = str(column_name).replace('"', '""')
+    return f'"{escaped}"'
+```
+
+Applied at two call sites:
+
+**Dimension/fact builder** (line ~2542-2547):
+```python
+entity = {
+    "name": attribute["name"],
+    "description": entity_description,
+    "expr": _quoted_column_expr(attribute["name"]),   # was: attribute["name"]
+    "data_type": attribute["data_type"],
+}
+```
+
+**Metric aggregate expression builder** (line ~2581-2587):
+```python
+if aggregate_function:
+    quoted_column = _quoted_column_expr(attribute["name"])
+    metric_expr = (
+        f"COUNT(DISTINCT {quoted_column})"
+        if aggregate_function == "COUNT_DISTINCT"
+        else f"{aggregate_function}({quoted_column})"
+    )
+```
+Verified live against the real Cortex Analyst API — reproduced the original failure with an unquoted test, confirmed the quoted version generates and executes valid SQL.
+
+---
+
+## 2. Missing file — recreated from scratch
+
+**File**: `frontend/src/features/sttm/shared/sttm-builder-routes.ts` (this file didn't exist — your zip update referenced it but never included it, breaking the frontend build)
+
+Full content, reconstructed by tracing the required contract from 3 call sites (`ai-agent-panel.tsx`, `sttm-builder-context.tsx`, `sttm-builder-slice.ts`):
+```typescript
+export type SttmBuilderAssistantPage = "builder" | "mapping" | "summary";
+
+export function getSttmBuilderAssistantPage(pathname: string): SttmBuilderAssistantPage {
+  if (pathname.endsWith("/mapping")) {
+    return "mapping";
+  }
+  if (pathname.endsWith("/summary") || pathname.endsWith("/validate")) {
+    return "summary";
+  }
+  return "builder";
+}
+```
+
+## 3. Missing type field — added
+
+**File**: `frontend/src/features/sttm/types/sttm.types.ts` (line 540)
+
+`MappingState` interface referenced `mapping.manuallyEditedAfterAutoMap = false;` elsewhere in the zip update, but the interface itself was never updated to declare it — TypeScript build failure.
+```typescript
+  descriptionEdited?: boolean;
+  manuallyEditedAfterAutoMap?: boolean;   // added
+  confidenceScore?: number | null;
+```
+
+## 4. Dockerfile / build environment fixes (Zscaler)
+
+**`frontend/Dockerfile`** — added CA cert injection + npm upgrade:
+```dockerfile
+COPY zscaler_ca.pem /usr/local/share/ca-certificates/zscaler_ca.crt
+ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/zscaler_ca.crt
+
+COPY package.json package-lock.json ./
+RUN npm install -g npm@11 \
+    && npm config set maxsockets 3 \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm ci
+```
+Plus copied `zscaler_ca.pem` into `frontend/` and added a `.gitignore` exception (`!zscaler_ca.pem`). This fixed `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` and the npm 10.9.8 `"Exit handler never called!"` bug.
+
+## 5. `.gitignore` cleanup
+```
+# Generated deploy artifacts (rendered specs / release bundles per run)
+artifacts/client-spcs/*.yaml
+release-packages/
+DELTA-INSTALL.txt
+
+# Local debug/scratch files
+tmp_*.sql
+```
+
+---
+
+# Issues Found — Diagnosed, Code-Verified, NOT Yet Fixed
+
+These are the ones you asked to fix yourself. Each has an exact file/line and root cause.
+
+## Issue A: `_quote_literal` doesn't escape backslashes → SQL compile error on bundle persistence
+
+**File**: `services/sttm-builder/app/core/semantic_context.py:3711`
+```python
+def _quote_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+```
+Only escapes single quotes. Snowflake string literals interpret backslash escapes (`\uXXXX` etc.) by default. Used to interpolate several fields directly into SQL text at `_upsert_bundle` (line ~3316-3387):
+```python
+{_quote_literal(bundle_label)} AS BUNDLE_LABEL,
+...
+{_quote_literal(semantic_view_name or "")} AS SEMANTIC_VIEW_NAME,
+{_quote_literal(semantic_model_yaml or "")} AS SEMANTIC_MODEL_YAML,
+...
+{_quote_literal(stale_reason or "")} AS STALE_REASON,
+```
+Any of these containing a literal `\u`-style sequence breaks with:
+```
+SQL compilation error: Invalid unicode escape sequence '\u201353500'; should be at most '\u0010FFFF'.
+```
+**Suggested fix**: switch these to bind parameters (`?`) the same way the JSON fields already do (`PARSE_JSON(?)`), instead of string-interpolating via `_quote_literal`.
+
+## Issue B: Frontend swallows specific validation messages, shows generic error
+
+**File**: `frontend/src/api/errors/app-error.ts:33-44`
+```typescript
+function readEnvelopeError(data: unknown): ApiError | null {
+  if (typeof data !== 'object' || data === null) {
+    return null;
+  }
+  const envelopeError = (data as { error?: ApiError | null }).error;   // only checks `.error`
+  if (envelopeError && typeof envelopeError === 'object') {
+    return envelopeError;
+  }
+  return null;
+}
+```
+This only recognizes your app's own envelope shape (`{error: {detail, code, ...}}`). But `services/sttm-builder/app/routers/mapping_sql.py:41-42` raises a bare FastAPI exception:
+```python
+except ValueError as exc:
+    raise HTTPException(status_code=400, detail=str(exc)) from exc
+```
+which returns `{"detail": "Target RECORDTYPEID is not mapped."}` — no `error` wrapper. So `parseAppError` (`app-error.ts:94-100`) falls through every check and lands on the generic Axios message (`"Request failed with status code 400"`), hiding the actual actionable reason from the user.
+
+**Suggested fix**: in `readEnvelopeError`, also check for a bare top-level `detail` string when `.error` isn't present:
+```typescript
+function readEnvelopeError(data: unknown): ApiError | null {
+  if (typeof data !== 'object' || data === null) return null;
+  const envelopeError = (data as { error?: ApiError | null }).error;
+  if (envelopeError && typeof envelopeError === 'object') return envelopeError;
+  const bareDetail = (data as { detail?: unknown }).detail;
+  if (typeof bareDetail === 'string') return { detail: bareDetail } as ApiError;
+  return null;
+}
+```
+
+## Issue C: Silent no-op when derived-source delegation can't run
+
+**File**: `services/sttm-builder/app/core/sttm_builder.py:3153-3170`
+```python
+if semantic_refresh is None or not (
+    getattr(semantic_refresh, "semantic_view_name", None)
+    or getattr(semantic_refresh, "semantic_model_yaml", None)
+):
+    response.meta = self._merge_agent_meta(
+        response.meta,
+        {
+            "delegation": {
+                **delegation,
+                "status": "unavailable",
+                "detail": (
+                    "The prepared workspace has no executable Analyst "
+                    "semantic model for this selection."
+                ),
+            }
+        },
+    )
+    return response
+```
+Sets `meta.delegation.status = "unavailable"` but the frontend never reads/displays this — so when the LLM only returns plain text instead of a real "Apply to Builder" artifact, the user sees nothing explaining why.
+
+**Suggested fix**: surface `response.meta.delegation.status === "unavailable"` in the frontend as a visible inline warning/retry prompt.
+
+## Issue D: Recommendations can reference tables outside the current bundle scope
+
+No single line to point at — it's a gap in the recommendation flow: the AI can recommend a derived source (e.g. "Household Address Staging" using `ADDRESSES`) referencing a table that was never part of the user's selected source tables for that session. Verified live that Cortex Analyst itself handles this gracefully (clean "I don't have that data" response), so this by itself isn't the crash cause — but it's still a UX gap worth validating before offering the recommendation as a one-click "Generate" action.
+
+**Fix** — added a helper (new code, line 3843):
+```python
+def _quoted_column_expr(column_name: str) -> str:
+    """Quote a physical column reference so mixed-case/quoted-identifier columns
+    (e.g. "BillingCity") resolve correctly instead of being folded to uppercase
+    by Snowflake's unquoted-identifier rules."""
+    escaped = str(column_name).replace('"', '""')
+    return f'"{escaped}"'
+```
+
+Applied at two call sites:
+
+**Dimension/fact builder** (line ~2542-2547):
+```python
+entity = {
+    "name": attribute["name"],
+    "description": entity_description,
+    "expr": _quoted_column_expr(attribute["name"]),   # was: attribute["name"]
+    "data_type": attribute["data_type"],
+}
+```
+
+**Metric aggregate expression builder** (line ~2581-2587):
+```python
+if aggregate_function:
+    quoted_column = _quoted_column_expr(attribute["name"])
+    metric_expr = (
+        f"COUNT(DISTINCT {quoted_column})"
+        if aggregate_function == "COUNT_DISTINCT"
+        else f"{aggregate_function}({quoted_column})"
+    )
+```
+Verified live against the real Cortex Analyst API — reproduced the original failure with an unquoted test, confirmed the quoted version generates and executes valid SQL.
+
+---
+
+## 2. Missing file — recreated from scratch
+
+**File**: `frontend/src/features/sttm/shared/sttm-builder-routes.ts` (this file didn't exist — your zip update referenced it but never included it, breaking the frontend build)
+
+Full content, reconstructed by tracing the required contract from 3 call sites (`ai-agent-panel.tsx`, `sttm-builder-context.tsx`, `sttm-builder-slice.ts`):
+```typescript
+export type SttmBuilderAssistantPage = "builder" | "mapping" | "summary";
+
+export function getSttmBuilderAssistantPage(pathname: string): SttmBuilderAssistantPage {
+  if (pathname.endsWith("/mapping")) {
+    return "mapping";
+  }
+  if (pathname.endsWith("/summary") || pathname.endsWith("/validate")) {
+    return "summary";
+  }
+  return "builder";
+}
+```
+
+## 3. Missing type field — added
+
+**File**: `frontend/src/features/sttm/types/sttm.types.ts` (line 540)
+
+`MappingState` interface referenced `mapping.manuallyEditedAfterAutoMap = false;` elsewhere in the zip update, but the interface itself was never updated to declare it — TypeScript build failure.
+```typescript
+  descriptionEdited?: boolean;
+  manuallyEditedAfterAutoMap?: boolean;   // added
+  confidenceScore?: number | null;
+```
+
+## 4. Dockerfile / build environment fixes (Zscaler)
+
+**`frontend/Dockerfile`** — added CA cert injection + npm upgrade:
+```dockerfile
+COPY zscaler_ca.pem /usr/local/share/ca-certificates/zscaler_ca.crt
+ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/zscaler_ca.crt
+
+COPY package.json package-lock.json ./
+RUN npm install -g npm@11 \
+    && npm config set maxsockets 3 \
+    && npm config set fetch-retries 5 \
+    && npm config set fetch-retry-mintimeout 20000 \
+    && npm config set fetch-retry-maxtimeout 120000 \
+    && npm ci
+```
+Plus copied `zscaler_ca.pem` into `frontend/` and added a `.gitignore` exception (`!zscaler_ca.pem`). This fixed `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` and the npm 10.9.8 `"Exit handler never called!"` bug.
+
+## 5. `.gitignore` cleanup
+```
+# Generated deploy artifacts (rendered specs / release bundles per run)
+artifacts/client-spcs/*.yaml
+release-packages/
+DELTA-INSTALL.txt
+
+# Local debug/scratch files
+tmp_*.sql
+```
+
+---
+
+# Issues Found — Diagnosed, Code-Verified, NOT Yet Fixed
+
+These are the ones you asked to fix yourself. Each has an exact file/line and root cause.
+
+## Issue A: `_quote_literal` doesn't escape backslashes → SQL compile error on bundle persistence
+
+**File**: `services/sttm-builder/app/core/semantic_context.py:3711`
+```python
+def _quote_literal(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+```
+Only escapes single quotes. Snowflake string literals interpret backslash escapes (`\uXXXX` etc.) by default. Used to interpolate several fields directly into SQL text at `_upsert_bundle` (line ~3316-3387):
+```python
+{_quote_literal(bundle_label)} AS BUNDLE_LABEL,
+...
+{_quote_literal(semantic_view_name or "")} AS SEMANTIC_VIEW_NAME,
+{_quote_literal(semantic_model_yaml or "")} AS SEMANTIC_MODEL_YAML,
+...
+{_quote_literal(stale_reason or "")} AS STALE_REASON,
+```
+Any of these containing a literal `\u`-style sequence breaks with:
+```
+SQL compilation error: Invalid unicode escape sequence '\u201353500'; should be at most '\u0010FFFF'.
+```
+**Suggested fix**: switch these to bind parameters (`?`) the same way the JSON fields already do (`PARSE_JSON(?)`), instead of string-interpolating via `_quote_literal`.
+
+## Issue B: Frontend swallows specific validation messages, shows generic error
+
+**File**: `frontend/src/api/errors/app-error.ts:33-44`
+```typescript
+function readEnvelopeError(data: unknown): ApiError | null {
+  if (typeof data !== 'object' || data === null) {
+    return null;
+  }
+  const envelopeError = (data as { error?: ApiError | null }).error;   // only checks `.error`
+  if (envelopeError && typeof envelopeError === 'object') {
+    return envelopeError;
+  }
+  return null;
+}
+```
+This only recognizes your app's own envelope shape (`{error: {detail, code, ...}}`). But `services/sttm-builder/app/routers/mapping_sql.py:41-42` raises a bare FastAPI exception:
+```python
+except ValueError as exc:
+    raise HTTPException(status_code=400, detail=str(exc)) from exc
+```
+which returns `{"detail": "Target RECORDTYPEID is not mapped."}` — no `error` wrapper. So `parseAppError` (`app-error.ts:94-100`) falls through every check and lands on the generic Axios message (`"Request failed with status code 400"`), hiding the actual actionable reason from the user.
+
+**Suggested fix**: in `readEnvelopeError`, also check for a bare top-level `detail` string when `.error` isn't present:
+```typescript
+function readEnvelopeError(data: unknown): ApiError | null {
+  if (typeof data !== 'object' || data === null) return null;
+  const envelopeError = (data as { error?: ApiError | null }).error;
+  if (envelopeError && typeof envelopeError === 'object') return envelopeError;
+  const bareDetail = (data as { detail?: unknown }).detail;
+  if (typeof bareDetail === 'string') return { detail: bareDetail } as ApiError;
+  return null;
+}
+```
+
+## Issue C: Silent no-op when derived-source delegation can't run
+
+**File**: `services/sttm-builder/app/core/sttm_builder.py:3153-3170`
+```python
+if semantic_refresh is None or not (
+    getattr(semantic_refresh, "semantic_view_name", None)
+    or getattr(semantic_refresh, "semantic_model_yaml", None)
+):
+    response.meta = self._merge_agent_meta(
+        response.meta,
+        {
+            "delegation": {
+                **delegation,
+                "status": "unavailable",
+                "detail": (
+                    "The prepared workspace has no executable Analyst "
+                    "semantic model for this selection."
+                ),
+            }
+        },
+    )
+    return response
+```
+Sets `meta.delegation.status = "unavailable"` but the frontend never reads/displays this — so when the LLM only returns plain text instead of a real "Apply to Builder" artifact, the user sees nothing explaining why.
+
+**Suggested fix**: surface `response.meta.delegation.status === "unavailable"` in the frontend as a visible inline warning/retry prompt.
+
+## Issue D: Recommendations can reference tables outside the current bundle scope
+
+No single line to point at — it's a gap in the recommendation flow: the AI can recommend a derived source (e.g. "Household Address Staging" using `ADDRESSES`) referencing a table that was never part of the user's selected source tables for that session. Verified live that Cortex Analyst itself handles this gracefully (clean "I don't have that data" response), so this by itself isn't the crash cause — but it's still a UX gap worth validating before offering the recommendation as a one-click "Generate" action.
