@@ -1,391 +1,44 @@
-Let me verify the current state of each fixed location before writing this up, to make sure the snippets are accurate.Confirmed accurate. Now let me check the other two file-completion fixes and the `_quote_literal` bug location before writing the full summary.Now compiling the full comprehensive breakdown.All verified against the live files. Here's the complete breakdown.
+Do not rely on `deploy_spcs_client_snow_safe.ps1` alone for FIR. It deploys the application/services; FIR’s Snowflake tables, procedures, streams, grants, and tasks need their own deployment step.
 
-# Code Changes I Made This Session
+Yes, this ZIP changes Snowflake-side FIR assets:
 
-## 1. Core production bug fix — Cortex Analyst identifier quoting
+- FIR stream definitions and stream recreation handling.
+- FIR grants.
+- `SP_FIR_INVOKE_AGENT` timeout/execution behavior.
+- FIR learning/retrieval behavior used by the agents.
+- New CRM target-contract support in application metadata.
+- Semantic registry/model assets and related agent specifications.
 
-**File**: `services/sttm-builder/app/core/semantic_context.py`
+Recommended client deployment order:
 
-**Problem**: semantic view YAML built column references as `expr: BillingCity` (unquoted). Snowflake case-folds unquoted identifiers to uppercase, but the physical column was created as `"BillingCity"` (quote-preserved mixed case) — so Cortex Analyst generated SQL referencing a nonexistent `BILLINGCITY` column, failing with `invalid logical column name` / `invalid identifier`.Let me verify the current state of each fixed location before writing this up, to make sure the snippets are accurate.Confirmed accurate. Now let me check the other two file-completion fixes and the `_quote_literal` bug location before writing the full summary.Now compiling the full comprehensive breakdown.All verified against the live files. Here's the complete breakdown.
+1. Extract the ZIP into the repository root.
 
-# Code Changes I Made This Session
+2. Merge the target settings from `TARGET-CONTRACT-ENV.example` into the client’s existing environment/secrets. Do not overwrite `.env.local`.
 
-## 1. Core production bug fix — Cortex Analyst identifier quoting
+3. Deploy FIR objects first, while tasks remain suspended:
 
-**File**: `services/sttm-builder/app/core/semantic_context.py`
-
-**Problem**: semantic view YAML built column references as `expr: BillingCity` (unquoted). Snowflake case-folds unquoted identifiers to uppercase, but the physical column was created as `"BillingCity"` (quote-preserved mixed case) — so Cortex Analyst generated SQL referencing a nonexistent `BILLINGCITY` column, failing with `invalid logical column name` / `invalid identifier`.
-
-**Fix** — added a helper (new code, line 3843):
-```python
-def _quoted_column_expr(column_name: str) -> str:
-    """Quote a physical column reference so mixed-case/quoted-identifier columns
-    (e.g. "BillingCity") resolve correctly instead of being folded to uppercase
-    by Snowflake's unquoted-identifier rules."""
-    escaped = str(column_name).replace('"', '""')
-    return f'"{escaped}"'
+```powershell
+bash ./infra/snowflake/scripts/deploy-fir-system.sh --skip-tasks
 ```
 
-Applied at two call sites:
+4. Because your client FIR streams are disabled/stale, recreate them only after confirming FIR tasks are suspended:
 
-**Dimension/fact builder** (line ~2542-2547):
-```python
-entity = {
-    "name": attribute["name"],
-    "description": entity_description,
-    "expr": _quoted_column_expr(attribute["name"]),   # was: attribute["name"]
-    "data_type": attribute["data_type"],
-}
+```powershell
+bash ./infra/snowflake/scripts/deploy-fir-system.sh --recreate-streams
 ```
 
-**Metric aggregate expression builder** (line ~2581-2587):
-```python
-if aggregate_function:
-    quoted_column = _quoted_column_expr(attribute["name"])
-    metric_expr = (
-        f"COUNT(DISTINCT {quoted_column})"
-        if aggregate_function == "COUNT_DISTINCT"
-        else f"{aggregate_function}({quoted_column})"
-    )
-```
-Verified live against the real Cortex Analyst API — reproduced the original failure with an unquoted test, confirmed the quoted version generates and executes valid SQL.
+This resets stream offsets. It is appropriate here because you said FIR streams are disabled; it avoids resuming tasks against old stream positions.
 
----
+5. Deploy/redeploy the application normally:
 
-## 2. Missing file — recreated from scratch
-
-**File**: `frontend/src/features/sttm/shared/sttm-builder-routes.ts` (this file didn't exist — your zip update referenced it but never included it, breaking the frontend build)
-
-Full content, reconstructed by tracing the required contract from 3 call sites (`ai-agent-panel.tsx`, `sttm-builder-context.tsx`, `sttm-builder-slice.ts`):
-```typescript
-export type SttmBuilderAssistantPage = "builder" | "mapping" | "summary";
-
-export function getSttmBuilderAssistantPage(pathname: string): SttmBuilderAssistantPage {
-  if (pathname.endsWith("/mapping")) {
-    return "mapping";
-  }
-  if (pathname.endsWith("/summary") || pathname.endsWith("/validate")) {
-    return "summary";
-  }
-  return "builder";
-}
+```powershell
+.\scripts\deploy_spcs_client_snow_safe.ps1
 ```
 
-## 3. Missing type field — added
+6. After confirming the app is healthy and the FIR tables/procedures/streams exist, resume FIR tasks:
 
-**File**: `frontend/src/features/sttm/types/sttm.types.ts` (line 540)
-
-`MappingState` interface referenced `mapping.manuallyEditedAfterAutoMap = false;` elsewhere in the zip update, but the interface itself was never updated to declare it — TypeScript build failure.
-```typescript
-  descriptionEdited?: boolean;
-  manuallyEditedAfterAutoMap?: boolean;   // added
-  confidenceScore?: number | null;
+```powershell
+bash ./infra/snowflake/scripts/deploy-fir-system.sh --tasks-only --resume-tasks
 ```
 
-## 4. Dockerfile / build environment fixes (Zscaler)
-
-**`frontend/Dockerfile`** — added CA cert injection + npm upgrade:
-```dockerfile
-COPY zscaler_ca.pem /usr/local/share/ca-certificates/zscaler_ca.crt
-ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/zscaler_ca.crt
-
-COPY package.json package-lock.json ./
-RUN npm install -g npm@11 \
-    && npm config set maxsockets 3 \
-    && npm config set fetch-retries 5 \
-    && npm config set fetch-retry-mintimeout 20000 \
-    && npm config set fetch-retry-maxtimeout 120000 \
-    && npm ci
-```
-Plus copied `zscaler_ca.pem` into `frontend/` and added a `.gitignore` exception (`!zscaler_ca.pem`). This fixed `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` and the npm 10.9.8 `"Exit handler never called!"` bug.
-
-## 5. `.gitignore` cleanup
-```
-# Generated deploy artifacts (rendered specs / release bundles per run)
-artifacts/client-spcs/*.yaml
-release-packages/
-DELTA-INSTALL.txt
-
-# Local debug/scratch files
-tmp_*.sql
-```
-
----
-
-# Issues Found — Diagnosed, Code-Verified, NOT Yet Fixed
-
-These are the ones you asked to fix yourself. Each has an exact file/line and root cause.
-
-## Issue A: `_quote_literal` doesn't escape backslashes → SQL compile error on bundle persistence
-
-**File**: `services/sttm-builder/app/core/semantic_context.py:3711`
-```python
-def _quote_literal(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
-```
-Only escapes single quotes. Snowflake string literals interpret backslash escapes (`\uXXXX` etc.) by default. Used to interpolate several fields directly into SQL text at `_upsert_bundle` (line ~3316-3387):
-```python
-{_quote_literal(bundle_label)} AS BUNDLE_LABEL,
-...
-{_quote_literal(semantic_view_name or "")} AS SEMANTIC_VIEW_NAME,
-{_quote_literal(semantic_model_yaml or "")} AS SEMANTIC_MODEL_YAML,
-...
-{_quote_literal(stale_reason or "")} AS STALE_REASON,
-```
-Any of these containing a literal `\u`-style sequence breaks with:
-```
-SQL compilation error: Invalid unicode escape sequence '\u201353500'; should be at most '\u0010FFFF'.
-```
-**Suggested fix**: switch these to bind parameters (`?`) the same way the JSON fields already do (`PARSE_JSON(?)`), instead of string-interpolating via `_quote_literal`.
-
-## Issue B: Frontend swallows specific validation messages, shows generic error
-
-**File**: `frontend/src/api/errors/app-error.ts:33-44`
-```typescript
-function readEnvelopeError(data: unknown): ApiError | null {
-  if (typeof data !== 'object' || data === null) {
-    return null;
-  }
-  const envelopeError = (data as { error?: ApiError | null }).error;   // only checks `.error`
-  if (envelopeError && typeof envelopeError === 'object') {
-    return envelopeError;
-  }
-  return null;
-}
-```
-This only recognizes your app's own envelope shape (`{error: {detail, code, ...}}`). But `services/sttm-builder/app/routers/mapping_sql.py:41-42` raises a bare FastAPI exception:
-```python
-except ValueError as exc:
-    raise HTTPException(status_code=400, detail=str(exc)) from exc
-```
-which returns `{"detail": "Target RECORDTYPEID is not mapped."}` — no `error` wrapper. So `parseAppError` (`app-error.ts:94-100`) falls through every check and lands on the generic Axios message (`"Request failed with status code 400"`), hiding the actual actionable reason from the user.
-
-**Suggested fix**: in `readEnvelopeError`, also check for a bare top-level `detail` string when `.error` isn't present:
-```typescript
-function readEnvelopeError(data: unknown): ApiError | null {
-  if (typeof data !== 'object' || data === null) return null;
-  const envelopeError = (data as { error?: ApiError | null }).error;
-  if (envelopeError && typeof envelopeError === 'object') return envelopeError;
-  const bareDetail = (data as { detail?: unknown }).detail;
-  if (typeof bareDetail === 'string') return { detail: bareDetail } as ApiError;
-  return null;
-}
-```
-
-## Issue C: Silent no-op when derived-source delegation can't run
-
-**File**: `services/sttm-builder/app/core/sttm_builder.py:3153-3170`
-```python
-if semantic_refresh is None or not (
-    getattr(semantic_refresh, "semantic_view_name", None)
-    or getattr(semantic_refresh, "semantic_model_yaml", None)
-):
-    response.meta = self._merge_agent_meta(
-        response.meta,
-        {
-            "delegation": {
-                **delegation,
-                "status": "unavailable",
-                "detail": (
-                    "The prepared workspace has no executable Analyst "
-                    "semantic model for this selection."
-                ),
-            }
-        },
-    )
-    return response
-```
-Sets `meta.delegation.status = "unavailable"` but the frontend never reads/displays this — so when the LLM only returns plain text instead of a real "Apply to Builder" artifact, the user sees nothing explaining why.
-
-**Suggested fix**: surface `response.meta.delegation.status === "unavailable"` in the frontend as a visible inline warning/retry prompt.
-
-## Issue D: Recommendations can reference tables outside the current bundle scope
-
-No single line to point at — it's a gap in the recommendation flow: the AI can recommend a derived source (e.g. "Household Address Staging" using `ADDRESSES`) referencing a table that was never part of the user's selected source tables for that session. Verified live that Cortex Analyst itself handles this gracefully (clean "I don't have that data" response), so this by itself isn't the crash cause — but it's still a UX gap worth validating before offering the recommendation as a one-click "Generate" action.
-
-**Fix** — added a helper (new code, line 3843):
-```python
-def _quoted_column_expr(column_name: str) -> str:
-    """Quote a physical column reference so mixed-case/quoted-identifier columns
-    (e.g. "BillingCity") resolve correctly instead of being folded to uppercase
-    by Snowflake's unquoted-identifier rules."""
-    escaped = str(column_name).replace('"', '""')
-    return f'"{escaped}"'
-```
-
-Applied at two call sites:
-
-**Dimension/fact builder** (line ~2542-2547):
-```python
-entity = {
-    "name": attribute["name"],
-    "description": entity_description,
-    "expr": _quoted_column_expr(attribute["name"]),   # was: attribute["name"]
-    "data_type": attribute["data_type"],
-}
-```
-
-**Metric aggregate expression builder** (line ~2581-2587):
-```python
-if aggregate_function:
-    quoted_column = _quoted_column_expr(attribute["name"])
-    metric_expr = (
-        f"COUNT(DISTINCT {quoted_column})"
-        if aggregate_function == "COUNT_DISTINCT"
-        else f"{aggregate_function}({quoted_column})"
-    )
-```
-Verified live against the real Cortex Analyst API — reproduced the original failure with an unquoted test, confirmed the quoted version generates and executes valid SQL.
-
----
-
-## 2. Missing file — recreated from scratch
-
-**File**: `frontend/src/features/sttm/shared/sttm-builder-routes.ts` (this file didn't exist — your zip update referenced it but never included it, breaking the frontend build)
-
-Full content, reconstructed by tracing the required contract from 3 call sites (`ai-agent-panel.tsx`, `sttm-builder-context.tsx`, `sttm-builder-slice.ts`):
-```typescript
-export type SttmBuilderAssistantPage = "builder" | "mapping" | "summary";
-
-export function getSttmBuilderAssistantPage(pathname: string): SttmBuilderAssistantPage {
-  if (pathname.endsWith("/mapping")) {
-    return "mapping";
-  }
-  if (pathname.endsWith("/summary") || pathname.endsWith("/validate")) {
-    return "summary";
-  }
-  return "builder";
-}
-```
-
-## 3. Missing type field — added
-
-**File**: `frontend/src/features/sttm/types/sttm.types.ts` (line 540)
-
-`MappingState` interface referenced `mapping.manuallyEditedAfterAutoMap = false;` elsewhere in the zip update, but the interface itself was never updated to declare it — TypeScript build failure.
-```typescript
-  descriptionEdited?: boolean;
-  manuallyEditedAfterAutoMap?: boolean;   // added
-  confidenceScore?: number | null;
-```
-
-## 4. Dockerfile / build environment fixes (Zscaler)
-
-**`frontend/Dockerfile`** — added CA cert injection + npm upgrade:
-```dockerfile
-COPY zscaler_ca.pem /usr/local/share/ca-certificates/zscaler_ca.crt
-ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/zscaler_ca.crt
-
-COPY package.json package-lock.json ./
-RUN npm install -g npm@11 \
-    && npm config set maxsockets 3 \
-    && npm config set fetch-retries 5 \
-    && npm config set fetch-retry-mintimeout 20000 \
-    && npm config set fetch-retry-maxtimeout 120000 \
-    && npm ci
-```
-Plus copied `zscaler_ca.pem` into `frontend/` and added a `.gitignore` exception (`!zscaler_ca.pem`). This fixed `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` and the npm 10.9.8 `"Exit handler never called!"` bug.
-
-## 5. `.gitignore` cleanup
-```
-# Generated deploy artifacts (rendered specs / release bundles per run)
-artifacts/client-spcs/*.yaml
-release-packages/
-DELTA-INSTALL.txt
-
-# Local debug/scratch files
-tmp_*.sql
-```
-
----
-
-# Issues Found — Diagnosed, Code-Verified, NOT Yet Fixed
-
-These are the ones you asked to fix yourself. Each has an exact file/line and root cause.
-
-## Issue A: `_quote_literal` doesn't escape backslashes → SQL compile error on bundle persistence
-
-**File**: `services/sttm-builder/app/core/semantic_context.py:3711`
-```python
-def _quote_literal(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
-```
-Only escapes single quotes. Snowflake string literals interpret backslash escapes (`\uXXXX` etc.) by default. Used to interpolate several fields directly into SQL text at `_upsert_bundle` (line ~3316-3387):
-```python
-{_quote_literal(bundle_label)} AS BUNDLE_LABEL,
-...
-{_quote_literal(semantic_view_name or "")} AS SEMANTIC_VIEW_NAME,
-{_quote_literal(semantic_model_yaml or "")} AS SEMANTIC_MODEL_YAML,
-...
-{_quote_literal(stale_reason or "")} AS STALE_REASON,
-```
-Any of these containing a literal `\u`-style sequence breaks with:
-```
-SQL compilation error: Invalid unicode escape sequence '\u201353500'; should be at most '\u0010FFFF'.
-```
-**Suggested fix**: switch these to bind parameters (`?`) the same way the JSON fields already do (`PARSE_JSON(?)`), instead of string-interpolating via `_quote_literal`.
-
-## Issue B: Frontend swallows specific validation messages, shows generic error
-
-**File**: `frontend/src/api/errors/app-error.ts:33-44`
-```typescript
-function readEnvelopeError(data: unknown): ApiError | null {
-  if (typeof data !== 'object' || data === null) {
-    return null;
-  }
-  const envelopeError = (data as { error?: ApiError | null }).error;   // only checks `.error`
-  if (envelopeError && typeof envelopeError === 'object') {
-    return envelopeError;
-  }
-  return null;
-}
-```
-This only recognizes your app's own envelope shape (`{error: {detail, code, ...}}`). But `services/sttm-builder/app/routers/mapping_sql.py:41-42` raises a bare FastAPI exception:
-```python
-except ValueError as exc:
-    raise HTTPException(status_code=400, detail=str(exc)) from exc
-```
-which returns `{"detail": "Target RECORDTYPEID is not mapped."}` — no `error` wrapper. So `parseAppError` (`app-error.ts:94-100`) falls through every check and lands on the generic Axios message (`"Request failed with status code 400"`), hiding the actual actionable reason from the user.
-
-**Suggested fix**: in `readEnvelopeError`, also check for a bare top-level `detail` string when `.error` isn't present:
-```typescript
-function readEnvelopeError(data: unknown): ApiError | null {
-  if (typeof data !== 'object' || data === null) return null;
-  const envelopeError = (data as { error?: ApiError | null }).error;
-  if (envelopeError && typeof envelopeError === 'object') return envelopeError;
-  const bareDetail = (data as { detail?: unknown }).detail;
-  if (typeof bareDetail === 'string') return { detail: bareDetail } as ApiError;
-  return null;
-}
-```
-
-## Issue C: Silent no-op when derived-source delegation can't run
-
-**File**: `services/sttm-builder/app/core/sttm_builder.py:3153-3170`
-```python
-if semantic_refresh is None or not (
-    getattr(semantic_refresh, "semantic_view_name", None)
-    or getattr(semantic_refresh, "semantic_model_yaml", None)
-):
-    response.meta = self._merge_agent_meta(
-        response.meta,
-        {
-            "delegation": {
-                **delegation,
-                "status": "unavailable",
-                "detail": (
-                    "The prepared workspace has no executable Analyst "
-                    "semantic model for this selection."
-                ),
-            }
-        },
-    )
-    return response
-```
-Sets `meta.delegation.status = "unavailable"` but the frontend never reads/displays this — so when the LLM only returns plain text instead of a real "Apply to Builder" artifact, the user sees nothing explaining why.
-
-**Suggested fix**: surface `response.meta.delegation.status === "unavailable"` in the frontend as a visible inline warning/retry prompt.
-
-## Issue D: Recommendations can reference tables outside the current bundle scope
-
-No single line to point at — it's a gap in the recommendation flow: the AI can recommend a derived source (e.g. "Household Address Staging" using `ADDRESSES`) referencing a table that was never part of the user's selected source tables for that session. Verified live that Cortex Analyst itself handles this gracefully (clean "I don't have that data" response), so this by itself isn't the crash cause — but it's still a UX gap worth validating before offering the recommendation as a one-click "Generate" action.
+You do not need to run the full initial bootstrap script if the client environment already has the existing STTM/FIR base tables. The FIR deploy script is additive and handles the upgraded FIR schema/procedures. Run the semantic-model bootstrap only if the client does not already have the semantic registry / `AGT_SEMANTIC_MODEL_V2` assets, or if deployment reports they are missing.
