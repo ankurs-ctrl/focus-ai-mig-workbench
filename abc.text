@@ -1,19 +1,132 @@
-Understood — skipping the test file. Here's the frontend-only gap list, written up so you (or whoever applies it) can check it against your zip:
+That works. We only need the client coding agent to return the relevant code and structural details as text. I can rebuild the changes here from that response.
 
----
+Give the client coding agent this prompt:
 
-Frontend files to check for the 2.9.1 alias/SQL fix — missing pieces found when validating against the zip:
+```text
+I cannot export files, patches, or packages from this environment. Please inspect
+the currently running client source and return the required information directly
+in your response as text. Do not modify any files.
 
-1. `frontend/src/features/sttm/mapping/relation-alias.ts`
-   The core alias-generation functions (`aliasStem`, `identityDigest`, `relationAliasFor`) in the zip are an older version than what's currently running. This is the most important one to check — every other file's alias logic depends on this one function producing the exact same alias for the exact same relation. If your zip's version differs, pull the current file wholesale rather than trying to patch just the difference.
+We need to recreate the client-only frontend changes in another repository.
 
-2. `frontend/src/features/sttm/source-target/table-relationship-flow.tsx`
-   Missing a UI rename ("CTE" terminology → "Derived Source"/"DERIVED") plus a simplification of the join-editor logic (removed `joinDefinitionJoins`/`joinDefinitionTables`/`removeJoinDefinition` helpers in favor of using `activeTables`/`currentJoins` directly). This is unrelated to the alias/SQL bug — it's separate, already-shipped work — so if your zip is missing it, it's a real gap, just not one that's part of the alias fix itself.
+1. Alias implementation — highest priority
 
-3. `frontend/src/features/sttm/store/sttm-builder-slice.ts`
-   Missing the "don't silently downgrade MAPPED rows to UNMAPPED" protection: `pendingSourceReconciliation` state, `sourceReconciliationAcknowledged` reducer, and the `wasMapped`/`downgradedTargetColumns` logic in the snapshot-restore path. Also unrelated to the alias/SQL bug specifically, but a real gap if missing — without it, a mapping row whose source relation can't be resolved on reload gets silently flipped to UNMAPPED instead of just being flagged for review.
+Open:
 
-4. `frontend/src/features/sttm/mapping/mapping-utils.ts`
-   Not missing — flagging the other direction. Your zip's `buildFallbackSourceQuerySql` function has an extra change (using `relationAliasFor` + explicit `AS alias`) that isn't in the current repo at all. Worth a quick look to confirm it's intentional and correct, since it wasn't part of what I fixed or documented.
+frontend/src/features/sttm/mapping/relation-alias.ts
 
-If any of these turn out to already be covered by other/later updates you've applied outside this zip, that's fine — this list is just what I found missing relative to the current repo state, not a claim that nothing else has changed since.
+Paste the complete implementations of:
+
+- aliasStem
+- identityDigest
+- relationAliasFor
+- buildLegacyAliasRewrites, if present
+- rewriteLegacyAliasReference, if present
+
+Also paste all constants, helper functions, imports, regular expressions, length
+limits, casing rules and comments required by those functions.
+
+Provide 3 example outputs produced by relationAliasFor:
+
+- identity: DB.SCHEMA.CLIENTS
+- identity: DB.SCHEMA.SERVICING_ADVISORS
+- identity: derived-source-123
+  displaySeed: Household Members
+
+Do not paraphrase this code. Paste it exactly.
+
+2. Derived Source and relationship-editor changes
+
+Open:
+
+frontend/src/features/sttm/source-target/table-relationship-flow.tsx
+
+Explain and paste the exact relevant code for:
+
+- converting UI terminology from CTE to Derived Source;
+- converting internal identifiers or table metadata from CTE to DERIVED;
+- creation of derived-source TableMeta objects;
+- tag/legend labels;
+- derived-source card detection;
+- derived-source edit handling;
+- relationship query generation;
+- join editor props;
+- the logic that now uses activeTables and currentJoins directly;
+- removal or replacement of:
+  - joinDefinitionJoins
+  - joinDefinitionTables
+  - removeJoinDefinition
+
+For every changed section, include enough surrounding code to identify the
+containing function, hook or JSX component. State whether the rename is only
+user-facing or whether persisted values/schema/database fields also changed.
+
+3. Mapping reconciliation protection
+
+Open:
+
+frontend/src/features/sttm/store/sttm-builder-slice.ts
+
+Paste the exact relevant code for:
+
+- the pendingSourceReconciliation state type;
+- its initial-state value;
+- sourceReconciliationAcknowledged reducer;
+- exported action, if exported separately;
+- wasMapped calculation;
+- downgradedTargetColumns calculation;
+- snapshot restore/open-STTM logic using those values;
+- behavior when source dependencies cannot be resolved;
+- code that clears or acknowledges the warning;
+- any selectors or components consuming pendingSourceReconciliation.
+
+Include the relevant TypeScript interfaces/types and enough surrounding code to
+place every snippet correctly.
+
+4. Alias compatibility check
+
+Inspect:
+
+frontend/src/features/sttm/mapping/mapping-utils.ts
+
+The other repository intentionally generates fallback SQL such as:
+
+FROM DB.SCHEMA.TABLE AS <relationAliasFor(...)>
+
+and:
+
+JOIN DB.SCHEMA.TABLE AS <relationAliasFor(...)>
+
+Mapping expressions use the same relationAliasFor result.
+
+Tell me whether that is compatible with the client’s current alias generator.
+If it is not compatible, provide one concrete generated-SQL example showing why.
+
+5. Repository provenance
+
+Report:
+
+- current branch;
+- current commit;
+- whether each of the four files is committed or locally modified;
+- the most recent commit affecting each file, when available;
+- SHA-256 checksum of each file.
+
+Important requirements:
+
+- Do not modify anything.
+- Do not include secrets, environment values, credentials or customer data.
+- Do not create a package.
+- Return everything as text in the response.
+- If the answer is long, split it into numbered Part 1, Part 2, etc., but do not
+  omit or summarize the exact alias functions.
+```
+
+The absolute minimum I need is:
+
+- the exact alias functions;
+- the exact reconciliation state/reducer/restore logic;
+- whether `DERIVED` replaces `CTE` internally or only in labels;
+- how the simplified join editor handles derived-source internal joins.
+
+Once you paste its response here, I can implement and merge the client behavior without needing any files exported from that environment.
