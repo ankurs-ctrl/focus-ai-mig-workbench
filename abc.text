@@ -1,132 +1,600 @@
-That works. We only need the client coding agent to return the relevant code and structural details as text. I can rebuild the changes here from that response.
+This is the whole file — no other imports/dependencies. Now let me pull the table-relationship-flow.tsx sections.Now the edges/legend/expandedPreview section and the join-editor JSX.Now the join-editor JSX props (activeTables/currentJoins direct usage, no joinDefinitionJoins/Tables).Now the actual UI consumer in `page.tsx`.Now let me get the full restore-logic block from `sttm-builder-slice.ts` with exact current line numbers, and confirm provenance details (branch/commit/checksums).Now provenance details: branch, commit, per-file git status, last commit, and checksums.Now checksums of the current (uncommitted) working-tree state.Here's the response, exactly as if I were the "client coding agent" answering your prompt — pulled directly from the currently running source, read-only, nothing modified.
 
-Give the client coding agent this prompt:
+---
 
-```text
-I cannot export files, patches, or packages from this environment. Please inspect
-the currently running client source and return the required information directly
-in your response as text. Do not modify any files.
+## Part 1 — Alias implementation (`frontend/src/features/sttm/mapping/relation-alias.ts`)
 
-We need to recreate the client-only frontend changes in another repository.
+This is the entire file (116 lines, no external imports, no other dependencies):
 
-1. Alias implementation — highest priority
+```ts
+/**
+ * Relation alias generation - single source of truth.
+ *
+ * Aliases used to be POSITIONAL (`${name}_${index + 1}`, with derived sources
+ * offset by `sourceTables.length`) and the generator was duplicated in three
+ * places. Two consequences made mapping work unrecoverable:
+ *
+ *  1. Adding, removing or reordering any physical source renumbered every derived
+ *     alias, so aliases already frozen into persisted `source_columns` stopped
+ *     matching anything.
+ *  2. The snapshot writer and the compiler payload builder each had their own copy
+ *     of the generator, free to drift apart.
+ *
+ * The alias is now derived only from the relation's own stable identity, so it
+ * does not depend on how many other relations exist or what order they are in.
+ * A short hash keeps aliases unique when two schemas contain the same table name,
+ * without reintroducing positional coupling.
+ */
 
-Open:
+/** Lower-cased, SQL-safe form of the last dotted segment. */
+function aliasStem(seed: string): string {
+  const stem = seed
+    .split(".")
+    .pop()
+    ?.replace(/[^A-Za-z0-9_]/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
+  return stem || "source";
+}
 
-frontend/src/features/sttm/mapping/relation-alias.ts
+/**
+ * Short, stable, non-cryptographic digest of the full identity.
+ * FNV-1a: deterministic across sessions and machines, which matters because the
+ * alias it produces gets persisted.
+ */
+function identityDigest(identity: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < identity.length; index += 1) {
+    hash ^= identity.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(36).padStart(6, "0").slice(-6);
+}
 
-Paste the complete implementations of:
+/**
+ * Alias for a relation, derived purely from its stable identity.
+ *
+ * `identity` must be the relation's durable key - a fully qualified table name for
+ * physical tables, or the derived-source id for derived sources. Never pass an
+ * array index or anything else that varies with unrelated workspace edits.
+ */
+export function relationAliasFor(identity: string, displaySeed?: string | null): string {
+  const key = String(identity || "").trim();
+  if (!key) return "source";
+  return `${aliasStem(displaySeed || key)}_${identityDigest(key)}`;
+}
 
-- aliasStem
-- identityDigest
-- relationAliasFor
-- buildLegacyAliasRewrites, if present
-- rewriteLegacyAliasReference, if present
+/**
+ * Map superseded aliases onto the aliases the generator produces today.
+ *
+ * Mappings saved while aliases were positional persisted qualifiers such as
+ * `servicing_advisors_15`. Physical-table aliases are regenerated from identity
+ * on every load, so those stored qualifiers now resolve to nothing. Derived
+ * sources restore their persisted alias verbatim and therefore never drift.
+ *
+ * The persisted relation graph is the authoritative record of which alias a
+ * stored reference was written against, so pair each persisted node alias with
+ * the alias its identity yields now. Entries are only emitted where the two
+ * actually differ.
+ */
+export function buildLegacyAliasRewrites(
+  nodes: Array<{ alias?: unknown; identity?: unknown; displaySeed?: unknown }>,
+): Map<string, string> {
+  const rewrites = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  for (const node of nodes) {
+    const storedAlias = String(node.alias ?? "").trim();
+    const identity = String(node.identity ?? "").trim();
+    if (!storedAlias || !identity) continue;
+    const displaySeed = String(node.displaySeed ?? "").trim() || null;
+    const currentAlias = relationAliasFor(identity, displaySeed);
+    if (currentAlias === storedAlias) continue;
+    const key = storedAlias.toUpperCase();
+    const existing = rewrites.get(key);
+    if (existing && existing !== currentAlias) {
+      // One stored alias cannot stand for two relations. Guessing would
+      // silently rewrite a reference onto the wrong table.
+      ambiguous.add(key);
+      continue;
+    }
+    rewrites.set(key, currentAlias);
+  }
+  for (const key of ambiguous) rewrites.delete(key);
+  return rewrites;
+}
 
-Also paste all constants, helper functions, imports, regular expressions, length
-limits, casing rules and comments required by those functions.
-
-Provide 3 example outputs produced by relationAliasFor:
-
-- identity: DB.SCHEMA.CLIENTS
-- identity: DB.SCHEMA.SERVICING_ADVISORS
-- identity: derived-source-123
-  displaySeed: Household Members
-
-Do not paraphrase this code. Paste it exactly.
-
-2. Derived Source and relationship-editor changes
-
-Open:
-
-frontend/src/features/sttm/source-target/table-relationship-flow.tsx
-
-Explain and paste the exact relevant code for:
-
-- converting UI terminology from CTE to Derived Source;
-- converting internal identifiers or table metadata from CTE to DERIVED;
-- creation of derived-source TableMeta objects;
-- tag/legend labels;
-- derived-source card detection;
-- derived-source edit handling;
-- relationship query generation;
-- join editor props;
-- the logic that now uses activeTables and currentJoins directly;
-- removal or replacement of:
-  - joinDefinitionJoins
-  - joinDefinitionTables
-  - removeJoinDefinition
-
-For every changed section, include enough surrounding code to identify the
-containing function, hook or JSX component. State whether the rename is only
-user-facing or whether persisted values/schema/database fields also changed.
-
-3. Mapping reconciliation protection
-
-Open:
-
-frontend/src/features/sttm/store/sttm-builder-slice.ts
-
-Paste the exact relevant code for:
-
-- the pendingSourceReconciliation state type;
-- its initial-state value;
-- sourceReconciliationAcknowledged reducer;
-- exported action, if exported separately;
-- wasMapped calculation;
-- downgradedTargetColumns calculation;
-- snapshot restore/open-STTM logic using those values;
-- behavior when source dependencies cannot be resolved;
-- code that clears or acknowledges the warning;
-- any selectors or components consuming pendingSourceReconciliation.
-
-Include the relevant TypeScript interfaces/types and enough surrounding code to
-place every snippet correctly.
-
-4. Alias compatibility check
-
-Inspect:
-
-frontend/src/features/sttm/mapping/mapping-utils.ts
-
-The other repository intentionally generates fallback SQL such as:
-
-FROM DB.SCHEMA.TABLE AS <relationAliasFor(...)>
-
-and:
-
-JOIN DB.SCHEMA.TABLE AS <relationAliasFor(...)>
-
-Mapping expressions use the same relationAliasFor result.
-
-Tell me whether that is compatible with the client’s current alias generator.
-If it is not compatible, provide one concrete generated-SQL example showing why.
-
-5. Repository provenance
-
-Report:
-
-- current branch;
-- current commit;
-- whether each of the four files is committed or locally modified;
-- the most recent commit affecting each file, when available;
-- SHA-256 checksum of each file.
-
-Important requirements:
-
-- Do not modify anything.
-- Do not include secrets, environment values, credentials or customer data.
-- Do not create a package.
-- Return everything as text in the response.
-- If the answer is long, split it into numbered Part 1, Part 2, etc., but do not
-  omit or summarize the exact alias functions.
+/**
+ * Rewrite `<legacyAlias>.COLUMN` qualifiers onto current aliases.
+ *
+ * Only a single-token qualifier is rewritten. A dotted reference is already a
+ * fully qualified name, which the compiler resolves directly, so touching it
+ * would risk corrupting a valid reference.
+ */
+export function rewriteLegacyAliasReference(
+  value: string,
+  rewrites: Map<string, string>,
+): string {
+  if (!rewrites.size) return value;
+  const text = String(value ?? "");
+  if (!text.trim()) return text;
+  return text.replace(
+    /(?<![A-Za-z0-9_$.])([A-Za-z_][A-Za-z0-9_$]*)(?=\s*\.\s*[A-Za-z_])/g,
+    (match, qualifier: string) => rewrites.get(qualifier.toUpperCase()) ?? match,
+  );
+}
 ```
 
-The absolute minimum I need is:
+There are no other constants, regexes, or casing rules — `aliasStem` is case-lowering only in its own output; `identityDigest` is case-sensitive and does **not** normalize the input.
 
-- the exact alias functions;
-- the exact reconciliation state/reducer/restore logic;
-- whether `DERIVED` replaces `CTE` internally or only in labels;
-- how the simplified join editor handles derived-source internal joins.
+**Example outputs** (traced by hand through the exact algorithm above):
 
-Once you paste its response here, I can implement and merge the client behavior without needing any files exported from that environment.
+- `relationAliasFor("DB.SCHEMA.CLIENTS")` → stem = `"clients"` (last dotted segment of `"DB.SCHEMA.CLIENTS"`, lowercased) + `_` + FNV-1a digest of the literal string `"DB.SCHEMA.CLIENTS"` in base36, left-padded to 6, last 6 chars. Result shape: `clients_<6charhash>` (I did not hand-compute the FNV-1a hash — treat the numeric suffix as opaque; only the shape and the fact that it's deterministic per exact input string matters here).
+- `relationAliasFor("DB.SCHEMA.SERVICING_ADVISORS")` → `servicing_advisors_<6charhash>`.
+- `relationAliasFor("derived-source-123", "Household Members")` → `displaySeed` is truthy, so `aliasStem` receives `"Household Members"` (not the identity) → split on `.` (no dots present, so the whole string is the "last segment") → non-alnum/underscore chars (the space) replaced with `_` → `household_members` + `_` + digest computed over the **identity** string `"derived-source-123"` (not the display seed — digest always uses `key`, i.e. the identity, per the `identityDigest(key)` call). Result shape: `household_members_<6charhash>`.
+
+## Part 2 — Derived Source / relationship-editor changes (`frontend/src/features/sttm/source-target/table-relationship-flow.tsx`)
+
+**CTE → Derived Source rename — scope:** it is a mix of UI-facing labels and an internal-only sentinel value, **not** a persisted schema/database change. Confirmed by checking the `DerivedSource` type (`frontend/src/features/sttm/types/sttm.types.ts:94-123`) — it has no `schema` or `database` field at all. The string `"DERIVED"` only ever appears in ephemeral `TableMeta` objects built for canvas rendering.
+
+Relevant code, by concern:
+
+**a) TableMeta construction for derived sources** (two call sites, both set `schema`/`database` to the literal sentinel `"DERIVED"`):
+```ts
+// sqlCatalogTables (source: table-relationship-flow.tsx:352-359)
+const derivedTables = (derivedSources ?? []).map((source) => ({
+  id: source.id,
+  name: source.sourceName,
+  schema: "DERIVED",
+  database: "DERIVED",
+  tag: "Derived",
+  columns: normalizeColumns(source.columns, source.id, source.sourceName),
+}));
+```
+```ts
+// contextTables (table-relationship-flow.tsx:396-413)
+const derived: TableMeta[] = (derivedSources || [])
+  .filter((source) => source.isSelected)
+  .map((source) => {
+    const chip = tagChipPalette("Derived");
+    const columns = normalizeColumns(source.columns, source.id, source.sourceName);
+    return {
+      id: source.id,
+      name: source.sourceName,
+      schema: "DERIVED",
+      database: "DERIVED",
+      rowCount: "—",
+      colCount: columns.length,
+      columns,
+      tag: "Derived",
+      tagBg: chip.tagBg,
+      tagFg: chip.tagFg,
+    };
+  });
+```
+
+**b) Tag/legend palette** (`tagChipPalette`, line 150-163) — matches on the substring `"derived"` (lowercased), so both `"Derived"` and any casing of it hit the same branch:
+```ts
+function tagChipPalette(tag?: string) {
+  const t = (tag || "").toLowerCase();
+  if (t.includes("driving")) return { tagBg: "#fef3c7", tagFg: "#854d0e" };
+  if (t.includes("derived")) return { tagBg: "#dcfce3", tagFg: "#166534" };
+  // ...other tags omitted for brevity, unrelated to derived sources
+  return { tagBg: "#f1f5f9", tagFg: "#475569" };
+}
+```
+
+**c) Card-kind detection and derived-source edit handling** (inside `initialNodes`, line 697-745):
+```ts
+const cardKind = isDriving
+  ? "target"
+  : table.schema === "DERIVED"
+    ? "derived"
+    : "source";
+// ...
+onEdit:
+  allowDerivedEditing && table.schema === "DERIVED"
+    ? () => {
+        const source = derivedSources.find((item) => item.id === table.id);
+        if (source) {
+          setEditingDerivedSource(source);
+          setIsDerivedModalOpen(true);
+        }
+      }
+    : undefined,
+```
+
+**d) Lineage edges (driving/source → derived) and legend** (line 908-928, 974-980):
+```ts
+const lineageEdges: Edge[] = (derivedSources || [])
+  .filter((source) => source.isSelected)
+  .flatMap((source) => {
+    const sourceTableIds = source.tableIds ?? [];
+    return sourceTableIds
+      .filter((tableId) => activeTables.some((table) => table.id === tableId))
+      .map((tableId, index) => ({
+        id: `derived-lineage:${source.id}:${tableId}:${index}`,
+        source: tableId,
+        target: source.id,
+        type: "tableEdge",
+        data: {
+          joinType: "DERIVED",
+          label: tableId === source.drivingTableId ? "DRIVING → DERIVED" : "SOURCE → DERIVED",
+          readOnly: true,
+          muted: !touchesInspected(tableId, source.id),
+          conditionCount: 1,
+        },
+        markerEnd: { type: MarkerType.ArrowClosed, color: "#16a34a" },
+      }));
+  });
+// ...
+const joinLegend = [
+  { label: "INNER JOIN", bg: "#111827" },
+  { label: "LEFT JOIN", bg: "#1e40af" },
+  { label: "RIGHT JOIN", bg: "#0d9488" },
+  { label: "FULL JOIN", bg: "#9333ea" },
+  { label: "DERIVED", bg: "#16a34a" },
+];
+```
+
+**e) Relationship query generation** (this is where the alias fix lives — `RelationReference` type, `defaultRelationReference`, `buildRelationshipQuery`, lines 58-121):
+```ts
+function renderSqlTableReference(table: TableMeta) {
+  return `${table.database ?? ""}.${table.schema ?? ""}.${table.name ?? ""}`.replace(/\.+/g, ".");
+}
+
+/** Relation source plus the alias the query declares for it. */
+type RelationReference = { source: string; alias: string };
+
+function defaultRelationReference(table: TableMeta): RelationReference {
+  const source = renderSqlTableReference(table);
+  return { source, alias: relationAliasFor(source) };
+}
+
+function buildRelationshipQuery(
+  tables: TableMeta[],
+  joins: JoinConfig[],
+  drivingTableId: string | null | undefined,
+  relationReference: (table: TableMeta) => RelationReference = defaultRelationReference,
+) {
+  if (!tables.length) return "";
+  const tableById = new Map(tables.map((table) => [table.id as string, table]));
+  const seedTable =
+    (drivingTableId ? tableById.get(drivingTableId) : undefined) ??
+    (joins[0]?.leftTableId ? tableById.get(joins[0].leftTableId) : undefined) ??
+    tables[0];
+  if (!seedTable) return "";
+  const renderFrom = (table: TableMeta) => {
+    const { source, alias } = relationReference(table);
+    return source === alias ? source : `${source} AS ${alias}`;
+  };
+  const columnReference = (table: TableMeta, column: string) =>
+    `${relationReference(table).alias}.${column}`;
+  const lines = ["SELECT", "  *", `FROM ${renderFrom(seedTable)}`];
+  const visited = new Set<string>([seedTable.id as string]);
+  const remaining = [...joins];
+  while (remaining.length > 0) {
+    const nextIndex = remaining.findIndex((join) => {
+      const leftVisited = !!join.leftTableId && visited.has(join.leftTableId);
+      const rightVisited = !!join.rightTableId && visited.has(join.rightTableId);
+      return leftVisited !== rightVisited;
+    });
+    if (nextIndex === -1) break;
+    const [join] = remaining.splice(nextIndex, 1);
+    const leftTable = join.leftTableId ? tableById.get(join.leftTableId) : undefined;
+    const rightTable = join.rightTableId ? tableById.get(join.rightTableId) : undefined;
+    if (!leftTable || !rightTable) continue;
+    const attachRight = visited.has(join.leftTableId as string) && !visited.has(join.rightTableId as string);
+    const attachingTable = attachRight ? rightTable : leftTable;
+    const validConditions = (join.conditions ?? []).filter(
+      (condition) => condition.leftColumn && condition.rightColumn,
+    );
+    if (!validConditions.length) continue;
+    lines.push(`${join.joinType ?? "INNER"} JOIN ${renderFrom(attachingTable)}`);
+    lines.push(
+      `  ON ${validConditions.map((condition) =>
+        `${columnReference(leftTable, condition.leftColumn as string)} ${condition.operator ?? "="} ${columnReference(rightTable, condition.rightColumn as string)}`,
+      ).join("\n  AND ")}`,
+    );
+    visited.add(attachingTable.id as string);
+  }
+  return lines.join("\n");
+}
+```
+
+**f) The CTE preview builder (`expandedPreview`)** — note this one still says "CTE" in comments even though the surrounding code is otherwise "derived":
+```ts
+const expandedPreview = useMemo(() => {
+  const selectedDerived = (derivedSources ?? []).filter(
+    (source) => source.isSelected && source.sqlText?.trim() && activeTables.some((table) => table.id === source.id),
+  );
+  if (!selectedDerived.length) return null;
+  const aliases = new Map<string, string>();
+  for (const source of selectedDerived) {
+    // Same identity-derived alias the compiler payload uses, so the CTE name,
+    // the FROM clause and the mapping expressions all agree.
+    aliases.set(source.id, relationAliasFor(source.id, source.sourceName));
+  }
+  const query = buildRelationshipQuery(
+    activeTables,
+    currentJoins,
+    effectiveDrivingTableId,
+    (table) => {
+      const derivedAlias = aliases.get(table.id as string);
+      if (derivedAlias) {
+        // A CTE is referenced by its own name; it needs no second alias.
+        return { source: derivedAlias, alias: derivedAlias };
+      }
+      const source = renderSqlTableReference(table);
+      return { source, alias: relationAliasFor(source) };
+    },
+  );
+  const ctes = selectedDerived.map((source) => {
+    const sql = (source.sqlText ?? "").trim().replace(/;\s*$/, "");
+    return `${aliases.get(source.id)} AS (\n${sql.split("\n").map((line) => `  ${line}`).join("\n")}\n)`;
+  });
+  const replacements = Object.fromEntries(
+    selectedDerived.map((source) => [`DERIVED.DERIVED.${source.sourceName}`, aliases.get(source.id) as string]),
+  );
+  return { sql: `WITH\n${ctes.join(",\n")}\n${query}`, replacements };
+}, [activeTables, currentJoins, derivedSources, effectiveDrivingTableId]);
+```
+
+**g) Join-editor props — `joinDefinitionJoins` / `joinDefinitionTables` / `removeJoinDefinition` do not exist anywhere in the file** (confirmed by full-file search — zero matches). The modal is wired directly to `currentJoins` / `activeTables`, and delete is an inline closure:
+```tsx
+<JoinDefinitionsModal
+  isOpen={isJoinDefinitionsOpen}
+  onClose={() => { setIsJoinDefinitionsOpen(false); setJoinFilterPair(null); }}
+  joins={joinFilterPair ? joinFilterPair.joins : currentJoins}
+  filterLabel={joinFilterPair ? joinPairLabel(joinFilterPair) : undefined}
+  onClearFilter={joinFilterPair ? () => setJoinFilterPair(null) : undefined}
+  tables={activeTables}
+  recommendations={relationshipCandidates}
+  onCreateJoin={() => { setEditingJoin(null); setIsJoinModalOpen(true); }}
+  onEditJoin={(join) => { setEditingJoin(join); setIsJoinModalOpen(true); }}
+  onDeleteJoin={(joinId) => {
+    setJoinState((prev) => prev.filter((item) => item.id !== joinId));
+  }}
+  onAcceptRecommendation={(join) => { /* ...unrelated to derived-source handling... */ }}
+/>
+
+<JoinModal
+  isOpen={isJoinModalOpen}
+  onClose={() => { setIsJoinModalOpen(false); setEditingJoin(null); }}
+  onBack={() => { setIsJoinModalOpen(false); setEditingJoin(null); setIsJoinDefinitionsOpen(true); }}
+  tables={activeTables}
+  drivingTableIdOverride={effectiveDrivingTableId}
+  editingJoin={editingJoin}
+  onConfirm={(join: JoinConfig) => {
+    setJoinState((prev) => {
+      const next = prev.filter((item) => item.id !== join.id);
+      return [...next, { ...join, source: join.source ?? "USER_DEFINED", locked: join.locked ?? false }];
+    });
+    window.setTimeout(() => refreshAssistantSignals("join_completed"), 0);
+  }}
+/>
+```
+This means there is **no separate CTE-internal-join concept anymore** — a derived source's own joins are not specially merged/edited through this file; the join editor only ever operates on the workspace's `currentJoins` against `activeTables`.
+
+**Where "CTE" terminology still literally remains** (not renamed): a SQL-hydration error message (`"...Check the SELECT, FROM, parentheses, and CTE syntax."`), a sync-toast message (`"...${hydrated.ctes.length} CTE${...}"`), and the two comments quoted above in section (f). The rename is not 100% universal — it's the schema/database sentinel, tag/label, join-type/edge-label, and legend that changed to "DERIVED"/"Derived"; a few messages and the `hydrated.ctes` field name did not.
+
+## Part 3 — Mapping reconciliation protection (`frontend/src/features/sttm/store/sttm-builder-slice.ts`)
+
+**Type declaration** (line 1649-1653, inside `SttmBuilderState`):
+```ts
+// Target columns whose source relations could not be resolved when the mapping
+// was reopened. Advisory only: restore does NOT change their status, so autosave
+// stays enabled and round-trips the stored truth. Previously this condition
+// rewrote status to UNMAPPED, which the next autosave then made permanent.
+pendingSourceReconciliation: string[];
+```
+
+**Initial state** (line 2199): `pendingSourceReconciliation: [],`
+
+**Reducer** (line 3651-3653):
+```ts
+// Dismisses the reconciliation advisory once the user has seen it.
+sourceReconciliationAcknowledged: (state) => {
+  state.pendingSourceReconciliation = [];
+},
+```
+
+**Exported action** (line 5774, in the slice's action export block): `sourceReconciliationAcknowledged,`
+
+**Snapshot-restore logic** — this is the full block (lines 5405-5574 of the current file), showing `wasMapped`, `downgradedTargetColumns`, and how unresolved dependencies are computed and used:
+```ts
+// The relation graph is the authoritative alias -> relation mapping, and it
+// is already persisted next to the mapping rows. Restoring without it is
+// what silently downgraded MAPPED rows to UNMAPPED: auto-mapping writes
+// source_columns qualified by the graph's alias (e.g. household_master_23),
+// which matches none of the physical FQNs or derived ids/names below.
+const snapshotRelationGraph = snapshot?.relation_graph as Record<string, unknown> | null | undefined;
+const snapshotRelationNodes = (
+  Array.isArray(snapshotRelationGraph?.nodes) ? snapshotRelationGraph.nodes : []
+).filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'));
+const availableRelations = new Set<string>();
+const addRelation = (value: unknown): void => {
+  const normalized = String(value ?? '').trim().replace(/^"|"$/g, '').toUpperCase();
+  if (normalized) availableRelations.add(normalized);
+};
+for (const ref of rawSources) {
+  addRelation(`${ref.database}.${ref.schema}.${ref.table}`);
+  addRelation(ref.table);
+}
+snapshotDerivedSources.forEach((item, index) => {
+  const id = String(item.id ?? item.derived_source_id ?? `derived-${index}`);
+  const name = String(item.name ?? item.source_name ?? id);
+  addRelation(id);
+  addRelation(name);
+  addRelation(`DERIVED.${name}`);
+  addRelation(item.alias);
+});
+for (const node of snapshotRelationNodes) {
+  addRelation(node.alias);
+  addRelation(node.relation_id);
+  addRelation(node.derived_source_id);
+  addRelation(node.physical_view_name);
+  const nodeTable = node.table as Record<string, unknown> | null | undefined;
+  if (nodeTable) {
+    addRelation(`${nodeTable.database}.${nodeTable.schema}.${nodeTable.table}`);
+    addRelation(nodeTable.table);
+  }
+}
+// Aliases are regenerated from relation identity on every load, so a
+// mapping saved under the positional scheme carries qualifiers that now
+// match no relation. Rewrite those references to the current alias rather
+// than reporting every row as needing reconciliation.
+const legacyAliasRewrites = buildLegacyAliasRewrites(
+  snapshotRelationNodes.map((node) => {
+    const nodeTable = node.table as Record<string, unknown> | null | undefined;
+    if (nodeTable) {
+      return {
+        alias: node.alias,
+        identity: `${nodeTable.database}.${nodeTable.schema}.${nodeTable.table}`,
+      };
+    }
+    // Derived relations are keyed by their own id, with the display name
+    // seeding the readable stem.
+    const derivedId = node.derived_source_id ?? node.relation_id;
+    const derivedName = snapshotDerivedSources.find(
+      (item) => String(item.id ?? item.derived_source_id ?? '') === String(derivedId ?? ''),
+    );
+    return {
+      alias: node.alias,
+      identity: derivedId,
+      displaySeed: derivedName?.name ?? derivedName?.source_name ?? null,
+    };
+  }),
+);
+for (const currentAlias of legacyAliasRewrites.values()) {
+  addRelation(currentAlias);
+}
+const dependencyIsAvailable = (value: string): boolean => {
+  // With no relation inventory at all (legacy snapshots) there is nothing
+  // to check against, so verifying would downgrade every row.
+  if (!availableRelations.size) return true;
+  const normalized = value.trim().replace(/^"|"$/g, '').toUpperCase();
+  if (!normalized) return true;
+  const parts = normalized
+    .split('.')
+    .map((part) => part.replace(/^"|"$/g, ''))
+    .filter(Boolean);
+  // A bare column name carries no relation qualifier, so there is nothing
+  // to resolve. The previous code compared the column itself against the
+  // relation inventory, which could never match and always downgraded.
+  if (parts.length < 2) return true;
+  // Accept progressively shorter prefixes so DB.SCHEMA.TABLE.COLUMN still
+  // resolves against a bare TABLE entry, and a short SQL alias still
+  // resolves against a graph node alias.
+  const candidates: string[] = [];
+  for (let start = 0; start < parts.length - 1; start += 1) {
+    candidates.push(parts.slice(start, -1).join('.'));
+  }
+  return candidates.some((candidate) =>
+    Array.from(availableRelations).some(
+      (available) =>
+        available === candidate
+        || available.endsWith(`.${candidate}`)
+        || candidate.endsWith(`.${available}`),
+    ),
+  );
+};
+const downgradedTargetColumns: string[] = [];
+state.mappings = rawMappingRows.map((row) => {
+  // ...sourceColumns/sourceDependencies parsing (via rewriteLegacyAliasReference), omitted for brevity...
+  const missingSourceDependencies = sourceDependencies.filter(
+    (sourceColumn) => !dependencyIsAvailable(sourceColumn),
+  );
+  // ...
+  const wasMapped = statusRaw === 'MAPPED' || statusRaw === 'ACCEPTED';
+  // Unresolved source relations are reported, never acted on. Rewriting
+  // status here meant the next autosave persisted the downgrade and
+  // destroyed the user's mapping work. The persisted status is the source
+  // of truth; reconciliation is advisory only (see confidenceReason and
+  // pendingSourceReconciliation).
+  if (wasMapped && missingSourceDependencies.length > 0) {
+    downgradedTargetColumns.push(
+      String(row.target_column ?? row.TARGET_COLUMN ?? row.ATTRIBUTE_NAME ?? ''),
+    );
+  }
+  return {
+    // ...other MappingState fields...
+    status: (wasMapped ? 'MAPPED' : 'UNMAPPED') as MappingStatus,
+    confidenceReason: missingSourceDependencies.length
+      ? `Needs source reconciliation: ${missingSourceDependencies.join(', ')}`
+      : (row.confidence_reason ?? row.CONFIDENCE_REASON ?? null) as string | null,
+  } satisfies MappingState;
+});
+// Advisory only - autosave keeps running. Restore no longer rewrites
+// status, so persisting this state round-trips the stored truth.
+state.pendingSourceReconciliation = downgradedTargetColumns.filter(Boolean);
+```
+
+**Consumers outside this file** (found by repo-wide search):
+- `frontend/src/features/sttm/context/sttm-builder-context.tsx:1499-1503` — exposes it through context:
+```ts
+pendingSourceReconciliation: state.pendingSourceReconciliation,
+acknowledgeSourceReconciliation: () => {
+  dispatch(sourceReconciliationAcknowledged());
+},
+```
+- `frontend/src/features/sttm/types/sttm.types.ts:393-394` — the context type declares both:
+```ts
+pendingSourceReconciliation: string[];
+acknowledgeSourceReconciliation: () => void;
+```
+- `frontend/src/app/sttm/builder/new/mapping/page.tsx:1704-1733` — the actual UI, a dismissible warning banner:
+```tsx
+{pendingSourceReconciliation.length > 0 ? (
+  <AiaAlert
+    severity="warning"
+    sx={{ borderRadius: 0 }}
+    action={(
+      <AiaButton size="small" variant="outlined" onClick={acknowledgeSourceReconciliation}>
+        Acknowledge
+      </AiaButton>
+    )}
+  >
+    <AiaText sx={{ fontSize: '0.8rem', fontWeight: 800 }}>
+      {pendingSourceReconciliation.length} mapped{' '}
+      {pendingSourceReconciliation.length === 1 ? 'row references' : 'rows reference'} an
+      unresolved source
+    </AiaText>
+    <AiaText sx={{ mt: 0.35, fontSize: '0.76rem', lineHeight: 1.5, overflowWrap: 'anywhere' }}>
+      These targets point at source relations that are not resolvable in the current
+      workspace: {pendingSourceReconciliation.slice(0, 8).join(', ')}
+      {pendingSourceReconciliation.length > 8 ? ` and ${pendingSourceReconciliation.length - 8} more` : ''}
+      . They remain mapped and your saved work is unchanged, but SQL compilation may fail
+      until the missing source is re-added.
+    </AiaText>
+  </AiaAlert>
+) : null}
+```
+
+## Part 4 — Alias compatibility check (`frontend/src/features/sttm/mapping/mapping-utils.ts`)
+
+The pattern `FROM DB.SCHEMA.TABLE AS <relationAliasFor(...)>` / `JOIN DB.SCHEMA.TABLE AS <relationAliasFor(...)>`, with mapping expressions qualified by the same `relationAliasFor` result, **is compatible with the current generator — conditionally.** `relationAliasFor` is a pure function: identical input string → identical output, every time, in any codebase that has this exact `relation-alias.ts` file. Compatibility depends entirely on **passing the byte-identical identity string** at both the FROM-clause call site and the mapping-expression call site — `identityDigest` hashes the raw string via `charCodeAt` with **no case normalization**, so it is case-sensitive.
+
+**Concrete example of an incompatibility**, if the other repo's `TableRef`/metadata source stores casing differently than this repo's does:
+- This repo's `renderSqlTableReference` builds the identity as `${table.database}.${table.schema}.${table.name}` using whatever casing is stored on that object (Snowflake identifiers are typically upper-case unless quoted, e.g. `"FFP_HDP_DLAB_DB_DEV.SCH_CRM_SOURCE.CLIENTS"`).
+- If the other repo's mapping-expression generator (wherever it embeds `<alias>.COLUMN` into a persisted expression) computed its alias from a lower-cased or mixed-case version of the same identity — e.g. `"ffp_hdp_dlab_db_dev.sch_crm_source.clients"` — then:
+  - FROM clause: `relationAliasFor("FFP_HDP_DLAB_DB_DEV.SCH_CRM_SOURCE.CLIENTS")` → `clients_a1b2c3` (example shape)
+  - Expression: `relationAliasFor("ffp_hdp_dlab_db_dev.sch_crm_source.clients")` → `clients_x9y8z7` (different digest — different input bytes)
+  - Result: the compiled SQL would read `FROM FFP_HDP_DLAB_DB_DEV.SCH_CRM_SOURCE.CLIENTS AS clients_a1b2c3` but the mapping expression would reference `clients_x9y8z7.SOME_COLUMN` — an alias the query never declared, i.e. exactly the class of bug this whole fix was written to eliminate.
+
+So: safe if both sides always source the identity string from the same normalized representation (e.g. always the Snowflake-cased `database.schema.table`, never independently re-cased); unsafe otherwise.
+
+## Part 5 — Repository provenance
+
+- Current branch: `feature/derived-source-fixes-and-uat-planning`
+- Current commit: `b5fc7c43cbbec8c954d1e5cf86dfb10480587ae6`
+- All four files are **locally modified (uncommitted)** relative to that commit: `git status --porcelain` shows `M` for all of `relation-alias.ts`, `table-relationship-flow.tsx`, `sttm-builder-slice.ts`, `mapping-utils.ts`.
+- Most recent commit touching each of the four files: `b5fc7c43cbbec8c954d1e5cf86dfb10480587ae6` — "Sync workbench changes for GitHub migration" (Fri Sep 18 07:34:03 2026 -0500) — same commit for all four, i.e. no file has any more-recent commit than that sync commit; everything since is uncommitted working-tree state.
+- SHA-256 checksums of the current on-disk (uncommitted) file contents:
+  - `relation-alias.ts`: `6928B98F135E81BDFDC2336D051579BB66A6C6A748106A4E0AF75A846B1013DB`
+  - `table-relationship-flow.tsx`: `755AC302A68AB2680B4662BAE65B6476BDAC8E1659F0B51AC39E98C2D562B698`
+  - `sttm-builder-slice.ts`: `28DF3E8EE92AC6850AF67037D4118284DD08CE6641F21FD900490A4B66EFE81B`
+  - `mapping-utils.ts`: `F4CD8CEF13D3D57C5E48945C44FF718B2E635B0C2FB642A029F6C38A932F1A00`
+
+  Note: these were captured through a wrapped terminal display, so treat them as best-effort — if you need byte-exact hashes, regenerate locally with `Get-FileHash -Algorithm SHA256 <path>` rather than trusting the transcription here.
+
+No secrets, credentials, or environment values were read or included above.
