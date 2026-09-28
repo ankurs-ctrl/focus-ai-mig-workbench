@@ -1,80 +1,61 @@
-```text
-Open this file in the currently running client repository:
+For a **local run on the client machine**, use `services/sttm-builder/.env.local` for the app. `infra/snowflake/env/client.env` is for Snowflake bootstrap and SPCS deployment scripts; the local backend does not read it as its runtime config.
 
-frontend/src/features/sttm/mapping/mapping-utils.ts
+### 1. Prepare Snowflake objects
 
-Find the function `buildFallbackSourceQuerySql`. It is a last-resort fallback
-that builds its own FROM/JOIN clause only when the caller has no
-`sourceQuerySql` yet. Two of its branches declare source tables without an
-alias, while the rest of this file (and the mapping projection built against
-this same query) qualifies every column using `relationAliasFor(...)`
-aliases. This is the same alias-mismatch bug class already fixed elsewhere in
-this file — these two branches were missed.
+Use the client’s `client.env` to run the repo’s metadata bootstrap and required Deep Agent migrations **before enabling Deep Agent**. The account also needs the configured metadata tables, checkpoint and attachment stages, agents, and grants. If their existing 2.9.1 installation already has some objects, apply the newer additive migrations from this release rather than recreating the environment. The ordered requirements are in [deployment.md](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench-deep-integration/docs/deep-migration/deployment.md).
 
-Make exactly these two changes, nothing else in the file:
+### 2. Configure the local backend
 
-1. In the single-derived-source-only branch (near the top of the function),
-   replace:
+Copy [`.env.example`](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench-deep-integration/services/sttm-builder/.env.example) to `services/sttm-builder/.env.local`. Set the client’s actual Snowflake account, user, role, database, schema, and warehouse. Choose **one** local authentication setup:
 
-    const aliasSeed =
-      selectedDerivedSources[0].alias ||
-      selectedDerivedSources[0].sourceName ||
-      selectedDerivedSources[0].id;
-    const alias = tableAlias(String(aliasSeed).replace(/\s+/g, '_'));
-    return `FROM (\n${derivedSql}\n) ${alias}`;
+- **Simplest local demo:** `AUTH_MODE=ingress_headers`, `LOCAL_DEV_AUTH_ENABLED=true`, and a working Snowflake login using password, `externalbrowser`, or a configured private key.
+- **Test the OAuth login flow locally:** `AUTH_MODE=custom_oauth`, the OAuth client ID/secret and authorize/token URLs, `SNOWFLAKE_OAUTH_REDIRECT_URI=http://localhost:3000/api/v1/auth/callback`, session secrets, and `AUTH_SESSION_COOKIE_SECURE=false` for local HTTP.
 
-   with:
+For Deep Agent, also set:
 
-    const alias = relationAliasFor(
-      selectedDerivedSources[0].id,
-      selectedDerivedSources[0].sourceName,
-    );
-    return `FROM (\n${derivedSql}\n) AS ${alias}`;
-
-2. In the multi-table FROM/JOIN branch further down, replace:
-
-    const lines = [`FROM ${qualifiedTableName(seedTable)}`];
-
-   with:
-
-    const sourceAlias = (table: TableRef) => relationAliasFor(qualifiedTableName(table));
-    const lines = [
-      `FROM ${qualifiedTableName(seedTable)} AS ${sourceAlias(seedTable)}`,
-    ];
-
-   and replace:
-
-    lines.push(`${joinType} JOIN ${qualifiedTableName(attachingTable)}`);
-    lines.push(
-      `  ON ${validConditions
-        .map(
-          (condition) =>
-            `${qualifiedColumnName(relationship.left_table, condition.left_column)} ${condition.operator ?? '='} ${qualifiedColumnName(relationship.right_table, condition.right_column)}`,
-        )
-        .join('\n  AND ')}`,
-    );
-
-   with:
-
-    lines.push(
-      `${joinType} JOIN ${qualifiedTableName(attachingTable)} AS ${sourceAlias(attachingTable)}`,
-    );
-    lines.push(
-      `  ON ${validConditions
-        .map(
-          (condition) =>
-            `${sourceAlias(relationship.left_table)}.${condition.left_column} ${condition.operator ?? '='} ${sourceAlias(relationship.right_table)}.${condition.right_column}`,
-        )
-        .join('\n  AND ')}`,
-    );
-
-After this edit, check whether `qualifiedColumnName` (defined near the top of
-the file) is still used anywhere else in mapping-utils.ts. If it is not, leave
-it in place anyway - do not remove it as part of this change.
-
-Do not modify any other function in this file, and do not modify any other
-file. Run the frontend TypeScript build/typecheck afterward to confirm no
-other code calls buildFallbackSourceQuerySql or reads its output in a way
-that assumes the old unaliased FROM clause shape, then paste back the diff
-and the typecheck result.
+```dotenv
+MIGRATION_AGENT_ENABLED=true
+MIGRATION_AGENT_TRUE_RESUME_V1=true
+MIGRATION_AGENT_HOST_TERMINALIZATION_V1=true
+MIGRATION_AGENT_TOOL_GOVERNANCE_V1=true
+MIGRATION_AGENT_MODEL_LIGHT=<available Cortex model>
+MIGRATION_AGENT_MODEL_MEDIUM=<available Cortex model>
+MIGRATION_AGENT_MODEL_HIGH=<available Cortex model>
+MIGRATION_AGENT_CHECKPOINT_STAGE=@WORKBENCH_AGENT_CHECKPOINTS
+MIGRATION_AGENT_ATTACHMENT_STAGE=@WORKBENCH_AGENT_ATTACHMENTS
 ```
+
+Use model names available in **their** Snowflake account. Keep the other settings from `.env.example` unless their deployment needs different limits or object names. Do not put credentials in the frontend.
+
+### 3. Start both API and worker
+
+From the repo root, run:
+
+```bash
+./scripts/start_sttm_backend_local.sh
+```
+
+With `MIGRATION_AGENT_ENABLED=true`, this script is intended to start the Deep Agent worker alongside the API. **Starting `uvicorn` directly starts only the API**; Deep Agent requests can then remain at “Waiting for the Deep Agent worker.” If the API is already running separately, start the worker in another terminal:
+
+```bash
+./scripts/start_deep_worker_local.sh
+```
+
+Run only one local worker supervisor for this checkout. The worker must be able to connect to Snowflake; a process that immediately crashes and restarts will not claim requests.
+
+### 4. Start the frontend
+
+From `frontend/`:
+
+```bash
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`. No `frontend/.env.local` is required when the API is on `127.0.0.1:8000`; [next.config.ts](/Users/ankurshome/Desktop/storage/Mr-Bucky/bbi-mig-ai-workbench-deep-integration/frontend/next.config.ts) proxies `/api` there. If the backend uses another address, set `BACKEND_DEV_ORIGIN` for the frontend process.
+
+### 5. Verify before the demo
+
+Check `http://127.0.0.1:8000/health`, then send a small Deep Agent request. It should move from **Submitting → Waiting for worker → agent progress**. If it stays waiting, check the worker terminal first. In our local run, the API was healthy but no worker was present; starting the worker separately addressed that missing process.
+
+The **Plan mode indicator** has been added inside the composer in this checkout and passed TypeScript checking. It will appear after the frontend reloads this code.
