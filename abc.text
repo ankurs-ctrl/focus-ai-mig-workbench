@@ -1,14 +1,19 @@
-cd /path/to/extracted-workbench
+cd C:\Workbench\bbi-mig-ai-workbench-20260929-develop-derived-transform-fix
 
-./scripts/bootstrap_client_spcs_tools.sh
-./scripts/configure_client_snow_connection.sh \
-  --env-file infra/snowflake/env/client.env
+# Confirm your existing client.env is present
+Test-Path .\infra\snowflake\env\client.env
 
-./.client-tools-venv/bin/python scripts/deploy_sttm_builder_agent.py \
-  --env-file infra/snowflake/env/client.env \
-  --spec-file infra/snowflake/agents/agent_spec_transformation_rule.yaml \
-  --agent-name AGT_TRANSFORMATION_RULE
+# Set up Snow CLI and its connection
+.\scripts\bootstrap_client_spcs_tools.ps1
+.\scripts\configure_client_snow_connection.ps1 -EnvFile ".\infra\snowflake\env\client.env"
 
-./scripts/deploy_spcs_client_snow.sh \
-  --env-file infra/snowflake/env/client.env \
-  --image-tag 2.9.2
+# Update only AGT_TRANSFORMATION_RULE
+& ".\.client-tools-venv\Scripts\python.exe" ".\scripts\deploy_sttm_builder_agent.py" `
+  --env-file ".\infra\snowflake\env\client.env" `
+  --spec-file ".\infra\snowflake\agents\agent_spec_transformation_rule.yaml" `
+  --agent-name "AGT_TRANSFORMATION_RULE"
+
+# Build and deploy image tag 2.9.2
+.\scripts\deploy_spcs_client_snow.ps1 `
+  -EnvFile ".\infra\snowflake\env\client.env" `
+  -ImageTag "2.9.2"
