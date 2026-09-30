@@ -1,19 +1,13 @@
-cd C:\Workbench\bbi-mig-ai-workbench-20260929-develop-derived-transform-fix
+UAT deployment — status update
 
-# Confirm your existing client.env is present
-Test-Path .\infra\snowflake\env\client.env
+I did a deep dive into the UAT deployment pipeline issues and was able to fix a number of problems along the way. At a high level:
 
-# Set up Snow CLI and its connection
-.\scripts\bootstrap_client_spcs_tools.ps1
-.\scripts\configure_client_snow_connection.ps1 -EnvFile ".\infra\snowflake\env\client.env"
+- Resolved the main permissions-related error that was originally blocking the pipeline
+- Found that the deployment script being used for UAT was outdated compared to the one already working in DEV, and brought it up to date
+- Fixed several other issues that came up as a result — including database references, path handling, compute pool setup, Docker registry/image issues, and image pull failures
 
-# Update only AGT_TRANSFORMATION_RULE
-& ".\.client-tools-venv\Scripts\python.exe" ".\scripts\deploy_sttm_builder_agent.py" `
-  --env-file ".\infra\snowflake\env\client.env" `
-  --spec-file ".\infra\snowflake\agents\agent_spec_transformation_rule.yaml" `
-  --agent-name "AGT_TRANSFORMATION_RULE"
+After all these fixes, the pipeline now runs all the way through build, push, and reaches the final service creation step.
 
-# Build and deploy image tag 2.9.2
-.\scripts\deploy_spcs_client_snow.ps1 `
-  -EnvFile ".\infra\snowflake\env\client.env" `
-  -ImageTag "2.9.2"
+We're at the last step now. There are a few permissions Kesav needs to provide on the Snowflake side before we can complete the deployment. Once those are granted, we expect the pipeline to go through end-to-end.
+
+Will update once that's done and the deployment is confirmed live.
