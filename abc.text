@@ -1,13 +1,4 @@
-UAT deployment — status update
-
-I did a deep dive into the UAT deployment pipeline issues and was able to fix a number of problems along the way. At a high level:
-
-- Resolved the main permissions-related error that was originally blocking the pipeline
-- Found that the deployment script being used for UAT was outdated compared to the one already working in DEV, and brought it up to date
-- Fixed several other issues that came up as a result — including database references, path handling, compute pool setup, Docker registry/image issues, and image pull failures
-
-After all these fixes, the pipeline now runs all the way through build, push, and reaches the final service creation step.
-
-We're at the last step now. There are a few permissions Kesav needs to provide on the Snowflake side before we can complete the deployment. Once those are granted, we expect the pipeline to go through end-to-end.
-
-Will update once that's done and the deployment is confirmed live.
+CTE selection and preprocessing: A search box helps find CTEs. The preprocessing column picker now lists selected CTE sources more reliably, shows their available columns, and gives clearer counts and labels.
+Database, schema, and table search: Search now reveals matching items inside collapsed databases and schemas, without changing what you manually expanded.
+SQL validation before publish: After a successful Compile & Validate, the app records which mapping was validated. If you change its sources, joins, filters, CTEs, or mapped rows, it asks you to validate again before publishing. Validation failures get a clearer dialog with a route back to the SQL tab.
+SQL function library: Function chips wrap long names more cleanly, including window functions
