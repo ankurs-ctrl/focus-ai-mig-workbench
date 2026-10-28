@@ -1,4 +1,33 @@
-CTE selection and preprocessing: A search box helps find CTEs. The preprocessing column picker now lists selected CTE sources more reliably, shows their available columns, and gives clearer counts and labels.
-Database, schema, and table search: Search now reveals matching items inside collapsed databases and schemas, without changing what you manually expanded.
-SQL validation before publish: After a successful Compile & Validate, the app records which mapping was validated. If you change its sources, joins, filters, CTEs, or mapped rows, it asks you to validate again before publishing. Validation failures get a clearer dialog with a route back to the SQL tab.
-SQL function library: Function chips wrap long names more cleanly, including window functions
+Here are the questions, grouped by theme and ordered by how much they affect the final blog. Skip any you can't answer, and I'll write around the gap or flag it.
+
+**Architecture (Cortex Agent specifics)**
+1. Is this a Cortex Agent with tools, or a pipeline that calls Cortex Complete? Which tools does it use (Cortex Analyst, Cortex Search, custom SQL or stored-procedure tools)? Which LLM does it run on?
+2. How does it ingest mapping documents? What format are they in (Excel/STTM, tables in Snowflake, stage files), and are they parsed before the agent sees them?
+3. Does the model see only metadata and mappings, or also row-level data? Where do generated queries run, and under what role (read-only)? Does any data leave Snowflake? I'd like to state this explicitly for the wealth-management audience.
+4. How does it connect to Azure DevOps? What does it publish (test cases, test plans, work items, attachments), and how (API, external access integration)?
+
+**How it works**
+5. Are the test cases generated freely by the agent, or from templates by check type? Image 1 says "from templates" and the body says AI-generated, so which is it?
+6. Where exactly do engineers review: test cases, SQL, results, or all three? I'd like the diagram to show these checkpoints.
+7. Is it live in all environments (dev, QA, UAT, prod), or only some? Does it run in production?
+
+**Evidence for the numbers**
+8. How many tables has it been used on so far, out of the roughly 400? Over what period?
+9. How were the 1–5 hours before and the 30–35 minutes after measured (timesheets, estimates, a sample)? Is 30–35 minutes an average?
+10. Can you give any of these: real defects it caught that manual testing would likely have missed, the share of generated tests engineers kept or edited or rejected, and the false-positive rate?
+11. Is the 20 → 40–50 → 60–70 test-case growth based on measured tables or typical examples?
+
+**Quality and limitations**
+12. What's one concrete example of a hallucination or bad test or SQL query that engineers caught, and how often did it happen?
+13. Are the tests independent of the ETL logic, or derived from the same mapping document? Did you ever see a shared-misreading problem?
+14. What did you do differently after early iterations (prompting, context structure, guardrails)? What would you improve next?
+
+**Business and publishing**
+15. Is the reassignment of 1 of 5 QA engineers something you can say publicly? Why only 1 of 5 if time dropped so much (more volume, other work, review time)?
+16. Is the client allowed to be described as a "large wealth management organization" with about 400 tables? Has the client or leadership approved publishing?
+17. Who's the audience (prospective clients, Snowflake community, hiring) and where will it be posted? Should it end with a call to action or contact link?
+18. How long did it take to build and how big was the team? Can I include that?
+19. Is there a quote from an engineer or the client I can use?
+20. Which term should we standardise on: QA agent or DQ agent? Should the voice be "we" (my suggestion) or "BBI"?
+
+If you only have time for a few, answer 1, 3, 5, 6, 8–10, 12, 15 and 16. The final doc will be a Word file with the original diagrams and the contradictions fixed, unless you'd prefer a different format.
