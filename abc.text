@@ -1,33 +1,46 @@
-Here are the questions, grouped by theme and ordered by how much they affect the final blog. Skip any you can't answer, and I'll write around the gap or flag it.
+I'll find the agent and inspect its configuration.The spec is truncated in the output, so I'll pull the tool definitions and look at the procedures behind them.That's the agent's own config and nothing suspicious. Next I'll check whether the procedures call an LLM or Azure DevOps, and how much they've been used.I'll also check how many distinct tables appear in the stored results.I inspected two agents, both named <catalog_object db="FFP_HDP_DLAB_DB_DEV" schema="SCH_AI_AGENT" name="TESTCASEGENERATORUSINGCLI" type="agent" />. The newer one is in `SCH_AI_AGENT` and the older one in `PUBLIC`, displayed as "TEST_CASE_GENERATOR_VALIDATOR". I read their specs, the 4 stored procedures behind them and their results tables. That covers the technical questions. Most of the business and evidence questions can't be answered from Snowflake.
 
-**Architecture (Cortex Agent specifics)**
-1. Is this a Cortex Agent with tools, or a pipeline that calls Cortex Complete? Which tools does it use (Cortex Analyst, Cortex Search, custom SQL or stored-procedure tools)? Which LLM does it run on?
-2. How does it ingest mapping documents? What format are they in (Excel/STTM, tables in Snowflake, stage files), and are they parsed before the agent sees them?
-3. Does the model see only metadata and mappings, or also row-level data? Where do generated queries run, and under what role (read-only)? Does any data leave Snowflake? I'd like to state this explicitly for the wealth-management audience.
-4. How does it connect to Azure DevOps? What does it publish (test cases, test plans, work items, attachments), and how (API, external access integration)?
+The biggest finding for the blog: **the test cases and SQL come from Python procedures, not the LLM, and nothing connects to Azure DevOps yet.** Several draft claims need fixing because of this.
 
-**How it works**
-5. Are the test cases generated freely by the agent, or from templates by check type? Image 1 says "from templates" and the body says AI-generated, so which is it?
-6. Where exactly do engineers review: test cases, SQL, results, or all three? I'd like the diagram to show these checkpoints.
-7. Is it live in all environments (dev, QA, UAT, prod), or only some? Does it run in production?
+## Architecture
+**1. What it is.** It's a Cortex Agent with tools. The LLM is set to `auto`, so no specific model is pinned. It has a 900-second and 400K-token limit per run. It uses no Cortex Analyst or Cortex Search, only 4 custom stored-procedure tools, all written in Python:
+- `generate_test_cases` runs `GENERATE_AND_RUN_TEST_CASES`. It checks curated-layer tables for schema, primary/foreign/alternate keys, NOT NULL, blanks and duplicates.
+- `run_lineage_tests` runs `RUN_LINEAGE_TESTS`. It traces lineage from Snowflake's `ACCESS_HISTORY` and `OBJECT_DEPENDENCIES` views and finds orphan tables and columns.
+- `generate_lineage_diagram` draws a lineage diagram as a PNG and as text.
+- `validate_raw_layer` checks raw-layer tables in 7 areas: data quality, duplicates across batches, soft deletes, finding the matching curated table, raw-to-curated lineage, and transformation rules (DIRECT, UPPER, TRIM, COALESCE, LOOKUP, CONCAT).
 
-**Evidence for the numbers**
-8. How many tables has it been used on so far, out of the roughly 400? Over what period?
-9. How were the 1–5 hours before and the 30–35 minutes after measured (timesheets, estimates, a sample)? Is 30–35 minutes an average?
-10. Can you give any of these: real defects it caught that manual testing would likely have missed, the share of generated tests engineers kept or edited or rejected, and the false-positive rate?
-11. Is the 20 → 40–50 → 60–70 test-case growth based on measured tables or typical examples?
+None of the procedures call Cortex or AI_COMPLETE. The LLM picks the tool and formats the results; it doesn't write the tests.
 
-**Quality and limitations**
-12. What's one concrete example of a hallucination or bad test or SQL query that engineers caught, and how often did it happen?
-13. Are the tests independent of the ETL logic, or derived from the same mapping document? Did you ever see a shared-misreading problem?
-14. What did you do differently after early iterations (prompting, context structure, guardrails)? What would you improve next?
+**2. Mapping documents.** Mappings are read from a Snowflake table (`LINEAGE_STTM_MAPPING`, 11 columns including TRANSFORM_RULE) that has to be loaded first. The agent doesn't parse Excel files itself. That table is currently empty. The structured mapping data lives in `SCH_STTM_METADATA.TBL_STTM*` (329 mappings, 5,795 attributes, 39 versions, last updated 27 Oct). Separate agents fill those tables (AGT_STTM_BUILDER, AGT_SOURCE_MAPPING, AGT_TRANSFORMATION_RULE). Your team should confirm how the Excel files get into them.
 
-**Business and publishing**
-15. Is the reassignment of 1 of 5 QA engineers something you can say publicly? Why only 1 of 5 if time dropped so much (more volume, other work, review time)?
-16. Is the client allowed to be described as a "large wealth management organization" with about 400 tables? Has the client or leadership approved publishing?
-17. Who's the audience (prospective clients, Snowflake community, hiring) and where will it be posted? Should it end with a call to action or contact link?
-18. How long did it take to build and how big was the team? Can I include that?
-19. Is there a quote from an engineer or the client I can use?
-20. Which term should we standardise on: QA agent or DQ agent? Should the voice be "we" (my suggestion) or "BBI"?
+**3. Data access.**
+- The procedures run on the warehouse `FFP_HDP_DLAB_DB_ADHOC_XS_WH_DEV`, with a 600-second query timeout.
+- Raw query results such as counts and failing values go into the output, so the LLM does see results. Whether it sees full rows is something I'd need to read the procedure code to confirm.
+- No procedure has an external access integration, so nothing leaves Snowflake through the tools. The LLM itself runs inside Cortex.
+- I didn't check the execution role (owner's or caller's rights). Everything is owned by `FFP_HDP_DLAB_DB_DEPLOY_ROLE_DEV`, which isn't a read-only role.
 
-If you only have time for a few, answer 1, 3, 5, 6, 8–10, 12, 15 and 16. The final doc will be a Word file with the original diagrams and the contradictions fixed, unless you'd prefer a different format.
+**4. Azure DevOps.** There's no direct connection. The output is a 10-column table in Azure DevOps test-case import format (ID, Work Item Type, Title, Test Step, Step Action, Step Expected, Area Path, Assigned To, State, Test Status). It's saved to a results table and downloaded as a CSV, and someone then imports it into Azure DevOps by hand. Please say "exports to Azure DevOps import format", not "publishes".
+
+## How it works
+**5. Templates or AI-generated?** Rule-based. The checks are fixed by type in Python and filled in from the table's metadata and mappings. "From templates" is the accurate wording. "AI-generated" overstates it; "AI-orchestrated" fits.
+
+**6. Review points.** Nothing in the system enforces a review. New test cases get the state "Design". Engineers see the results table with PASSED / FAILED / WARNING / INFO, and WARNING and INFO mean "needs manual review". The diagram can show review at the results/CSV step and again at import into Azure DevOps.
+
+**7. Environments.** Everything is in `*_DEV` (dev database, warehouse and role). I found no sign of QA, UAT or production in this account.
+
+## Evidence
+**8. Table count.** The results tables are overwritten on each run, so they only show recent runs: 13 curated tables (87 test cases) and 1 raw table. Runs date from about 31 Mar to 22 May 2026. That doesn't show total coverage of the ~400 tables. Ask the team, or check query history for these procedures.
+
+**9–11.** Only the latest stored results are available: 160 passed, 2 failed and 12 warning/info on curated tables, and 18 / 4 / 10 on the raw table. There's no record of how many tests engineers kept, edited or rejected, no false-positive data and no timing data. Before/after time and the test-case growth numbers need evidence from the team.
+
+**12.** Because the SQL is fixed in code rather than written by the LLM, a "hallucinated SQL" story is unlikely. Ask the team about wrong tool choices or misformatted output instead.
+
+**13.** The lineage checks partly come from query history (`ACCESS_HISTORY`), which is independent of the mapping document. The transformation-rule checks do come from the same mapping the ETL was built from, so a shared-misreading risk exists there.
+
+**14.** Visible changes: the `PUBLIC` version (Apr) had 3 tools, and the `SCH_AI_AGENT` version (May) added raw-layer validation and layer-aware tool choice.
+
+**15–20** are business and publishing decisions I can't answer from the system. One thing to know for 18: the build dates (31 Mar to 22 May 2026) and the person named in the agent's download paths suggest a small team, perhaps one person. Confirm that before you publish anything about team size.
+
+**Before publishing:** the agent instructions contain one engineer's local Windows path (`C:\Users\preetee.sonule\Downloads`). Keep it out of any screenshots.
+
+The fixes for the blog: say "template-based test cases, orchestrated by a Cortex Agent", "CSV export in Azure DevOps format", and "running in dev". If you want, I can read the procedure code to settle the remaining parts of question 3 (whether the LLM sees row-level data, and which role the queries run under).
