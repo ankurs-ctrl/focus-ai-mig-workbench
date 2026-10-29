@@ -1,0 +1,80 @@
+
+
+Steered: It failed, I need full indepth analysis and reason
+
+The new job failed in about 15 seconds with `AUTO_MAP_PREPARATION_BUDGET_EXCEEDED`, before any batch ran. I'm pulling its error, diagnostics, and backend logs.The new run failed before any scanning. Mapping 2002's saved workspace now carries about 99,500 extra characters of compiler output, which pushes every batch past the 120,000-character limit. The hotfix itself, the five-batch concurrency and the empty `thread_id` fix, was never exercised.
+
+## What failed
+
+Job `f1875a49-32fa-548b-8d0f-4280a4cdb064` ran for 15 seconds and failed in the batch-size pre-check with `AUTO_MAP_PREPARATION_BUDGET_EXCEEDED`.
+
+```
+Target SOURCE_OF_BUSINESS cannot fit mandatory exact evidence:
+Complete message exceeds budget: 160192 chars, 160194 UTF-8 bytes   (limit 120000)
+```
+
+The new batching code (`auto_mapping_proxy.py:1702-1721`) splits an overflowing batch in half until one target is left, then fails. Here even a single target needed 160,192 characters, so no batch split can help. The overflow is in shared context that every batch carries.
+
+## Why it passed before and fails now
+
+Both runs were on mapping 2002, an hour apart. I compared the two saved requests field by field. Everything is the same size except the workspace state:
+
+| Request field | Passed (07:37) | Failed (08:57) |
+|---|---|---|
+| Semantic context | 382,995 | 382,995 |
+| Relation graph | about 69,700 | about 69,700 |
+| Selected columns | 17,330 | 17,330 |
+| Target attributes | 14,078 | 14,078 |
+| Execution context | 3,670 | 3,670 |
+| Workspace state | 168,053 | 267,555 |
+
+The 99,502-character difference sits in four workspace fields, which were empty in the first run:
+
+| Workspace field | Added characters | What it holds |
+|---|---|---|
+| `compiled_mapping_context_hash` | 74,247 | A string starting `{"compilerContractVersion"…`. It is the full serialized compiler input, not a hash. |
+| `auto_map_outcome` | 8,537 | Proposals saved from the previous Auto-map run |
+| `compiled_mapping_sql` | 6,908 | Compiled mapping SQL |
+| `compiled_mapping_preview_sql` | 6,042 | Preview SQL |
+
+After the scan code strips what it already carries elsewhere, the workspace left in every message grows from about 22,000 to about 118,000 characters. It is about 22,000 again if those four fields are removed.
+
+The code that builds this message (`automap_scan_context.py:373-377`) removes only some workspace keys and keeps the rest, including those four. Every scan message therefore includes them. Mapping rows were not the difference.
+
+The chat assistant already handles these fields correctly. `assistant_retrieval.py:54-65` moves them out of the message and notes "legacy clients put serialized compiler inputs here, not a digest". The Auto-map scan path never got that treatment.
+
+## Why this bites now
+
+The workspace state depends on what you did in the UI. A fresh mapping has these fields empty and passes. After the SQL is compiled or a previous Auto-map has run, they fill up and the same mapping fails. This is also why mapping 2601 failed earlier: the first fix removed repeated table semantics, but this workspace data still crowds the budget. That is my reading; I haven't proven it.
+
+## Confirmed and unconfirmed
+
+- **Confirmed:** the saved requests differ only in the workspace fields above. The failing check names `SOURCE_OF_BUSINESS` and 160,192 characters.
+- **Not confirmed:** whether removing the four fields alone gets the message under 120,000. The savings should be about 99,000 characters, which would leave about 61,000 for the rest. I haven't replayed the message offline.
+- **Not checked:** how the 160,192 splits across the remaining parts of the message.
+
+## The earlier job is stuck
+
+Job `4ebf6266…` still shows `running`, but its lease expired at 08:54:48 and it hasn't updated in over 700 seconds. It was interrupted by the deploy restart and nothing is resuming it. It had saved 10 of 21 batches (18 of 37 targets). I didn't see it resume on its own.
+
+## Prompt for the fix
+
+---
+**Fix: keep compiled workspace output out of every Auto-map scan message**
+
+**Problem:** the Auto-map scan and batch pre-check fail with `AUTO_MAP_PREPARATION_BUDGET_EXCEEDED` when a mapping has been compiled or auto-mapped before. Job `f1875a49-32fa-548b-8d0f-4280a4cdb064` (mapping 2002, UAT) measured 160,192 characters against a 120,000 limit. The comparison job `4ebf6266-db6f-5216-9f60-dfc3524edfdb` passed.
+
+**Cause:** `workspace_context` grew from 168,053 to 267,555 characters. The extra fields are `compiled_mapping_context_hash` (+74,247; it holds serialized compiler input), `auto_map_outcome` (+8,537), `compiled_mapping_sql` (+6,908) and `compiled_mapping_preview_sql` (+6,042). `automap_scan_context.py:373-377` keeps them in the shared message. `assistant_retrieval.py:54-65` already moves them out for chat.
+
+**Requirements:**
+1. Keep these fields out of the scan message: `compiled_mapping_context_hash`, `compiled_mapping_sql`, `compiled_mapping_script_sql`, `compiled_mapping_preview_sql`, `auto_map_outcome`, `pending_mapping_proposals`, `conversation_history`, `validation_history`. Keep them intact in the saved request.
+2. Do not remove user-authored SQL or approved constraints. Show how each omitted field is accounted for, using the existing field coverage record.
+3. Use the same size calculation for the pre-check and the runtime.
+4. If a batch still overflows, report which part of the message is largest, without logging content.
+5. Fix the frontend so `compiledMappingContextHash` holds a short digest, not 74,000 characters of compiler input.
+6. Add tests: a fixture with a 74 KB hash field and a populated previous outcome must pass the pre-check with the same targets as a fresh workspace; an overflow with no omittable fields must still fail clearly.
+
+**Validation:** replay job `f1875a49…` offline from its saved request, then run Auto-map on mapping 2002 on UAT and confirm preparation passes, batches run concurrently, and failed batches keep completed mappings.
+---
+
+Should I implement this, or do you have a fix ready?
