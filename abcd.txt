@@ -1,27 +1,28 @@
-Choose **1: Yes**.
+Make Auto-map produce grounded results as context grows
 
-Once uploaded SQL or a CTE is successfully parsed and validated, Auto-map should treat the CTE’s **exposed output columns as the selectable source contract**.
+## Summary
 
-```text
-Model-facing contract:
-Validated CTE output columns only
+The deployed failure has three independent causes. For mapping 2702, mandatory CTE parent closure pulled roughly 600 `ACCOUNTS` columns into a bounded message, so ten targets reached **zero model calls**. For mapping 2803, the model received eligible `COUNTRY_CODE` and `COUNTRY_ALIAS` columns but incorrectly claimed none were available; `HOUSEHOLD.BILLINGCOUNTRY ← COUNTRY_CODES.COUNTRY_CODE` is the known positive control. Two other completed responses were discarded because the terminal parser rejected `suggested_queries`.
 
-Retained outside the main prompt:
-Upstream tables and column lineage
-Original SQL
-Join and filter logic
-Audit provenance
-Dependency hashes
-```
+Keep the existing staged orchestrator. Change its **evidence contract and decision stages**, then prove a positive mapping in UAT. More workers alone cannot resolve these failures. Accuracy takes priority over a hard three-minute deadline; insufficient evidence must remain explicit rather than become a guessed mapping.
 
-Upstream lineage should still be used for:
+## Implementation changes
 
-- Audit and explainability.
-- Validating a selected CTE output on demand.
-- Verifying types and source provenance.
-- Recompiling the final mapping SQL.
-- Detecting stale or changed parent definitions.
+1. **Make validated CTE outputs the source boundary.** At job preparation, verify that the current SQL, output schema, and parent dependency hashes match a successful server validation; revalidate once if that proof is missing or stale. Expose only the CTE’s output columns as selectable sources. Keep original SQL, parent columns, joins, filters, and provenance in the immutable archive for targeted checks and final compilation. A hidden parent column must never become a selectable CTE output. For large physical tables without a CTE, page column evidence instead of requiring an indivisible whole-table message.
 
-It should **not** require every column from a 600-column parent table in every model message. That defeats the CTE’s role as a validated abstraction and causes the current context-overflow problem.
+2. **Separate candidate discovery from mapping decisions.** Build a complete, indexed source inventory once per request, including distinct self-join bindings. Combine current semantics, applicable FIR and published precedents, exact SQL lineage, and Cortex Search candidates. Rank candidates per target, but retain all originals and a coverage cursor; a shortlist is not evidence that other columns do not match. Scan additional pages when a target has no supported candidate or a credible alternative remains unread. Present the model with small target groups and an explicit `selectable_sources` list; put nonselectable table, lineage, and target metadata in separate sections without misleading `eligible=false` source-like cards. Size every serialized call against both existing message limits.
 
-The critical restriction is that Auto-map may select only columns explicitly exposed by the CTE. If a required field is not projected by the CTE, Auto-map must either request targeted upstream evidence or leave that target unresolved. It must not silently infer from hidden parent columns.
+3. **Use bounded, parallel decision and rule calls.** Decide source bindings per target or small compatible group, carrying exact evidence IDs and plausible alternatives in strongest-first order. Detect factual contradictions such as “no eligible columns” when the admitted roster is nonempty, and make one focused repair call with the exact target and candidate roster. Do not promote a lexical match on its own. Once a binding is grounded, generate any needed complex expression in a separate bounded `AGT_TRANSFORMATION_RULE` call; the current fast path skips that specialist. Validate source scope, value bindings, SQLGlot syntax, and compiled mapping SQL before applying a result. Preserve valid rows if another target or rule fails.
+
+4. **Repair transport and expose coverage.** Apply the narrowly tested `suggested_queries` parser correction: accept it only as well-formed inert metadata alongside a completed answer, while continuing to reject tool blocks, unknown content, ambiguous completion, and suggestion-only responses. Track per target whether source inventory, learning evidence, CTE contract, model decision, and transformation validation were completed. Return a grounded mapping, a reviewable proposal, or a specific unresolved reason. Maintain `candidate_source_attributes`, confidence and reason, and existing manual and published mapping protections. Log sizes, counts, stages, and failure types without raw SQL or semantic text. Snowflake documents evolving Agent content and advises clients to handle unknown streaming events; answer extraction must remain strict even as ancillary content varies. [Cortex Agents Run API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-run)
+
+## Verification and rollout
+
+- Build production-shaped fixtures for the 439 KB semantic bundle, 600-column `ACCOUNTS` parent, validated narrow CTE, growing FIR evidence, self-joins, stale CTE hashes, and complex rules. Assert exact evidence remains retrievable, every outbound call fits, and no hidden parent column is mapped.
+- Replay mapping 2803 as a **technical positive control**: propose `BILLINGCOUNTRY ← COUNTRY_CODE`, retain `COUNTRY_ALIAS` as lookup evidence, and allow unrelated targets to remain unresolved. This does not certify the complete Ft. Pitt population or join logic.
+- Replay mapping 2702: preserve its 27 authored definitions and ensure the ten inference targets reach decision calls or receive specific evidence blockers, rather than a whole-parent budget failure. Compare any generated rules with the existing Ft. Pitt reference fixture and compile them.
+- Test completed responses with `suggested_queries`, model contradictions, malformed outputs, partial failures, duplicate candidates, and reruns over existing mappings. Run a project-501 canary, then review target-level accuracy, rule execution, message sizes, model calls, latency, and unresolved reasons before enabling the path more broadly. A green unit suite without a successful live positive mapping is not acceptance.
+
+## Assumptions
+
+The current client ZIP represents deployed commit `8bf3ed0`; CodeCommit `UAT` contains its copied source under `d8accb9`. The unpublished parser correction must be reviewed and included in the implementation. A validated CTE output is authoritative for selection, while upstream lineage remains available for audit and targeted validation. Auto-map may leave unsupported targets unresolved and show plausible alternatives; it must not claim exhaustive no-match from bounded retrieval.
