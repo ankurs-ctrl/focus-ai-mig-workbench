@@ -1,60 +1,11 @@
-Yes. For mapping **2803**, the specific expected positive-control mapping was:
+When SQL upload or a CTE has been validated, should Auto-map treat its exposed output columns as the selectable source contract and keep upstream table lineage for audit and targeted validation?
+2 of 2
 
-```text
-HOUSEHOLD.BILLINGCOUNTRY
-    <- COUNTRY_CODES.COUNTRY_CODE
-```
+1
+Yes
+Recommended
+Keeps prompts bounded while validating exact output SQL and lineage on demand.
 
-The repository’s existing Ft. Pitt mapping contract confirms this exact rule:
-
-```python
-'BILLINGCOUNTRY': 'countries.COUNTRY_CODE'
-```
-
-at `services/sttm-builder/tests/unit/core/test_cte_bindings.py:229`.
-
-`COUNTRY_ALIAS` is mainly used to match an incoming country name or alias to the reference table:
-
-```sql
-COUNTRY_CODES.COUNTRY_ALIAS = source.ADDRESS1_COUNTRY
-OR COUNTRY_CODES.COUNTRY_CODE = source.ADDRESS1_COUNTRY
-```
-
-After that lookup, the normalized output is:
-
-```text
-BILLINGCOUNTRY = COUNTRY_CODES.COUNTRY_CODE
-```
-
-For mapping 2803, the archived batch containing `BILLINGCOUNTRY` included both:
-
-```text
-COUNTRY_CODE: eligible=true
-COUNTRY_ALIAS: eligible=true
-```
-
-The model nevertheless returned a warning claiming that there were no eligible source columns.
-
-Therefore, **zero mappings was not a completely valid result**. At minimum, this positive-control mapping should have been proposed:
-
-```sql
-COUNTRY_CODE
-```
-
-or, with the generated relation alias:
-
-```sql
-country_codes_4yn7st.COUNTRY_CODE
-```
-
-The other 36 HOUSEHOLD columns could legitimately remain unresolved because `COUNTRY_CODES` does not contain account names, addresses, owners, IDs, and so forth. But `BILLINGCOUNTRY` should not have remained unresolved in this controlled test.
-
-So the precise classification is:
-
-```text
-36 unresolved targets: probably valid
-BILLINGCOUNTRY unresolved: model/evidence-contract failure
-Entire run returning zero mappings: failed positive-control acceptance
-```
-
-One qualification: mapping 2803 was intentionally a **technical diagnostic identity test**, not proof that `COUNTRY_CODE` alone is sufficient for the complete real-world Ft. Pitt transformation. In the actual workflow, the country table is joined to an account-derived country value using `COUNTRY_ALIAS` or `COUNTRY_CODE`, and then its normalized `COUNTRY_CODE` is assigned to `BILLINGCOUNTRY`.
+2
+Require full lineage
+Continues requiring every upstream column in the model message, which may block large tables.
