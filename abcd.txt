@@ -1,80 +1,18 @@
-I’ll review the corrected ZIP against the previous blockers and rerun the tests locally. If those checks pass, I’ll commit and push it to GitHub UAT, preserving the older worktrees and unpublished fixes.**The corrected ZIP fixes most previous defects, but four reproduced issues remain. I have not pushed it because the “all good” condition is not met.**
+V3 fixes the four previous findings, but one wrong-data defect remains.
 
-Reviewed in an isolated UAT-baseline worktree using **SQLGlot 30.12.0**. GitHub UAT was verified at `8bf3ed0`; I did not independently verify the separate CodeCommit commit.
+Remaining blocker
+At services/sttm-builder/app/core/automap_cte_contract.py:71–83, renaming a parent CTE can accidentally bind to a nested CTE with the same runtime name.
 
-## What now passes
+The reproduced case changed the selected value from 1 to 999, while compilation and output-contract validation still passed.
 
-The previous problems are corrected in the tested cases:
+Recommended fix: Detect runtime-name collisions across nested scopes, use collision-free names or reject the rewrite, and verify that relation bindings remain unchanged after rewriting.
 
-- Real Ft. Pitt self-contained CTE wrappers.
-- Changed SQL retaining an old dependency hash.
-- Scoped parent-column qualifiers.
-- Shared specialist admission, call accounting, and deadlines.
-- Preservation of valid rules after another repair fails.
-- Rejection of fabricated and other-target citations.
-- Non-fast unresolved-result handling.
+Verification
+1,257 focused tests passed in the CTE review.
+Separate specialist review: 1,288 tests passed, with overlapping coverage.
+The defect was found by an additional targeted probe.
+Push/deployment status
+A review worker prematurely committed and pushed 390e00d to GitHub UAT before the other review finished. That was an execution mistake on my side.
 
-One review ran **1,221 unique tests successfully**; another ran **1,192 overlapping tests successfully**. These counts must not be added together. Additional targeted probes found the issues below.
+I cancelled deployment run 41081375419. Its logs ended after the image upload, before service updates. The commit remains on GitHub UAT, but this release is not approved for deployment.
 
-## Remaining findings
-
-### 1. CTE wrapper processing can silently change query meaning — high priority
-
-**Location:** `services/sttm-builder/app/core/automap_cte_contract.py:26–37`
-
-The wrapper check examines SELECT-level modifiers but misses modifiers attached to the source table.
-
-Probes showed it accepts wrappers containing:
-- `SAMPLE (0)`, which changes the selected population.
-- A positional column alias, which changes output names.
-
-Hydration then strips those modifications and validates the replacement.
-
-**Recommendation:** Only unwrap a demonstrably transparent wrapper. Inspect source-table modifiers and alias-column lists; preserve or reject anything that changes rows or output columns.
-
-### 2. Specialist model-envelope validation still fails open — high priority
-
-**Locations:**  
-`services/sttm-builder/app/core/automap_specialist.py:18–24`  
-`services/sttm-builder/app/core/sttm_builder.py:6521–6526`
-
-Provider-level completion checks now work. However, the specialist then uses the legacy envelope parser, which defaults unknown statuses to `COMPLETED`.
-
-With otherwise valid rules, probes accepted:
-- `data.status = "in_progress"`
-- Root-level `status = "failed"`
-- A string-valued error indicating rule generation failed
-
-Those responses became accepted complex mappings.
-
-**Recommendation:** Strictly validate the specialist’s raw model envelope before normalization. Explicit failure, nonterminal or unknown status, conflicting statuses, and malformed error fields must not become completed rules.
-
-### 3. Specialist uncertain-call recovery uses the wrong agent identity
-
-**Location:** `services/sttm-builder/app/core/automap_runtime.py:664–677`
-
-Specialist dispatch uses its own backend, but the recovery bundle retains the source-mapping backend. Recovery compares the stored specialist agent identity against the source agent and rejects it.
-
-In otherwise equivalent lost-acknowledgment probes:
-- Source call: recovered and released.
-- Specialist call: rejected before recovery and remained quarantined.
-
-**Recommendation:** Bind recovery to the actual backend used for the original call, while retaining all request, caller, permit, and agent-identity checks. Do not simply remove the identity check.
-
-Quarantine remains safe, but repeated affected calls could leave model capacity unavailable until operator intervention.
-
-### 4. An unrelated CTE can block a valid selected source
-
-**Location:** `services/sttm-builder/app/core/automap_cte_contract.py:18–21`
-
-A positional output alias in an **unused** top-level CTE causes the entire preparation to fail—even when the selected CTE does not depend on it.
-
-**Recommendation:** Apply unsupported-definition checks to the selected CTE’s reachable dependency set, rather than rejecting unrelated definitions globally.
-
-## Packet-size verification
-
-The supplied packet test passed at **98,157 bytes**, rather than the reported 99,452 bytes.
-
-It uses real Ft. Pitt SQL/frontend processing combined with synthetic extra columns and learning records. This demonstrates that **that constructed ten-target, 600-column case fits the limit**. It does not yet prove the size or successful execution of the actual archived production request.
-
-**Recommendation: correct these four issues and add their regression tests before pushing.** No shared agents were changed, and the corrected ZIP has not been committed, pushed, or deployed.
