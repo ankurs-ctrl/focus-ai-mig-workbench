@@ -1,133 +1,19 @@
-I won’t make changes. **The manual and SQL-upload tests fail for different reasons on deployed commit `d08d748`.**
+I’ll inspect the v5 ZIP, apply it to the UAT baseline, run focused checks, and push it. Once GitHub CI/CD finishes and the containers are ready, I’ll rerun Auto-map on manual mapping 2902. No local Docker build.The v5 checks pass for the 180k input limit, complete-message sizing, and CTE identifier handling. The review also reproduced two defects in the new source-object normalizer: it can silently change a conflicting source qualifier, and a malformed identifier can cause valid sibling mappings to be lost. I’m holding the push rather than deploying those regressions.**V5 is extracted and reviewed, but not pushed.** Although **830 focused tests passed**, additional probes found two defects:
 
-## 1. Manual mapping — 2902
+1. **Conflicting source references can select the wrong table instance.**  
+   `automap_source_format.py:21` ignores the qualifier inside `source_column`. For example:
+   ```json
+   {"source_column":"b.X47","source_table":"D.S.A","sql_qualifier":"a"}
+   ```
+   becomes `a.X47` instead of rejecting the conflict.
 
-**Setup**
-- Six physical source tables.
-- ACCOUNTS as driving table.
-- HOUSEHOLD target.
-- Five LEFT joins.
-- No CTEs or uploaded SQL.
-- Source-query validation succeeded.
+   **Fix:** Require an unqualified column identifier, or verify every supplied qualifier agrees with the admitted binding.
 
-**Result**
-- Time: **163.9 seconds**.
-- Eight batches of 4–5 targets.
-- **Zero agent calls, zero new mappings.**
-- All eight batches exceeded the message limit.
+2. **Malformed identifiers discard valid sibling mappings.**  
+   `automap_source_format.py:63` does not catch the parser exception from inputs such as `"("`. This escapes target-level handling, triggers whole-response repair, and can lose valid results.
 
-Actual final message sizes were **132,376–134,134 characters**, against a **120,000-character limit**.
+   **Fix:** Handle identifier-parsing errors per target and preserve successful mappings.
 
-### Changes required
+The **180k input limits, unchanged output limit, complete-message sizing, and CTE identifier tests passed**.
 
-**Immediate option: increase Auto-map input limits to 180,000.**
-
-Update these consistently:
-- UAT configuration: `AGENT_OUTBOUND_MESSAGE_MAX_CHARS` and `AGENT_OUTBOUND_MESSAGE_MAX_BYTES`.
-- Fast-context hard cap: `app/core/automap_fast_context.py`.
-- Runtime input-budget clamps: `app/core/automap_runtime.py`.
-- Applicable parent preflight limits and diagnostics in `auto_mapping_proxy.py`, `sttm_builder.py`, and `automap_batch.py`.
-
-**Do not globally replace every `120000`:** some occurrences cap provider responses, recovery payloads, or unrelated execution paths. Raising input size does not require raising those limits.
-
-**Structural fix:** Plan batches using the same complete message the worker will send, including required exact evidence reads. Currently, batches pass planning but fail final worker preparation.
-
-Raising the limit would accommodate the **observed character sizes**, but the final UTF-8 byte size must also be checked. It does not guarantee valid mappings or the same latency.
-
-## 2. SQL-upload mapping — 3001
-
-**Setup**
-- Fresh Ft. Pitt SQL upload.
-- Six source tables and four CTEs.
-- 35 imported definitions already present before Auto-map.
-
-**Result**
-- Time: **110.3 seconds**.
-- Four inference batches failed during preparation.
-- **Zero agent calls, zero new mappings.**
-
-### Exact failure
-
-The CTE exposes:
-
-```sql
-A.SI_PORTFOLIOSYSTEMCLIENTID AS LEGACYPASID
-```
-
-But Auto-map’s generated validation query references:
-
-```sql
-cte_jimshh."LegacyPASID"
-```
-
-Snowflake treats those as different identifiers. All four batches encountered:
-
-```text
-invalid identifier 'CTE_JIMSHH."LegacyPASID"'
-```
-
-### Changes required
-
-Fix `validate_derived_output_contracts()` in:
-
-```text
-services/sttm-builder/app/core/automap_fast_context.py:64–74
-```
-
-It currently takes output display names and quotes them indiscriminately.
-
-Instead:
-- Generate references from the authoritative parsed SQL identifier or canonical `sql_name`.
-- Normalize **unquoted** identifiers correctly.
-- Preserve the exact case of genuinely **quoted** identifiers.
-- Do not simply uppercase everything or remove all quotes.
-
-Add tests covering `LegacyPASID`, `"LegacyPASID"`, and mixed-case aliases, including actual Snowflake compilation. **Increasing the message limit will not fix this failure.**
-
-## 3. Small country test — 2803
-
-This test reached the model and exposed another independent issue.
-
-**Result**
-- Time: **129.5 seconds**.
-- One accepted mapping: `OGCOUNTRYCODE ← COUNTRY_CODE`.
-- `BILLINGCOUNTRY` was proposed by the model but discarded.
-
-The model returned an object:
-
-```json
-"source_attributes": [{
-  "source_column": "COUNTRY_CODE",
-  "source_table": "...COUNTRY_CODES",
-  "sql_qualifier": "country_codes_4yn7st"
-}]
-```
-
-The application requires strings:
-
-```json
-"source_attributes": [
-  "country_codes_4yn7st.\"COUNTRY_CODE\""
-]
-```
-
-### Changes required
-
-- Include an explicit response-schema example in the prompt.
-- Require source strings copied from `selectable_sources[].source_ref`.
-- Add a bounded target-level format repair, or narrowly normalize objects only when they uniquely match an admitted source.
-- Keep source, evidence, and SQL validation mandatory afterward.
-
-The source columns and target metadata were present. No applicable learning was admitted, but **the model still identified the intended mapping**. The immediate failure was response format—not missing source evidence.
-
-## Recommended order
-
-1. **Fix CTE identifier quoting** to unblock SQL uploads.
-2. **Raise Auto-map input budgets consistently to 180k**, if that is your chosen immediate mitigation.
-3. **Make preflight measure the complete worker message**, preventing late size failures.
-4. **Fix source-reference response formatting and repair handling.**
-5. Rerun both existing test mappings and measure actual new mappings—not merely job completion.
-
-Also correct the coverage warnings: in the country test, omitted **target pages** were misleadingly described as missing source evidence.
-
-**No single change fixes all three failures: manual mapping hits size limits, SQL upload hits identifier compilation, and the small test hits response-schema validation.**
+UAT remains on `d08d748`. No v5 deployment or live rerun occurred.
