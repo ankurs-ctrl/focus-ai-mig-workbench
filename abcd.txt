@@ -1,219 +1,60 @@
-**Full Failure Explanation**
-
-The latest deployed UAT version is:
+Yes. For mapping **2803**, the specific expected positive-control mapping was:
 
 ```text
-Commit: 8bf3ed0ca5d7671c67fe1e7029763747fa87c0c7
-Image: 41018092857
+HOUSEHOLD.BILLINGCOUNTRY
+    <- COUNTRY_CODES.COUNTRY_CODE
 ```
 
-The infrastructure is operating: jobs start, Cortex Search runs, batches reach workers, permits control concurrency, and model requests are made. The failure is now at the boundary between **prepared evidence, model interpretation, and response parsing**.
+The repository’s existing Ft. Pitt mapping contract confirms this exact rule:
 
-### 1. Large Source Context Blocks Some Targets
+```python
+'BILLINGCOUNTRY': 'countries.COUNTRY_CODE'
+```
 
-The Ft. Pitt mapping uses `ACCOUNTS`, which has roughly 600 columns. Its prepared semantic context was very large:
+at `services/sttm-builder/tests/unit/core/test_cte_bindings.py:229`.
+
+`COUNTRY_ALIAS` is mainly used to match an incoming country name or alias to the reference table:
+
+```sql
+COUNTRY_CODES.COUNTRY_ALIAS = source.ADDRESS1_COUNTRY
+OR COUNTRY_CODES.COUNTRY_CODE = source.ADDRESS1_COUNTRY
+```
+
+After that lookup, the normalized output is:
 
 ```text
-Semantic context: approximately 439 KB
-ACCOUNTS column metadata: approximately 304 KB
+BILLINGCOUNTRY = COUNTRY_CODES.COUNTRY_CODE
 ```
 
-For mapping 2702, deterministic processing found:
+For mapping 2803, the archived batch containing `BILLINGCOUNTRY` included both:
 
 ```text
-27 authored definitions preserved
-10 targets still required inference
+COUNTRY_CODE: eligible=true
+COUNTRY_ALIAS: eligible=true
 ```
 
-Those ten targets required evidence whose complete dependency groups exceeded the model-message limit. The system correctly refused to truncate mandatory evidence because truncation could produce unsupported mappings.
+The model nevertheless returned a warning claiming that there were no eligible source columns.
 
-Result:
+Therefore, **zero mappings was not a completely valid result**. At minimum, this positive-control mapping should have been proposed:
+
+```sql
+COUNTRY_CODE
+```
+
+or, with the generated relation alias:
+
+```sql
+country_codes_4yn7st.COUNTRY_CODE
+```
+
+The other 36 HOUSEHOLD columns could legitimately remain unresolved because `COUNTRY_CODES` does not contain account names, addresses, owners, IDs, and so forth. But `BILLINGCOUNTRY` should not have remained unresolved in this controlled test.
+
+So the precise classification is:
 
 ```text
-27 preserved internally
-10 blocked by context size
-0 model calls
-No new mappings generated
+36 unresolved targets: probably valid
+BILLINGCOUNTRY unresolved: model/evidence-contract failure
+Entire run returning zero mappings: failed positive-control acceptance
 ```
 
-This is not a worker or timeout failure. The targets were rejected before model execution.
-
-A narrower, authoritative CTE contract could help here, but the current implementation follows CTE lineage back to `ACCOUNTS`, bringing the large parent evidence into dependency closure.
-
-### 2. The Model Misinterpreted Valid Source Evidence
-
-Mapping 2803 was created as a smaller positive control:
-
-```text
-Source: SCH_OPS.COUNTRY_CODES
-Columns: COUNTRY_CODE, COUNTRY_ALIAS
-Target: HOUSEHOLD
-Target attributes: 37
-```
-
-The exact archived model packet was inspected. It proved:
-
-```text
-COUNTRY_CODE: source_column, eligible=true
-COUNTRY_ALIAS: source_column, eligible=true
-Source graph: valid
-Driving relation: COUNTRY_CODES
-Source preparation issues: none
-```
-
-Despite this, one model response claimed that no eligible source columns were available.
-
-That statement directly contradicts the model input. Offline reconstruction and negative tests did not identify an eligibility-filtering defect in the backend. The source cards survived factoring, serialization, expansion, and transport with `eligible=true`.
-
-Therefore, the evidence supports this conclusion:
-
-> The model received valid eligible columns but did not consistently understand or use the evidence packet.
-
-The probable reason is that the same packet contains several different record kinds. Source-column records are selectable and have `eligible=true`, while owner, table, relation, and target metadata records correctly have `eligible=false`. The instructions say to use eligible `source_column` records, but the model may be interpreting the other false flags as a general statement that the source is unusable.
-
-That explanation is plausible, but it has not been proven with a controlled model experiment.
-
-### 3. Completed Model Responses Were Rejected
-
-The last 2803 run produced four model attempts:
-
-```text
-2 completed responses accepted as unresolved
-2 completed responses rejected by the terminal parser
-```
-
-The rejected responses contained:
-
-```text
-thinking
-text
-suggested_queries
-```
-
-The deployed parser accepts `thinking` and `text`, but rejects `suggested_queries` as an unknown terminal block.
-
-Therefore, two completed model responses were discarded even though the additional block was only a provider-generated suggestion list.
-
-Latest result:
-
-```text
-UI elapsed: 164.675 seconds
-Model calls: 4
-New mappings: 0
-Unresolved: 37
-```
-
-### 4. Parallelism Is Not the Current Problem
-
-UAT has:
-
-```text
-5 worker service instances
-4 shared model-call permits
-4 parallel context batches
-```
-
-This reduced orchestration bottlenecks and allowed parallel execution. But parallelism only makes model calls happen concurrently. It cannot fix:
-
-- An evidence packet that is too large.
-- A model misunderstanding valid evidence.
-- A parser rejecting a completed response.
-- A model returning unresolved instead of a mapping.
-
-The system can therefore finish near the requested time window while still producing zero useful mappings.
-
-**Fixes That Worked**
-
-The following fixes worked for their specific defects and are deployed:
-
-| Fix | Confirmed result |
-|---|---|
-| CTE, UNION, alias, and quoted-identifier parsing | Ft. Pitt SQL now imports and binds correctly |
-| Deterministic authored-rule preservation | 27 definitions were preserved without model inference |
-| Parent/worker canonical hashing | Parent and worker handoffs no longer fail due to harmless projection differences |
-| Batched archive operations | Offline SQL operations dropped from thousands to tens |
-| Per-target context preflight | One oversized target no longer fails the entire job |
-| Parent Search-counter separation | Workers no longer reject batches because of parent Search activity |
-| Character and UTF-8 byte limits | Packets must now satisfy both limits |
-| Deadline checks | Packing no longer continues indefinitely past its deadline |
-| String-warning normalization | Valid responses with plain-string warnings are no longer discarded |
-| Typed failure diagnostics | The `suggested_queries` incompatibility was precisely identified |
-| Durable permit handling | Unknown remote outcomes are not blindly retried |
-| Frontend request fencing | Stale Auto-map results cannot overwrite newer edits |
-| Manual-edit protection | Auto-map cannot silently replace unsaved user changes |
-
-These changes fixed real defects. They did not collectively establish functional acceptance because additional independent failures remained.
-
-**Fixes That Did Not Produce Results**
-
-These were technically successful but did not solve the complete outcome:
-
-- Adding workers improved concurrency but did not improve model interpretation.
-- Context factoring reduced duplication but could not fit the full `ACCOUNTS` dependency groups.
-- Per-target blocking protected the rest of the job but left oversized targets unresolved.
-- Warning normalization allowed unresolved responses through correctly, but those responses still contained no mappings.
-- Better diagnostics explained the terminal failures but did not make the deployed parser accept `suggested_queries`.
-- Preserving authored mappings prevented data loss, but did not generate new mappings.
-
-In other words, many fixes worked exactly as designed, but each removed only one failure layer. The representative end-to-end case still has no successful new mapping.
-
-**Unpublished Local Fix**
-
-There is one narrow local fix in:
-
-```text
-services/sttm-builder/app/core/automap_scan_transport.py
-services/sttm-builder/tests/unit/core/test_automap_scan_transport.py
-```
-
-It safely recognizes `suggested_queries` as inert provider metadata while preserving strict rejection of:
-
-- Tool calls.
-- Tool results.
-- Unknown blocks.
-- Malformed suggestions.
-- Suggestion-only responses with no answer.
-- In-progress or ambiguous remote outcomes.
-
-Testing completed:
-
-```text
-91 new cases passed
-598 focused tests passed
-```
-
-This local fix worked in focused tests, but it was deliberately **not committed, pushed, or deployed** after the repeated UAT deployment concern.
-
-Even if deployed, it would only prevent the two parser failures. It would not fix:
-
-- The oversized Ft. Pitt context.
-- The model claiming eligible source columns were unavailable.
-- The absence of a proven positive mapping.
-
-**Actual Remaining Root Problem**
-
-The core unresolved problem is:
-
-> Auto-map does not yet provide the model with a compact, unambiguous, production-shaped source contract that the model consistently understands and converts into accepted mappings.
-
-The most important structural correction is to treat validated CTEs or derived sources as authoritative narrow boundaries:
-
-```text
-Validated CTE outputs
-    -> compact source contract sent to the model
-    -> upstream ACCOUNTS lineage retained outside the main model packet
-```
-
-That would avoid exposing all 600 `ACCOUNTS` columns when only a small CTE projection is relevant. The model packet also needs a clearer separation between selectable source columns and nonselectable metadata so the model cannot confuse metadata-level `eligible=false` flags with source unavailability.
-
-Finally, this must be proven using one production-shaped offline fixture that demonstrates:
-
-```text
-Exact evidence survives round-trip
-At least one expected mapping is generated
-Unsupported targets remain unresolved
-Provider response variants are accepted safely
-Total execution remains within 2–3 minutes
-```
-
-That successful acceptance has not yet been achieved.
+One qualification: mapping 2803 was intentionally a **technical diagnostic identity test**, not proof that `COUNTRY_CODE` alone is sufficient for the complete real-world Ft. Pitt transformation. In the actual workflow, the country table is joined to an account-derived country value using `COUNTRY_ALIAS` or `COUNTRY_CODE`, and then its normalized `COUNTRY_CODE` is assigned to `BILLINGCOUNTRY`.
