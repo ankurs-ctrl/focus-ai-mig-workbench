@@ -1,11 +1,27 @@
-When SQL upload or a CTE has been validated, should Auto-map treat its exposed output columns as the selectable source contract and keep upstream table lineage for audit and targeted validation?
-2 of 2
+Choose **1: Yes**.
 
-1
-Yes
-Recommended
-Keeps prompts bounded while validating exact output SQL and lineage on demand.
+Once uploaded SQL or a CTE is successfully parsed and validated, Auto-map should treat the CTE’s **exposed output columns as the selectable source contract**.
 
-2
-Require full lineage
-Continues requiring every upstream column in the model message, which may block large tables.
+```text
+Model-facing contract:
+Validated CTE output columns only
+
+Retained outside the main prompt:
+Upstream tables and column lineage
+Original SQL
+Join and filter logic
+Audit provenance
+Dependency hashes
+```
+
+Upstream lineage should still be used for:
+
+- Audit and explainability.
+- Validating a selected CTE output on demand.
+- Verifying types and source provenance.
+- Recompiling the final mapping SQL.
+- Detecting stale or changed parent definitions.
+
+It should **not** require every column from a 600-column parent table in every model message. That defeats the CTE’s role as a validated abstraction and causes the current context-overflow problem.
+
+The critical restriction is that Auto-map may select only columns explicitly exposed by the CTE. If a required field is not projected by the CTE, Auto-map must either request targeted upstream evidence or leave that target unresolved. It must not silently infer from hidden parent columns.
