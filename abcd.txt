@@ -1,154 +1,39 @@
-I’ll run the remaining tests on controlled test mappings and inspect the evidence archives. I won’t deploy code, publish mappings, load target data, or repeat the known-failing upload run.The fresh manual mapping is running all 37 targets in four batches. Unlike the earlier selected-column test, this run requires evidence-block review, so it will exercise the new graph-reading path. I also reproduced the upload crash offline through production code; no fix was applied.The full manual test found another blocker: **0/37 proposals**. All four batches stopped at evidence-block review before making mapping decisions. The archived replies use the normal agent envelope (`contract_version`, `request_id`, `operation`, etc.), but the new block-review validator rejects those fields. I’ll continue the smaller scope and reevaluation tests to separate that contract failure from the mapping path.The three-target test passed scope and execution: only the checked targets received proposals, in **151.4 seconds**. The model chose direct bindings for all three, so this did not validate the transformation-specialist path. I’ll now reevaluate the existing country mapping and check that it remains unchanged until a replacement is accepted.Reevaluation exposed another UI defect: the existing country binding stayed intact, but its status changed from **Mapped to Unmapped**, reducing progress from 3/37 to 2/37. A replacement proposal was queued correctly; the completion message failed to mention it. An offline reducer probe reproduced the status downgrade.The additional live tests are complete. **They found two more defects to include in your next ZIP.** The actual uploaded-request offline replay remains incomplete; I reproduced its crash with production code and a synthetic fixture instead.
+I’ll review v9 against the deployed v8 code, verify the latest fixes, and push it to UAT if the checks pass. After CI/CD and container rollout, I’ll test full manual mapping, SQL uploads, checkbox scope, and reevaluation end to end.**V9 is extracted and reviewed, but I have not pushed it.** Two remaining issues block release.
 
-All live tests used fresh test mapping **3101**. Original mappings were not modified, no replacement was accepted, and nothing was published or loaded.
+### 1. Evidence review still rejects an actual live agent identity
 
-## 1. Full manual mapping — failed
+The existing application accepts `SOURCE_MAPPING_AGENT`, `AGT_SOURCE_MAPPING`, and `source_mapping`, but the block validator accepts only `AGT_SOURCE_MAPPING`.
 
-**37 targets, four batches, 193.9 seconds: zero proposals.**
+`services/sttm-builder/app/core/automap_evidence_blocks.py:272–274`
 
-All four batches stopped at evidence-block review:
+Independent guarded-runtime probes showed:
+- Canonical identity → block review succeeds and mapping proceeds.
+- `SOURCE_MAPPING_AGENT` → two rejected attempts, no mapping decision, unresolved result.
 
-- Eight model calls: initial review plus correction for each batch.
-- Zero successful block reviews.
-- Zero mapping-decision calls.
-- All 37 targets unresolved.
+This alias appeared in the earlier live responses. **Normalize supported aliases consistently before checking identity**, while still rejecting conflicting agents and delegation.
 
-### New defect: block-review contract conflicts with actual agent responses
+### 2. No-checkbox Auto-map still does not reevaluate all targets
 
-The actual agent returned its normal envelope:
+Although all targets appear in the request, no selection still uses `preserve_and_complete` with no reevaluation targets.
 
-```json
-{
-  "contract_version": "1.0",
-  "request_id": "...",
-  "operation": "sttm.auto_map",
-  "data": {
-    "intent": "AUTO_MAP",
-    "status": "completed",
-    "agent": "AGT_SOURCE_MAPPING",
-    "result": {"mappings": {}}
-  },
-  "meta": {"evidence_review": {}},
-  "warnings": [],
-  "error": null
-}
-```
+`frontend/src/features/sttm/store/sttm-builder-slice.ts:2455–2458`
 
-But `automap_evidence_blocks.py:192–204` rejects normal fields such as `contract_version`, `request_id`, `operation`, and `warnings`. It also requires a **root-level** `agent`, whereas the actual responses placed it under `data`.
+A 37-target probe with three existing definitions produced:
+- 34 new mappings.
+- Three retained definitions.
+- **Zero replacement proposals for the existing definitions.**
 
-Seven responses used the normal JSON envelope; one correction returned prose instead.
+The same default path can still downgrade an existing `MAPPED` row to `UNMAPPED` when a pending diagnostic arrives. Checked reevaluation correctly preserves its status.
 
-**Required fix:** reconcile the block-review protocol with the actual agent contract. Normalize only explicitly supported envelope forms, while retaining strict checks for conflicting results, delegation, failure status, block identity, and literal quotes. Do not simply remove the allowlist.
+**Fix:** no selection must request all-target reevaluation, retaining existing definitions until replacement acceptance. Do not “fix” this by certifying genuinely unproven mappings.
 
-### Additional evidence-context concern
+### Verification
 
-The reviewed block contained approximately **77,748 characters of column-elimination information from key profiling**. One response interpreted uniqueness/null-related elimination as making columns unsuitable for mapping.
+- Null-binding/CTE fix passed independent checks.
+- **2,407 backend tests passed**, with two oversized pytest display IDs shortened in memory to avoid a Windows environment-variable limit. Test inputs and assertions were unchanged.
+- All **19 frontend harnesses** and **TypeScript** passed.
+- Strict envelope, hidden-parent, evidence-ownership, and mandatory-constraint checks passed.
 
-The block packet lacked an explicit semantic path explaining what that elimination meant.
+Also give those two parametrized tests short explicit IDs so the unchanged suite runs on Windows.
 
-**Required improvement:** retain typed ownership and purpose—for example, “eliminated as a primary-key candidate,” not “unavailable for mapping.” Review why this block must gate every target before any mapping decision.
-
-Some responses also contained extra fact fields or nonliteral observations. Envelope compatibility alone may therefore not resolve every review failure.
-
-## 2. Multiple selected targets — passed scope and execution
-
-Selected:
-
-- `BILLINGCOUNTRY`
-- `BILLINGSTATE`
-- `MAIL_MERGE_FIRST_ONLY__C`
-
-**151.4 seconds, four model calls, three proposals.**
-
-Results:
-
-```text
-BILLINGCOUNTRY          ← ACCOUNTS.ADDRESS1_COUNTRY
-BILLINGSTATE            ← ACCOUNTS.ADDRESS1_STATEORPROVINCE
-MAIL_MERGE_FIRST_ONLY__C ← ACCOUNTS.SI_FIRSTNAME
-```
-
-The backend processed exactly those three targets. UI progress became **3/37**.
-
-**Limitation:** the agent chose direct mappings for all three. This did not exercise transformation-specialist SQL generation or prove business correctness.
-
-## 3. Existing-mapping reevaluation — definition preserved, status failed
-
-Reevaluated only the existing `BILLINGCOUNTRY` mapping.
-
-**103.6 seconds, one model call.**
-
-The model proposed the same source at the same 88% confidence. A replacement review was queued, and the existing field values remained unchanged.
-
-However:
-
-```text
-Before: BILLINGCOUNTRY = Mapped;   progress 3/37
-After:  BILLINGCOUNTRY = Unmapped; progress 2/37
-```
-
-No intervening edit or replacement acceptance occurred.
-
-### New defect: pending reevaluation downgrades the existing mapping
-
-The backend labels reevaluation `pending`. The frontend interprets that as `definitionPreserved=false`, then settles the original mapped row as `UNMAPPED`.
-
-Relevant locations:
-
-```text
-services/sttm-builder/app/core/auto_mapping_proxy.py:260–278
-frontend/src/features/sttm/store/sttm-builder-slice.ts:2725–2740
-frontend/src/features/sttm/store/sttm-builder-slice.ts:2548–2564
-```
-
-An independent production-reducer probe reproduced this sequence.
-
-**Required fix:** keep the existing definition’s status separate from the replacement proposal’s pending status. Requesting reevaluation must not invalidate a previously mapped definition by itself.
-
-### Related completion-message defect
-
-The UI reported:
-
-> No new mappings generated. 0 unresolved. Existing manual mappings retained.
-
-It omitted the **one queued replacement proposal**.
-
-Location:
-
-```text
-frontend/src/features/sttm/context/sttm-builder-context.tsx:1828–1835
-```
-
-**Fix:** report new mappings, replacement proposals, preserved definitions, and unresolved targets separately. Make the pending review discoverable without requiring the user to guess that it is inside the closed assistant panel.
-
-## 4. Uploaded failure — offline reproduction confirmed
-
-The previously reported crash remains:
-
-```text
-automap_admission_context.py:70
-AttributeError: 'NoneType' object has no attribute 'get'
-```
-
-Additional offline testing reproduced it through production projection with a naturally generated lineage card containing `binding: null`, rather than manually corrupting a card.
-
-- 66 binding-shape cases exercised.
-- 128 existing tests passed.
-- A temporary in-memory diagnostic guard allowed the synthetic projection to continue without making the parent selectable.
-- No source files were changed.
-
-**Limitation:** this was not a complete replay of mapping 3001’s approximately 996k-character frozen request. Consequently, later uploaded-case failures may still be hidden behind this crash.
-
-## Updated fix list for your ZIP
-
-1. Null-safe, authority-preserving handling of lineage/target bindings.
-2. Block-review envelope compatibility with actual agent responses.
-3. Preserve evidence ownership and distinguish key-profile elimination from mapping eligibility.
-4. Preserve existing mapped status while reevaluation proposals await review.
-5. Correct completion summaries and make queued replacements visible.
-6. Your requested **single Auto-map button**:
-   - None checked → all targets.
-   - Some checked → exactly those targets.
-   - Existing definitions remain protected until replacements are accepted.
-
-**All four model permits are free.** The new test mapping currently has two rows marked mapped, the country definition still present but incorrectly marked unmapped, and its replacement proposal left unaccepted.
+**UAT remains on v8: `8b3a37f`.** No deployment or additional live Auto-map run occurred for v9.
