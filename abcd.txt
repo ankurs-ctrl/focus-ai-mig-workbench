@@ -1,39 +1,357 @@
-I’ll review v9 against the deployed v8 code, verify the latest fixes, and push it to UAT if the checks pass. After CI/CD and container rollout, I’ll test full manual mapping, SQL uploads, checkbox scope, and reevaluation end to end.**V9 is extracted and reviewed, but I have not pushed it.** Two remaining issues block release.
+**The evidence graph was meant to let the agent investigate what it needs. The current implementation only partly achieves that: the backend still controls much of the investigation, repeatedly changes the available evidence, and asks the model to decide again.**
 
-### 1. Evidence review still rejects an actual live agent identity
+That is the main architectural concern. Separately, we have a confirmed result-delivery failure that adding tools will not solve.
 
-The existing application accepts `SOURCE_MAPPING_AGENT`, `AGT_SOURCE_MAPPING`, and `source_mapping`, but the block validator accepts only `AGT_SOURCE_MAPPING`.
+Below is the distinction between **proven defects**, **my assessment**, and **what needs investigation or change**.
 
-`services/sttm-builder/app/core/automap_evidence_blocks.py:272–274`
+## 1. What the live evidence proves
 
-Independent guarded-runtime probes showed:
-- Canonical identity → block review succeeds and mapping proceeds.
-- `SOURCE_MAPPING_AGENT` → two rejected attempts, no mapping decision, unresolved result.
+### A. Recovered evidence disappears while the target is still unresolved
 
-This alias appeared in the earlier live responses. **Normalize supported aliases consistently before checking identity**, while still rejecting conflicting agents and delegation.
+For `BILLINGCITY`:
 
-### 2. No-checkbox Auto-map still does not reevaluate all targets
+1. The agent proposed `ADDRESS1_CITY`.
+2. The backend rejected it because it was not admitted.
+3. The backend admitted it for the next call.
+4. That call still described admission as missing.
+5. The following context rotation removed it again.
 
-Although all targets appear in the request, no selection still uses `preserve_and_complete` with no reevaluation targets.
+This is not useful agent investigation. It is an inconsistent evidence lifecycle.
 
-`frontend/src/features/sttm/store/sttm-builder-slice.ts:2455–2458`
+Relevant code:
 
-A 37-target probe with three existing definitions produced:
-- 34 new mappings.
-- Three retained definitions.
-- **Zero replacement proposals for the existing definitions.**
+```text
+services/sttm-builder/app/core/automap_admission_context.py:178–227
+```
 
-The same default path can still downgrade an existing `MAPPED` row to `UNMAPPED` when a pending diagnostic arrives. Checked reevaluation correctly preserves its status.
+**Required change:** retain evidence needed by an active candidate until the candidate is resolved or explicitly abandoned. Update feedback to describe the current state, not repeat errors that have already been corrected.
 
-**Fix:** no selection must request all-target reevaluation, retaining existing definitions until replacement acceptance. Do not “fix” this by certifying genuinely unproven mappings.
+### B. Four parallel batches each made nine sequential calls
 
-### Verification
+The full run made:
 
-- Null-binding/CTE fix passed independent checks.
-- **2,407 backend tests passed**, with two oversized pytest display IDs shortened in memory to avoid a Windows environment-variable limit. Test inputs and assertions were unchanged.
-- All **19 frontend harnesses** and **TypeScript** passed.
-- Strict envelope, hidden-parent, evidence-ownership, and mandatory-constraint checks passed.
+```text
+32 source-mapping calls
+ 4 transformation calls
+36 total calls
+```
 
-Also give those two parametrized tests short explicit IDs so the unchanged suite runs on Windows.
+The batches were parallel, but each batch ran an eight-round source-decision chain before transformation.
 
-**UAT remains on v8: `8b3a37f`.** No deployment or additional live Auto-map run occurred for v9.
+Individual request-to-response archive intervals were approximately **17–51 seconds**, including some runtime overhead.
+
+**Required change:** make additional calls depend on a specific unresolved question and useful new information—not merely the availability of another source page.
+
+### C. Follow-ups remain unnecessarily broad
+
+Batch 0’s last three source calls concerned only `RECORDTYPEID`, yet each carried approximately **135 KB**.
+
+Those calls consumed about **96.5 seconds** in request-to-response intervals alone.
+
+**Required change:** follow-up requests should contain the affected targets, relevant evidence, necessary constraints, and prior decisions—not repeatedly send nearly the full shared context.
+
+### D. All model responses finished, but the parent waited another seven minutes
+
+The last model response was archived at:
+
+```text
+12:08:46 UTC
+```
+
+The parent ended at:
+
+```text
+12:16:09 UTC
+```
+
+One batch never became an accepted parent partial, causing nine targets to receive worker-failure outcomes.
+
+**Proven:** there was a **7m23s post-response gap**.
+
+**Not yet proven:** the exact blocking operation between specialist response, worker finalization, HTTP delivery, and parent acceptance.
+
+**Required investigation:** trace those boundaries with correlated timestamps. Do not blame the model or increase its timeout.
+
+### E. Technical acceptance does not guarantee a sensible mapping
+
+The result included:
+
+```text
+MASTER_PAYOUT_DATE__C ← OPENDEALS_DATE
+```
+
+while its own explanation said the source represented deal activity rather than payout milestones.
+
+**Required change:** an explicit semantic contradiction must result in review or unresolved status, not an unqualified successful mapping.
+
+---
+
+## 2. My assessment of the architecture
+
+### We currently have an application-controlled reasoning loop
+
+The backend substantially determines:
+
+- Initial candidate selection.
+- Which evidence is visible.
+- Evidence rotation.
+- Follow-up timing.
+- Specialist invocation.
+- Stopping conditions.
+
+The model chooses mappings and can request additional evidence through `meta.evidence_requests`, so it is **not doing nothing**. But this is an application-mediated tool protocol, and backend pagination can override the useful context it requested.
+
+**My assessment:** we have incurred the latency of repeated agent reasoning without giving the agent a sufficiently stable, effective investigation interface.
+
+### The evidence graph should be an accessible knowledge structure, not just another prompt section
+
+There are three distinct states:
+
+1. Evidence exists in the graph/archive.
+2. The agent can discover and request it.
+3. The evidence has been returned and can support the current decision.
+
+We must track those states explicitly. “Present in the graph” must not mean “already read,” and “previously returned” must not mean “safe to discard while its candidate remains active.”
+
+### More autonomy is not automatically faster
+
+A deep-agent-style workflow can also take many rounds. For Auto-map, we want **bounded investigation**, not open-ended research.
+
+The agent should have enough initial context to make straightforward mappings immediately and use tools only for genuine gaps.
+
+---
+
+## 3. Recommended responsibility split
+
+**The agent decides what to investigate and what mapping the evidence supports. The backend enforces access, identity, validity, and preservation.**
+
+### Agent responsibilities
+
+- Identify plausible source candidates.
+- Determine which evidence is missing.
+- Request relevant columns, relationships, precedents, or business rules.
+- Compare alternatives.
+- Decide whether a transformation is needed.
+- Explain uncertainty.
+- Distinguish “need more evidence” from “need a business decision.”
+- Submit completed proposals incrementally.
+
+### Backend responsibilities
+
+- Enforce target scope and authorized sources.
+- Resolve exact table, alias, column, and CTE identities.
+- Execute bounded read-only evidence operations.
+- Preserve evidence provenance.
+- Validate expressions and project Values.
+- Protect authored mappings and newer edits.
+- Enforce call/time budgets and uncertain-request safety.
+- Persist and deliver completed results reliably.
+
+**Keep deterministic safeguards. Remove deterministic control that unnecessarily dictates the agent’s search strategy.**
+
+---
+
+## 4. What the agent should be able to request
+
+These are proposed capabilities, not claims that native tools are already configured.
+
+### Search candidate bindings
+
+Example:
+
+```text
+Find possible sources for household billing city within this mapping’s source graph.
+```
+
+Return stable binding IDs, brief semantics, and evidence references—not an enormous catalog.
+
+### Read evidence in batches
+
+Example:
+
+```text
+Read the semantics and constraints for these six candidate bindings.
+```
+
+Return exact, bounded evidence with provenance. Fetch multiple independent items in one tool operation where practical.
+
+### Inspect relationships and CTE outputs
+
+Example:
+
+```text
+How is COUNTRY_CODES connected to the driving source?
+Which outputs does JimsHH expose?
+```
+
+Keep graph navigation separate from permission to select hidden parent columns.
+
+### Retrieve applicable precedents and project rules
+
+The agent should be able to ask whether an existing approved rule resolves a business ambiguity, rather than repeatedly guessing from names.
+
+### Validate a candidate
+
+Example:
+
+```text
+Validate this expression against the current source graph and project Values.
+```
+
+Return structured feedback distinguishing unknown bindings, missing evidence, invalid SQL, and missing configuration.
+
+### Submit decisions
+
+Support per-target outcomes:
+
+```text
+Proposed mapping
+Needs additional evidence
+Needs business input
+No supported candidate within examined scope
+```
+
+Validated completed targets should not wait for unrelated targets to finish.
+
+### Integration decision still required
+
+Before implementing, verify how the chosen Cortex Agent interface supports the required tools and continuation behavior.
+
+Then choose deliberately between:
+
+- Native agent tool invocation, where supported and suitable.
+- A well-defined application-mediated tool loop.
+
+**Do not build a second competing loop where native tool behavior and backend pagination both decide what happens next.**
+
+---
+
+## 5. How the normal fast path should work
+
+```text
+Freeze mapping inputs and selected target scope
+        ↓
+Prepare a compact, relevant initial evidence packet
+        ↓
+Run target batches concurrently
+        ↓
+Agent returns straightforward mappings
+and requests specific missing evidence
+        ↓
+Execute requested reads in bounded batches
+        ↓
+Agent resolves only affected targets
+        ↓
+Validate and persist completed proposals incrementally
+        ↓
+Generate/validate transformations only where needed
+        ↓
+UI shows results as they become available
+```
+
+The initial packet should include:
+
+- Target meanings.
+- Current selected sources and exposed CTE outputs.
+- Relevant candidate bindings.
+- Essential join/population constraints.
+- Existing definitions.
+- Applicable project Values and rules.
+- An index describing additional available evidence.
+
+**The goal should be one source-decision pass for straightforward targets, with limited targeted follow-ups—not eight rounds as normal behavior.** That is a design objective, not a guarantee that every mapping can be solved in one call.
+
+---
+
+## 6. Changes I would prioritize
+
+### Priority 1 — Repair evidence-state consistency
+
+- Separate durable candidate dependencies from replaceable exploratory evidence.
+- Keep recovered bindings while their target remains active.
+- Clear resolved validation deficits.
+- Record exactly what new information each continuation obtained.
+- Stop repeated requests that produce no useful progress.
+
+This is necessary whether we retain the current loop or move to native tools.
+
+### Priority 2 — Find and fix the post-response gap
+
+Instrument:
+
+```text
+Provider response received
+Response archived
+Specialist parsing complete
+Rule validation complete
+Worker response ready
+Worker response delivered
+Parent response received
+Partial result persisted
+UI result applied
+```
+
+Persist validated target checkpoints with the existing scope/revision guarantees. A failed transformation must not hide unrelated completed direct mappings.
+
+### Priority 3 — Make agent-driven evidence requests the primary continuation mechanism
+
+- Let the agent request relevant evidence.
+- Execute only verified, scoped requests.
+- Preserve the resulting evidence state.
+- Avoid automatically walking weakly ranked pages after every unresolved answer.
+- Batch independent evidence reads.
+
+### Priority 4 — Distinguish technical and business blockers
+
+Do not repeatedly query the model for an unchanged missing project Value or business rule.
+
+Do not accept a mapping merely because its source exists and its SQL compiles.
+
+### Priority 5 — Fix uploaded target identity consistently
+
+The uploaded `BillingCity` selection failed before job submission because frontend scope matching used exact strings against catalog names such as `BILLINGCITY`.
+
+Use a canonical target binding consistently through selection, request scope, baseline preservation, response application, and counts. Preserve quoted-identifier distinctions; do not blindly uppercase everything.
+
+---
+
+## 7. What still needs investigation
+
+These questions are not yet answered conclusively:
+
+1. **Where did batch 2 stop after its final archived response?**
+2. **How much of the pre-model delay is semantic preparation, session acquisition, persistence, or frontend work?**
+3. **Which continuations were explicitly requested by the model versus initiated by automatic pagination?**
+4. **Which evidence operations can run together rather than sequentially?**
+5. **What tool/response contract best fits the actual deployed agent configuration?**
+6. **Which earlier approximately two-minute run provides a fair full-workload baseline?**
+
+I accept your observation that earlier Auto-map completed around two minutes. The runs we measured here near that duration were small scoped tests. We should identify the earlier full-run job and compare the same source graph, target scope, preserved definitions, model configuration, and mapping quality before claiming a precise regression factor.
+
+---
+
+## 8. Acceptance criteria for the next implementation
+
+Use the same representative workloads to compare the current and revised approach:
+
+- Full manual 37-target mapping.
+- SQL-upload mapping with authored CTEs.
+- One and several checked targets.
+- No selection, including existing definitions.
+- Reevaluation without overwriting saved work.
+- A genuine transformation requiring specialist execution.
+- Missing business input.
+- Evidence retrieval failure and late responses.
+
+Measure separately:
+
+- Preparation time.
+- Agent/tool round count.
+- Evidence-fetch time.
+- Provider/runtime time.
+- Validation and persistence.
+- Time to first useful result.
+- Time to terminal UI result.
+- Correct proposals, review-only proposals, and unresolved reasons.
+
+**The graph should help the agent obtain evidence—not force it through a backend-controlled guessing cycle. But the next iteration must also fix evidence retention and result delivery; introducing tools alone will not resolve either proven defect.**
