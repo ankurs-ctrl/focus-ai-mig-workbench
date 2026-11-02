@@ -1,486 +1,216 @@
+**Yes—the code fixes should be separated from environment setup and installing/configuring agents.** Below is the **code-only scope for the next ZIP**, based on the reviewed v11 code and the SQL-upload investigation.
 
-*Summarized conversation*
-I’ll run A, B, and C as read-only investigations against the deployed v10 code and Snowflake records. I’ll separate verified findings from decisions only you can make; I won’t change code, deploy, or trigger Auto-map.
-The three inspections are independent, so I’ll run them in parallel. I’ll also check what the repository and account can establish about approved mappings and a dev environment.
-The inspections confirm two separate problems: neither deployed agent has native tools registered, and late one-target calls still carry almost all the earlier context. The delivery evidence also narrows the gap: the dispatcher kept its lease, and a worker HTTP 200 appears shortly after the missing batch’s final response archive—but that log line lacks the batch ID, so it does not prove the parent received the result.
+Updating environment variables or agent definitions will **not** fix these application defects.
 
+# A. Auto-map code fixes
 
-**One active target still receives nearly the full packet**
+## 1. Reconcile checkpoints with successful worker results
 
-| Message | Bytes |
-| :--- | ---: |
-| Batch 0 initial: 10 targets | 152677 |
-| Round 6: 1 target | 134872 |
-| Round 7: 1 target | 134913 |
-| Round 8: 1 target | 134860 |
+**File:** `services/sttm-builder/app/core/automap_native_delivery.py:147–161`
 
-## Result
+**Current defect:** Any cached checkpoint overrides the worker response. An older `1/2` checkpoint replaces a successful `2/2` result.
 
-Completed **A, B, and C read-only** against v10 revision `8a2783f1960507011873d0e8176863523ad3dace`, deployed agent definitions, and historical Snowflake records.
+**Code correction:**
+- Reconcile results per target.
+- Preserve compatible validated checkpoints when worker delivery fails.
+- Include newer validated worker results when delivery succeeds.
+- Check job, generation, target, and input revision before merging.
+- Do not silently overwrite conflicting same-revision results.
 
-**No code changes, deployments, model calls, Auto-map runs, or job resumptions.**
-
-The strongest findings are:
-
-- **Neither deployed agent has native tools registered.** Moreover, the current fast-path client rejects native tool-response blocks.
-- **One-target follow-ups retain nearly the entire earlier context:** 57 of 58 exact-read entries remain unchanged.
-- **The missing batch’s model response completed, and its permit was released successfully.** The dispatcher remained healthy. A subsequent worker HTTP 200 likely belongs to that batch, but insufficient correlation prevents identifying the exact delivery failure.
+**Required regression:** Checkpoint `1/2` → worker success `2/2` → final result must contain `2/2`.
 
 ---
 
-## Answers to the five questions
+## 2. Preserve completed checkpoints when the parent deadline expires
 
-### 1. Ground truth and business judge
+**File:** `services/sttm-builder/app/core/auto_mapping_proxy.py:1967–1998`
 
-**Saved/manual-accepted mappings exist. A business-approved gold set is not established.**
+**Current defect:** A recovered mapping can reach the progress callback before the deadline, then be discarded during terminal assembly.
 
-In `SCH_STTM_METADATA.TBL_WORKBENCH_FIR_EVENTS`, I found:
+**Code correction:**
+- Distinguish **new late results** from **finalizing already-accepted results**.
+- Preserve eligible checkpoints at the deadline.
+- Mark only unfinished targets as `not_completed` or equivalent.
+- Keep generation/revision fencing and rejection of genuinely late writes.
 
-- 119 `mapping.accepted` events.
-- 33 `mapping.corrected`.
-- 9 `mapping.compiler_validated`.
-- 17 `sttm.published`.
+**Required regression:** A mapping recovered before the deadline remains mapped in the terminal partial result; a new result arriving after cutoff cannot overwrite it.
 
-However, **“accepted” means an explicitly saved manual mapping change**, not an independent business sign-off.
-
-Potential reference sets:
-
-| Mapping | Project | Evidence | Limitation |
-|---|---:|---|---|
-| HOUSEHOLD `2001` | 301 | 37/37 rows marked MAPPED | Acceptance events cover only one distinct target |
-| HOUSEHOLD `2002` | 302 | 37/37 rows marked MAPPED | No acceptance events found |
-| `2105` | 301 | 9/9 MAPPED; nine distinct accepted target columns | Still needs business endorsement |
-
-I could not identify an authorized business judge. Recorded user IDs establish who performed actions—not who can certify correctness.
-
-Source: `services/sttm-builder/app/core/learning_evidence.py:120–156`.
-
-### 2. Deadline and acceptable performance
-
-Your established requirement is **useful, defensible full-run results in approximately 2–3 minutes**.
-
-You have **not** agreed to six minutes or 80% resolution. No client delivery date or precise acceptable partial-result percentage has been supplied. Those remain business decisions; I have not substituted new targets.
-
-### 3. Alternative project and DEV environment
-
-**Project 801, “Test 1,” references the same seven distinct source FQNs as project 501.** Projects 1, 301, and 302 include those sources plus others.
-
-That does not establish equivalent filters, populations, snapshots, or authorization to use those projects for testing.
-
-DEV configuration exists, but points to a **different Snowflake account**:
-
-```text
-Account:    MHSUEJT.GD01711
-Database:   FFP_HDP_DLAB_DB_DEV
-Connection: client-spcsv1
-```
-
-References:
-
-- `infra/snowflake/env/parallel.dev.json:2–8`
-- `buildspecs/deploy-dev.yml:12–16`
-
-The inspected GitHub deployment workflow is UAT-specific. The current connection exposed no matching DEV databases, services, or compute pools; that does **not** prove absence in the separate DEV account.
-
-**DEV readiness and authorization were not verified.** Existing UAT authorization should not be treated as authorization to deploy elsewhere.
-
-### 4. Failed-run records
-
-**Yes.** I obtained the job state, archives, final permit/fencing records, historical service logs, query history, and Time Travel snapshots of dispatcher leases.
-
-They narrow the gap substantially, but do not identify its precise cause. Details follow in B.
-
-### 5. Required provider
-
-I found **no verified organizational requirement to remain on Cortex Agents**, nor permission to send data to an alternative provider.
-
-That remains a policy decision. Technically, **Snowflake already documents native custom tools**, so lack of platform capability is not presently a demonstrated reason to replace it.
+**Do not remove the deadline guard globally.**
 
 ---
 
-## A. Agent capabilities
+## 3. Correct native response completion classification
 
-### Actual deployed configuration
+**File:** `services/sttm-builder/app/core/automap_native_transport.py:79–95`
 
-Both agents are located in:
+**Current defect:** Missing status can be treated as completed. Invalid native tool content then raises a terminal exception, causing an uncertain call’s permit to be released.
 
-```text
-FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA
-```
+**Code correction:**
+- Separate **remote completion classification** from **content validation**.
+- Establish completion using the supported provider response contract.
+- Treat malformed/nonterminal/uncertain responses as uncertain, not automatically terminal.
+- Keep uncertain calls protected until reconciliation.
+- Do not replay ambiguous POSTs automatically.
 
-Not `SCH_STTM_MCP`.
-
-| Setting | `AGT_SOURCE_MAPPING` | `AGT_TRANSFORMATION_RULE` |
-|---|---|---|
-| Model | `claude-haiku-4-5` | `auto` |
-| Orchestration budget | 200 seconds | 75 seconds |
-| Orchestration token budget | 16,000 | 4,500 |
-| Registered native tools | **None** | **None** |
-| `tool_resources` | **Absent** | **Absent** |
-
-Live and default committed specifications matched. `auto` does not identify the model selected for a particular transformation call.
-
-The source agent’s instructions explicitly describe its tools as **“APPLICATION-HANDLED delegations, not registered Snowflake tools.”**
-
-Names such as `ReadAutoMapContext`, `SearchMappingEvidence`, and `ReadMappingEvidence` are therefore instructions for returning JSON to the application—not native registered tools.
-
-### How our client calls them
-
-Source mapping and transformation use stored-agent endpoints:
-
-```text
-POST /api/v2/databases/<DB>/schemas/SCH_STTM_METADATA/agents/<AGENT>:run
-```
-
-For fast Auto-map:
-
-- `stream: false`.
-- A fresh recovery thread is created for each operation.
-- Every model call uses `parent_message_id: 0`.
-- Later rounds do **not** continue from the previous assistant message.
-- Evidence requests are processed by the backend, which builds another request.
-
-**Most consequential compatibility finding:** the fast transport rejects native `tool_use` and `tool_result` response blocks.
-
-Consequently, **adding tools to the agent specification alone is not a safe implementation**. The client must first support the resulting responses and recovery semantics.
-
-Relevant v10 code:
-
-- `services/sttm-builder/app/core/snowflake_agent.py:183–239`
-- `services/sttm-builder/app/core/automap_scan_transport.py:596–710`
-- `services/sttm-builder/app/core/automap_scan_transport.py:815–842`
-- `services/sttm-builder/app/core/automap_batch.py:666–714`
-
-### Platform support versus what we verified
-
-| Capability | Finding |
-|---|---|
-| Procedure/UDF custom tools | **Documented support**, using generic tool specifications and resources |
-| Inline per-request `tools` / `tool_resources` | **Documented support** on `/api/v2/cortex/agent:run` |
-| Resource overrides on stored-agent runs | **Not established** by the inspected documentation; do not assume |
-| Thread continuation | Documented through `thread_id` and previous assistant `parent_message_id` |
-| Tool-event streaming | Documented, including `response.tool_use`, `response.tool_result`, and status events |
-| These capabilities working through our application | **Not live-tested**; current fast client has explicit incompatibilities |
-
-The repository already has an objectless, inline-config path for **CHAT-only request-scoped Analyst**, but it is feature-gated and does not activate for Auto-map or transformation.
-
-Source: `services/sttm-builder/app/core/sttm_builder.py:4539–4573`.
-
-### Limits and rights
-
-**Do not combine these different limits:**
-
-- Deployed orchestration budgets: **200/75 seconds**.
-- Current documented synchronous Agent REST request timeout: **15 minutes**.
-- Documented background request timeout: **6 hours**, requiring threads; our callers do not enable it.
-- Tool query execution has a separate `execution_environment.query_timeout`.
-- Our fast transport has a **120,000-byte response cap**.
-- I could not verify a universal native custom-tool response-size ceiling or maximum execution timeout.
-
-The **250 KB** generic-tool result limit documented for Snowflake-managed **MCP** must not be presented as a native Agent limit.
-
-For procedure tools:
-
-- `EXECUTE AS CALLER` uses caller privileges.
-- `EXECUTE AS OWNER` uses the procedure owner’s privileges, subject to Snowflake restrictions.
-- Agent ownership does not automatically confer its owner’s rights on every tool.
-
-Existing `SP_SUBAGT_SOURCE_MAPPING` and `SP_SUBAGT_TRANSFORMATION_RULE` wrappers are `EXECUTE AS CALLER`, but they are not registered tools on these agents and were not found in the inspected application call path.
-
-Documentation:
-
-- [Create and manage Cortex Agents](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-manage)
-- [Agent Run API](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-run)
-- [Agent access control](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-setup)
-- [Procedure caller’s and owner’s rights](https://docs.snowflake.com/en/developer-guide/stored-procedure/stored-procedures-rights)
-
-**Conclusion A:** Native tools are a viable documented direction, but the prove-out must include **transport and continuation changes**, not merely agent configuration.
+**Required regressions:** Statusless/unpaired tool response, explicit nonterminal response, truncated response, confirmed terminal failure, and confirmed terminal success with invalid content. Assert permit state as well as returned errors.
 
 ---
 
-## B. Delivery gap
+## 4. Validate Analyst completion before releasing its permit
 
-### Verified job and deadline
+**File:** `services/sttm-builder/app/core/automap_native_ports.py:632–656`
 
-```text
-Job:     1353d267-afd1-51d6-983b-0a919e6e19ef
-Mapping: 3102
-Date:    2026-11-01
-Times:   UTC
-```
+**Current defect:** The code sets `terminal=True` and calls `pool.finish()` before checking the response envelope. An `in_progress` response releases capacity prematurely.
 
-- Backend acceptance: **12:01:09.284856**
-- Deadline: **12:16:09.284856**
-- Terminal row timestamp: **12:16:09.490**
+**Code correction:**
+- Classify remote completion before deciding whether to release the permit.
+- Keep uncertain/nonterminal outcomes protected.
+- Perform SQL/content validation separately after completion classification.
+- Avoid requiring fields that the supported Analyst contract does not provide.
 
-The deadline is exactly **900 seconds after acceptance**.
-
-### Per-batch timeline
-
-Every batch made **eight source calls plus one transformation call**. All 36 model exchanges have archived responses.
-
-| Batch | First request archive | Final response archive | Worker HTTP 200 candidate* | Accepted parent partial |
-|---|---|---|---|---|
-| 0 | 12:02:57.427 | 12:08:28.013 | 12:08:30.339 | 12:08:30.446 |
-| 1 | 12:02:44.491 | 12:08:37.482 | 12:08:39.528 | 12:08:39.643 |
-| **2** | 12:02:57.106 | **12:08:46.117** | **12:08:48.768** | **Never** |
-| 3 | 12:02:56.807 | 12:08:15.293 | 12:08:17.536 | 12:08:17.650 |
-
-\* Worker access logs lack request/batch IDs. Attribution is based on timing and worker instance, not exact identifiers.
-
-The batches ran concurrently, but each had a **sequential nine-call chain**. Individual archive request-to-response intervals were approximately **17–51 seconds**; these intervals include transport/admission/archive overhead.
-
-### Last directly correlated batch-2 events
-
-1. **12:08:44.001:** final model-call permit becomes `FREE / SUCCEEDED`; fence advances to **112**.
-2. **12:08:46.117:** final transformation response archived.
-3. Transport diagnostics record HTTP 200, completed response parsing, and one POST attempt.
-
-That transport parsing is **not** the same as application-level rule validation or final worker-response acceptance.
-
-Closely associated query history then shows:
-
-- Archive INSERT finishes **12:08:46.905**.
-- COMMIT finishes **12:08:47.692**.
-- Archive readback finishes **12:08:48.314**.
-- Worker instance 2 logs `/invoke` HTTP 200 at **12:08:48.768**.
-
-**The HTTP 200 likely belongs to batch 2, but does not prove the parent received its complete body.**
-
-### What is and is not recorded
-
-| Stage | Batch-2 evidence |
-|---|---|
-| Provider response parsed | Confirmed by transport diagnostics |
-| Model response archived | Confirmed |
-| Application envelope parsed | No correlated completion event |
-| Final rules validated | No correlated completion event |
-| Local SQL compiled | No correlated completion event |
-| Worker final result durably saved | No separate worker-result checkpoint on this route |
-| HTTP response sent | Likely access-log match; no batch ID |
-| Parent body received/parsed | Unknown |
-| Parent response validated | Unknown |
-| Parent partial accepted | Absent |
-
-The parent uses a **synchronous worker POST**, not a worker-job polling queue. Its HTTP receive, JSON parsing, and response validation happen before it records the partial.
-
-Also, relevant SQL compilation is **local**, with `session=None` and `validate_with_explain=False`; absence of long Snowflake queries cannot exclude local compiler work.
-
-References:
-
-- `services/sttm-builder/app/core/automap_fast_transport.py:214–236`
-- `services/sttm-builder/app/core/automap_specialist.py:44–69`
-- `services/sttm-builder/app/core/auto_mapping_proxy.py:3038–3069`
-- `services/sttm-builder/app/core/sttm_builder.py:1593–1607`
-
-### Lease and fencing evidence
-
-Time Travel confirms:
-
-- The **same dispatcher owner** remained active.
-- Attempt count stayed **1**.
-- Three partials remained retained.
-- Lease renewals continued through **12:15:52.997**.
-- The last observed expiry extended to **12:19:22.997**.
-- No `rejected_partial_receipts` record was found.
-
-The final batch-2 model permit was released successfully, not stranded in quarantine.
-
-Therefore, **dispatcher takeover, dispatcher lease expiry, and final model-call quarantine are not supported explanations for this gap.**
-
-### Timeout and retry inventory
-
-| Control | Value or behavior |
-|---|---|
-| Parent accepted-job deadline | **900 seconds** |
-| Worker HTTP timeout | **840 seconds deployed**, clamped to remaining deadline |
-| Dispatcher lease / heartbeat | **210 / 70 seconds** |
-| Model permit lease / heartbeat | **120 / 40 seconds** |
-| Fast model finalization reserve | **20 seconds** |
-| Additional specialist cutoff | **5 seconds before parent deadline** |
-| Admission statement / lock timeout | **5 / 1 seconds** |
-| Archive statement / lock timeout | **1–5 / 1 seconds**, deadline-bounded |
-| Session/write-capacity waits | **5 seconds each** |
-| Snowflake statement limits | Control **60**, agent **300**, execution **900**, Auto-map **600** seconds |
-| Generic agent HTTP timeout | **240 seconds default**; fast transport instead uses remaining deadline |
-| Generic agent retries | **3 attempts / 1-second backoff**; bypassed by fast transport |
-| Worker POST retries | Setting is 2; **fast path forces one attempt** |
-| Source continuation | **8 decision rounds**; effective configured call ceiling **32** |
-| Source parse repair | Initial attempt plus **one repair** |
-| Specialist rule repair | Initial attempt plus **one repair** |
-| Evidence-block review | **Two attempts**, sharing overall budget |
-| Admission contention backoff | **0.25–2 seconds**, jittered and deadline-bounded |
-| Session connection retries | **Two attempts / 1-second backoff** |
-| Acceptance lock | **20 seconds** |
-| Dispatcher shutdown join | **5 seconds** |
-| Permit shutdown join | **40 seconds** |
-| Connection age / idle age | **120 / 30 seconds**; not active-request cancellation |
-| HTTP idle keepalive expiry | **60 seconds** |
-| Session cache / memory job retention | **3,600 seconds each** |
-| Durable job retention | **Seven days** |
-| Quarantine expiration | **None**; expiry alone cannot release it |
-| Operator reconciliation deadline | At most **60 seconds**; not invoked |
-| Browser watchdog | **20 minutes** |
-| Browser poll interval | **2.5 seconds**, then **1.5 seconds** after partials |
-| Browser transient retries | Eight failures; backoff capped at **15 seconds** |
-| Nginx read/send timeout | **3,600 seconds** on the inspected route |
-
-Principal sources:
-
-- `services/sttm-builder/app/core/auto_mapping_proxy.py:47–52`, `:1935–1966`, `:2972`, `:3101–3108`
-- `services/sttm-builder/app/core/automap_admission.py:230–252`, `:389–406`, `:505–570`
-- `services/sttm-builder/app/core/automap_runtime.py:264–272`
-- `frontend/src/features/sttm/store/sttm-builder-slice.ts:3512–3554`
-
-**No relevant 443-second constant was found.**
-
-```text
-12:16:09.490 − 12:08:46.117 = 443.373 seconds
-```
-
-**Conclusion B:** The 900-second parent deadline explains **when waiting stopped**, not why the batch result remained unavailable. The unresolved boundary is post-archive processing and worker-to-parent delivery/acceptance.
+**Required regression:** `in_progress` must not free the permit; a confirmed completed response containing invalid SQL should fail validation without being misclassified as a still-running call.
 
 ---
 
-## C. Packet-size breakdown
+# B. SQL-upload code fixes
 
-### Measurement definitions
+## 5. Support multiple relation instances of the same physical table
 
-These are actual UTF-8 bytes, not estimated tokens:
+**Files:**
+- `frontend/src/features/sttm/mapping/sql-upload-workspace.ts:114`
+- `frontend/src/features/sttm/mapping/mapping-utils.ts:100–105`
+- Backend scope contract: `services/sttm-builder/app/core/query_scope_contract.py:155–190`
 
-- **Packet:** JSON text inside the first message content block.
-- **Message:** the archived serialized message, including escaping and the second instruction block.
-- Not the complete HTTP request or provider-internal prompt.
+**Current defect:** The backend preserves separate aliases, but the editable graph uses physical-table identity and cannot represent:
 
-Shared dictionaries were counted **once**, not charged repeatedly to every reference. Section totals reconcile exactly to the packet size.
-
-### Initial versus follow-up sizes
-
-| Message | Active targets | Packet bytes | Message bytes |
-|---|---:|---:|---:|
-| Batch 0 initial | 10 | 137,445 | 152,677 |
-| Batch 1 initial | 9 | 135,397 | 150,373 |
-| Batch 2 initial | 9 | 131,960 | 146,612 |
-| Batch 3 initial | 9 | 136,707 | 151,803 |
-| Batch 0 round 6 | 1 | 121,276 | 134,872 |
-| Batch 0 round 7 | 1 | 121,319 | 134,913 |
-| Batch 0 round 8 | 1 | 121,264 | 134,860 |
-
-Going from **ten active targets to one reduces the message by only about 11.7%**.
-
-### Reconciled breakdown: batch 0
-
-| Category | Initial packet | Round 6: one target |
-|---|---:|---:|
-| Targets | 6,002 | 3,419 |
-| Sources/inventory | 32,865 | 30,421 |
-| Profiling/PK diagnostics | 7,275 | 7,345 |
-| Join/graph/SQL context | 13,625 | 13,581 |
-| Learnings | 1,111 | 1,111 |
-| Exact-read results | 19,852 | 16,800 |
-| Response-schema examples | 774 | 774 |
-| Feedback/warnings | 1,040 | 1,158 |
-| Shared dictionary content | 25,947 | 20,966 |
-| Workspace/protocol structure | 25,184 | 22,199 |
-| Encoding/root framing | 3,770 | 3,502 |
-| **Total packet** | **137,445** | **121,276** |
-
-“Shared dictionary” contains values referenced across categories. Thus the exclusive learning row is **not** a claim that all logically expanded learning content totals only 1,111 bytes.
-
-Round 6’s message reconciliation:
-
-```text
-Packet JSON                           121,276
-Escaping inside message text           11,780
-Second instruction block and framing    1,816
-                                      -------
-Archived message                      134,872
+```sql
+COUNTRY_CODES ccMail
+COUNTRY_CODES ccOther
+STATE_CODES scMail
+STATE_CODES scOther
 ```
 
-### What repeats unchanged
+That causes your Apply Preview error.
 
-Across rounds 6–8:
+**Code correction:**
+- Keep physical-table identity separate from query-scoped relation-instance identity.
+- Use instance IDs for graph nodes, joins, source bindings, and expression references.
+- Carry those identities through Apply, save, reopen, compilation, and Auto-map.
+- Preserve original aliases, predicates, CTE boundaries, and population logic.
 
-- All **11 global records**.
-- The full **631-binding source inventory**.
-- All **30 warnings**.
-- **57 of 58 exact-read entries**.
-- Response examples and instruction text.
-- The singleton active target, `RECORDTYPEID`.
+**Required regression:** Upload the exact Contacts file and preserve both country joins and both state joins through Apply → save → reopen → compile.
 
-Resolved-content hashes were checked, so dictionary-reference renumbering was not mistaken for meaningful change.
-
-The one changing exact-read entry concerns:
-
-- Round 6: `FP_STATEMENTDELIVERYMETHOD`
-- Round 7: `SI_INITIALCONSULTANT2_LOOKUPLOGICALNAME`
-- Round 8: `FP_POTENTIALFORNEWFUNDS`
-
-These reads do not themselves establish the required Salesforce `RECORDTYPEID`.
-
-### What remains outside the active target
-
-Although only `RECORDTYPEID` is active, the packet retains:
-
-- Ten target-column records.
-- Ten original-batch workspace mapping rows.
-- PK elimination entries covering all 37 targets.
-- All six source owners and the shared graph.
-- The complete source inventory.
-
-The nine nonactive target-record shells alone occupy **2,042 packet bytes**, excluding referenced dictionary content.
-
-This proves over-retention, but **not that all shared context can safely be removed**. Scope, joins, constraints, and preservation information can remain relevant across targets.
-
-### SQL and the historical 77 KB block
-
-For this particular full run:
-
-- Actual SQL strings total only **3,966 raw bytes**.
-- `validated_derived_contracts` is empty.
-- No evidence-block review calls occurred.
-
-Therefore, replacing the previously observed **77 KB key-candidate block** would not by itself explain or fix this run’s ~135 KB follow-ups. Here, retained inventory, workspace structure, shared dictionaries, and prior reads dominate.
-
-### Evidence correctness issue confirmed alongside size
-
-In round 2:
-
-- `ADDRESS1_CITY` and `ADDRESS1_POSTALCODE` are admitted.
-- Feedback still says those bindings need admission.
-
-In round 3, those admitted bindings disappear again.
-
-Code matches the observation:
-
-- Recovery adds candidate dependencies to pins.
-- Subsequent paging replaces the optional pin set.
-- Feedback can reuse the pre-recovery deficit.
-
-References:
-
-- `services/sttm-builder/app/core/automap_admission_context.py:178–227`
-- `services/sttm-builder/app/core/automap_batch.py:913–950`
-- `services/sttm-builder/app/core/automap_fast_context.py:641–701`
-
-**Conclusion C:** The graph stores evidence, but active candidate evidence is not retained reliably, and follow-ups are not genuinely target-focused.
+**Do not fix this by removing the guard or deduplicating the joins.**
 
 ---
 
-## Implications for the proposed plan
+## 6. Make catalog verification resumable instead of repeatedly checking the first eight sources
 
-The phase order is reasonable, with these corrections:
+**Files:**
+- `services/sttm-builder/app/core/upload_reference_status.py:14–47`
+- `services/sttm-builder/app/routers/upload.py:418–454`
+- `services/sttm-builder/app/routers/upload.py:595–624`
 
-1. **Keep Phase 1 and Phase 2 independent of native-agent changes.** The evidence retention, stale feedback, target identity, and result-delivery problems are already established.
+**Current defect:** The shared eight-call budget cannot verify eleven sources plus semantics. Background processing restarts the same pass, leaving later sources unchecked.
 
-2. **Checkpoint validated target results—not raw model responses.** Include tenant/project authorization, run generation, input revision, and fencing. The UI should consume an authorized backend API, not directly query the checkpoint table.
+**Code correction:**
+- Retain completed checks.
+- Track pending references and resume them on subsequent passes.
+- Use bounded bulk metadata retrieval where appropriate.
+- Separate catalog existence from semantic availability.
+- Return explicit pending/failed verification states; never convert exhaustion into missing.
+- Ensure background readiness reflects required verification, not merely the existence of stored reference rows.
 
-3. **Do not treat checkpoints alone as the delivery-gap diagnosis.** Add correlated timestamps around worker response construction/send and parent body receipt/parse/validation. Those are the missing observations.
+**Required regression:** With all eleven Contacts sources available, every source eventually becomes verified. One slow source must not starve the rest.
 
-4. **Delta context needs retained conversational state or a compact self-contained context.** Today every call starts at thread root. Simply omitting previously sent evidence would make it unavailable to the next call.
+**Simply increasing the limit from eight to eleven is not a general fix.**
 
-5. **Native-tool prove-out is technically justified, but transport compatibility is a prerequisite.** The current client rejects the very tool blocks the proposed architecture would produce.
+---
 
-6. **Do not benchmark accuracy against `MAPPED` status alone.** Start with candidate reference mappings, obtain business sign-off, then evaluate semantic correctness and preservation separately from compiler acceptance.
+## 7. Remove excessive sequential learning preparation from the foreground upload request
 
-The remaining user-only decisions are the **business approver/gold set, client deadline and acceptance thresholds, authorized DEV environment, and provider policy**. Everything above is investigation evidence—not authorization or a claim that the fixes have been implemented.
+**Files:**
+- `services/sttm-builder/app/routers/upload.py:978–1028`
+- `services/sttm-builder/app/core/target_mapping_patterns.py:1032`
+
+**Current defect:** The upload waits for pattern persistence and learning-work-item creation before returning. The fresh test performed **53 work-item MERGEs**, consuming approximately **31.6 seconds** of SQL time.
+
+A historical work-item MERGE also spent **59.7 seconds transaction-blocked** before timing out.
+
+**Code correction:**
+- Batch metadata writes instead of executing one MERGE per work item where practical.
+- Keep foreground transactions short.
+- Durably accept the upload and record pending work before returning.
+- Move lengthy learning preparation to recoverable background processing.
+- Avoid concurrent duplicate processing of the same logical upload.
+- Add correlated phase timings to distinguish connection, persistence, lock wait, commit, and response time.
+
+**Required regressions:** Single upload, concurrent same-file uploads, background failure, and restart after durable acceptance. Verify no queued work is lost.
+
+**Do not solve this only by increasing timeouts.**
+
+---
+
+## 8. Recover upload results after a browser disconnect
+
+**Files:**
+- `frontend/src/features/dashboard/NewMappingDialog.tsx:379–418`
+- `services/sttm-builder/app/routers/upload.py:829`, `:1024`
+
+**Current defect:** The browser disconnects, Snowflake later commits, and the UI does not recover the preview. In the fresh test, the page remained on “Uploading…”.
+
+**Code correction:**
+- Give each logical upload a stable request identity.
+- Persist upload status and its resulting preview/reference.
+- Provide an authorized status/result lookup.
+- On network uncertainty, reconcile the existing request instead of blindly reposting.
+- Recover after reload.
+- Show “processing continues” or a recoverable failure state rather than an indefinite spinner.
+- Deduplicate processing using caller/project/content/options identity.
+
+**Required regressions:** Disconnect before acceptance, after acceptance, and after commit; page reload; duplicate submission; retrieval from the wrong project.
+
+The exact network layer causing the roughly 61-second disconnect is still unverified. The application nevertheless needs recovery for that outcome.
+
+---
+
+## 9. Correct reupload and learning-job lifecycle handling
+
+**Files:**
+- `services/sttm-builder/app/core/fir_document_ingestion.py:89`
+- `services/sttm-builder/app/routers/upload.py:1004–1017`
+
+**Current defect:** Reuploading the Contacts asset reused an old failed learning job. New upload success did not establish a fresh or resumed learning lifecycle.
+
+**Code correction:**
+- Separate deduplicated document identity from processing-run identity.
+- Reuse completed work only when content, processing version, and relevant context match.
+- Resume recoverable incomplete work or create a new processing generation.
+- Preserve failure history without presenting it as the new run’s status.
+- Fence old workers against newer generations.
+- Display upload, verification, and learning states separately.
+
+**Required regressions:** Reupload after success, after failure, after processor changes, and while another generation is running.
+
+---
+
+# C. Required package contents—not environment configuration
+
+The next ZIP must also include the missing source assets:
+
+```text
+infra/snowflake/automap_native_v1/investigator.md
+infra/snowflake/automap_native_v1/transformation.md
+```
+
+Update the manifest and add a clean-checkout rendering test. These are required package files, even though installing the generated agents happens later in Snowflake.
+
+# What does not need another speculative rewrite
+
+- V11’s checked-target/all-target scope and identifier handling passed the independent frontend checks.
+- Existing-definition and manual-edit preservation passed those checks.
+- Do not rework those areas unnecessarily; retain their regressions.
+- Do not automatically alter the Contacts `ccOther` country predicate—it requires separate business review.
+- Earlier v10 evidence-retention, stale-feedback, and semantic-quality findings remain **acceptance tests for v11**, not proof that its replacement native path has the same defects.
+
+**So the code handoff is: nine application corrections above, the two missing instruction files, and regression tests reproducing each failure.** Agent installation, environment settings, verified hashes, and UAT enablement are separate deployment work that can be handled here after the corrected package passes review.
