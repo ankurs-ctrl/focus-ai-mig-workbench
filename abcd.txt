@@ -1,38 +1,194 @@
-Hi team, two separate issues need attention:
+Send Codex this:
 
-**1. Session redirect loop**
+---
 
-Middleware checks whether the session cookie **exists**, while SessionGate checks whether it is **valid**. When the session is rejected, the cookie remains:
+## Fix SQL upload end-to-end in the local repository
+
+You have the local repository, not GitHub or the deployed Snowflake environment. Implement and test locally. **Do not push, deploy, alter environment files, or claim live validation.** Provide any required deployment/migration steps separately.
+
+Fix this generically for supported SQL uploads—not with special cases for Contacts or a particular project.
+
+### 1. Remove the recovery buttons and wording
+
+Remove these from the SQL-upload UI:
+
+- **Check upload**
+- **Discard pending import**
+- **“SQL processing may still be running. Check the saved request again; no duplicate upload was sent.”**
+
+Replace normal processing with automatic, accurate progress, such as:
 
 ```text
-/dashboard → Session rejected → /home
-     ↑                             |
-     └─ Middleware sees old cookie ┘
+Uploading → Parsing → Checking sources → Preview ready
 ```
 
-This keeps repeating “Checking your session / Redirecting to sign in.” Incognito works with a fresh login.
+Keep request identity, duplicate protection, automatic recovery, and generation fencing internally. **Do not merely hide the controls and leave uploads stuck.**
 
-**Fix:** Clear the invalid session cookie through the backend before redirecting, keep sign-in reachable, and handle permission errors separately.
+On a confirmed failure, show a clear error and a safe retry action. An ambiguous network failure must not automatically create a duplicate upload.
 
-**2. Dashboard/Projects caching**
+### 2. Fix the deployment dependency and misleading failure handling
 
-Current behavior:
+The live test failed **before parsing**, because this required table was absent/unavailable:
+
 ```text
-Open page → Cached data → Fast
-After 5 minutes → Cache expires → Blocking fetch → Wait
+SCH_STTM_METADATA.TBL_SQL_UPLOAD_REQUESTS
 ```
 
-Recommended:
+Observed sequence:
+
 ```text
-Open page → Show cached data immediately
-                    ↓
-          Refresh in the background if stale
-
-Autosave → Check what changed
-           ├─ Mapping-only state → Keep summaries unchanged
-           └─ Summary fields → Update affected entries only
+Upload POST → HTTP 500 after 10.8 seconds
+            → 8 recovery GETs, all HTTP 500
+            → recovery message/buttons after ~74 seconds
 ```
 
-Keep caches scoped to user/role and clear them on logout or identity changes. Fix mapping-detail expiry to use `Date.now() + TTL`.
+The initial database statement failed in 64 ms; most of this wait was not SQL parsing.
 
-These fixes are not implemented yet.
+Required changes:
+
+- Integrate the existing upload-recovery migration into the appropriate metadata bootstrap/deployment path.
+- Verify the complete table schema, including `PROCESSING_ID`, and exactly one `__admission_lock__` row.
+- Make initialization repeat-safe without resetting existing requests or leases.
+- Add deployment/readiness validation so the upload feature cannot appear healthy with missing dependencies.
+- Return a typed configuration/access error when admission definitively fails. Do not treat it as “processing may still be running.”
+- Distinguish confirmed rejection, recoverable transport uncertainty, active processing, and terminal failure.
+- Do not add broad grants or create infrastructure opportunistically in upload requests. Document required administrator actions separately.
+
+Relevant files:
+
+```text
+infra/snowflake/sql_upload_recovery_v1.sql
+infra/snowflake/create-table-ddl.sql
+scripts/bootstrap_sttm_metadata_infra.py
+services/sttm-builder/app/core/sql_upload_jobs.py
+services/sttm-builder/app/routers/upload.py
+```
+
+### 3. Correct recovery and retry behavior
+
+The investigation reproduced these defects:
+
+- A completed saved receipt can still contain old unresolved table references. Recovering it can overwrite newer verified references.
+- Clearing the recovery notice can hide controls while reference polling does not restart.
+- Reselecting the same file after a terminal failure can keep recovering the failed request instead of permitting a fresh attempt.
+- The nominal 60-second polling deadline can be exceeded by individual requests.
+
+Required behavior:
+
+- Recovered preview and enrichment state must be consistent and version-aware.
+- Never replace newer verified state with older receipt data.
+- Continue observation automatically while appropriate; clean up timers and requests on unmount.
+- Bound each request by the remaining observation deadline.
+- Permit explicit retry after confirmed terminal failure while retaining failure history.
+- Preserve caller/project isolation and prevent stale workers from publishing.
+- Do not confuse closing a dialog with cancelling server processing.
+
+Relevant frontend files:
+
+```text
+frontend/src/features/dashboard/NewMappingDialog.tsx
+frontend/src/features/sttm/mapping/sql-upload-recovery.ts
+frontend/src/features/sttm/mapping/sql-bundle-review-panel.tsx
+```
+
+### 4. Reduce unnecessary work before preview
+
+For the actual `Ft_Pitt_Contacts.sql`, offline results were:
+
+- Parsing: **0.41–0.57 seconds**
+- Individual output compilation: **49/49 passed**
+- Full local compilation: **approximately 0.47 seconds**
+- Preserved: **11 physical sources, 4 CTEs, repeated lookup instances and joins**
+
+Do not solve latency by simply increasing timeouts or weakening validation.
+
+Investigate and improve:
+
+- Repeated metadata qualification/DESCRIBE calls between preview and enrichment.
+- Sequential FIR canonical-pattern reads.
+- Transaction duration and database round trips.
+- Separation of usable preview from optional background FIR enrichment.
+
+The old 53 individual work-item MERGEs have already been replaced with a batch MERGE. **Do not mistakenly diagnose the old implementation.** However, the tested FIR path still performed 48 sequential canonical-pattern reads.
+
+Add stage timings so admission, parsing, metadata checks, persistence, enrichment, and frontend waiting can be distinguished.
+
+### 5. Fix backend/frontend lineage inconsistency
+
+Contacts compiles all 49 outputs through the frontend path, but backend lineage leaves `HEADOFHOUSEHOLD` unresolved for:
+
+```text
+xxxIndv_ACCOUNT_FinServ__SourceSystemID__c
+```
+
+FIR consequently extracts **48 patterns instead of 49**.
+
+Fix CTE-output resolution generically so parser lineage, mapping compilation, and FIR extraction agree. Do not suppress unresolved diagnostics or count unsupported rows as successful.
+
+Relevant files:
+
+```text
+services/sttm-builder/app/core/sql_parser.py
+services/sttm-builder/app/core/target_mapping_patterns.py
+frontend/src/features/sttm/mapping/sql-upload-workspace.ts
+```
+
+### 6. Fix the two previously deferred SQL-upload defects
+
+#### A. Column substitution corrupts function names
+
+Reproduction:
+
+```sql
+WITH c AS (
+    SELECT ID AS LENGTH, NAME
+    FROM D.S.T
+)
+SELECT LENGTH AS A, LENGTH(NAME) AS B
+FROM c;
+```
+
+A shared bare-name binding map can rewrite the function identifier `LENGTH` as though it were a column, producing an invalid expression such as:
+
+```sql
+cte_c.LENGTH(c.NAME)
+```
+
+Behavior can depend on projection order, while local readiness checks may accept the result.
+
+**Fix:** use SQL-aware binding/rewriting that distinguishes functions, columns, aliases, literals, comments, and quoted identifiers. Avoid global regex substitutions across unrelated scopes.
+
+Location: `frontend/src/features/sttm/mapping/sql-upload-workspace.ts`, previously around lines 307 and 356–361.
+
+#### B. Case-sensitive quoted sources collapse when reopening
+
+These are distinct Snowflake objects:
+
+```sql
+D.S."Country"
+D.S."country"
+```
+
+The reopen path uppercases source identities during deduplication. A saved graph with two sources and a join can become one source with no join, potentially compiling incorrect SQL.
+
+**Fix:** preserve quoted-identifier case and relation-instance identity through selection, serialization, reopening, and compilation. Only normalize identifiers where Snowflake’s unquoted-identifier rules permit it.
+
+Location: `frontend/src/features/sttm/store/sttm-builder-slice.ts`, previously around lines 6566–6569.
+
+### 7. Required verification
+
+Add focused regression tests for:
+
+- Actual Contacts file: all 49 outputs, CTE lineage, repeated joins, Apply Preview and reopen.
+- Function/column name collisions, including reversed projection order.
+- Distinct quoted-case sources across snapshot round-trips.
+- Simple SELECTs, nested CTEs, self-joins, aliases, supported variables, and qualified/unqualified names.
+- Missing recovery infrastructure and access failures.
+- Ambiguous POST outcomes without duplicate uploads.
+- Failed-request retry, stale receipts, dialog reopen, worker interruption, and stale-generation rejection.
+- Enrichment failure without losing an already usable preview.
+- Caller/project isolation and preservation of authored SQL, joins, filters, and user edits.
+
+**Deliver:** code changes, tests and results, measured local timings, remaining limitations, and exact deployment prerequisites. Clearly distinguish local parsing/compilation from live Snowflake execution and business correctness.
+
+---
