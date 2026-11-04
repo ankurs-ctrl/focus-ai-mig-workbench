@@ -1,194 +1,248 @@
-Send Codex this:
+Plan: Fix AGT_SOURCE_MAPPING Auto-map (v3) and remove native v1
+All paths are relative to the develop worktree ffp_ai_mig_workbench_develop_sync_20261103 (HEAD f3fbdf4 == github/develop; UAT 436167d has the same Auto-map code). This plan supersedes automap-fast-accurate-v2.
 
----
+1. Context: what exists and what is broken
+Why mappings fail today
+Semantic descriptions are lost before the agent sees them. This happens in both UAT and develop.
+_merge_native_views in semantic_model.py (277, 330-371) stores the registry YAML but never parses its dimensions / time_dimensions / facts (description, synonyms, sample_values) into attributes.
+The fallback in semantic_context.py (3086-3101) then sets summary = column_name and business_meaning = None. The table description becomes "semantic asset from the registry" (1632-1636).
+sttm_builder.py (3443-3458, 3248-3252) pops semantic_view (the YAML) when no executable view name resolves.
+Result: ACCOUNTS has 557 described dimensions in DEV SEM_NATIVE_VIEWS.CA_YAML_MODEL, but the agent sees name echoes.
+Candidate admission is lexical. In automap_fast_context.py (402-469), the score is token overlap plus 100 for an exact name match. Columns that mean the same thing under different names are never admitted.
+FIR learnings are thin and not CRM-aware.
+Column recipes live in TBL_FIR_TARGET_MAPPING_PATTERNS.PATTERN_PAYLOAD. They hold the full expression, sources, joins, CTE bodies, filters and $placeholders, and are written app-side at publish (project_service.py 2816/2876, 4019-4116). The scheduled FIR tasks do not write this table; they produce table-level inferences and recommendations through AGT_FIR_SYSTEM.
+Retrieval gaps:
+Auto-map uses discovered_only=True, so only patterns Cortex Search happened to return are eligible.
+The final sort drops scope (target_mapping_patterns.py 2251-2256), and recency is never used.
+Republishing never supersedes old patterns (supersession exists only in _record_correction at 905).
+CRM is only payload.source_system_profile.vendor_family, which is unreliable at publish: the source system is not carried in the publish context, and HUBSPOT is missing from the fallback list (4184-4197).
+CSS_AUTOMAP_RECIPES_V1 has no CRM or recency attribute.
+focused_learning keeps at most 1-2 positive patterns (automap_policy.py 33-57).
+The agent spec contradicts the protocol.
+agent_spec_source_mapping.yaml teaches meta.delegation / search_more / CORTEX_ANALYST (40-71, 108-111). The fast path treats any delegation as a fatal batch error (automap_batch.py 668-669, 713).
+The spec never describes selectable_sources or evidence_requests.
+Its mode vocabulary (SOURCE|VALUE|PROJECT_VALUE) differs from the backend's (source|constant|attribute).
+Values (Firm Values) are not first-class. They appear only inside global_records.source_graph.value_bindings; selectable_sources and the response example are source-only.
+The transformation agent is starved. automap_transform.py (46-153) sends:
+FIR expressions only if the source agent cited them;
+no CTE sql_text, no samples, and no semantics outside the selection;
+expression_within_selection (12-43) rejects any CASE that needs an undeclared column;
+a 4500-token budget.
+The runtime is over-coupled.
+build_fast_model_runtime requires the parallel scan pool (AGT_AUTOMAP_SCAN_DEV_TEST, capacity 4) and OAuth or native injection (automap_runtime.py 742-757, 824-827). There is no plain local SSO path.
+Native routing wins locally (sttm_builder.py 1007-1013).
+The "fast" path can use 64 model calls / 8 rounds per batch.
+What we already have and will reuse
+Select page: the UI already sends:
 
-## Fix SQL upload end-to-end in the local repository
+the semantic_bundle_id and the full semantic context;
+a relation_graph with CTE sql_text, output_columns, column_semantics and grain/keys;
+user joins;
+value_bindings (project attributes as $NAME);
+workspace_context (project/STTM description, business_goal, CTE purpose).
+See sttm-builder-slice.ts 356-476 and 3337-3495, and workbench-context.ts 302-405.
 
-You have the local repository, not GitHub or the deployed Snowflake environment. Implement and test locally. **Do not push, deploy, alter environment files, or claim live validation.** Provide any required deployment/migration steps separately.
+Bundle storage and parsing: TBL_SEMANTIC_BUNDLES; _index_model in automap_retrieval.py (399-436) already parses YAML dimensions once it receives them.
 
-Fix this generically for supported SQL uploads—not with special cases for Contacts or a particular project.
+Latest published precedents: get_auto_map_context in learning_retrieval.py (1076-1154, 1206) reads CURRENT_VERSION. Linked projects come from TBL_FIR_PROJECT_LINKS.
 
-### 1. Remove the recovery buttons and wording
+CRM key: the template path sets source_system_key and logical_target_table_key on projects and mappings (project_service.py 1187-1193, 1260-1274).
 
-Remove these from the SQL-upload UI:
+Validation: _validate_auto_map_candidate (sttm_builder.py 1225-1323), the Values reload (2176-2216) and the transformation stage (1514-1746).
 
-- **Check upload**
-- **Discard pending import**
-- **“SQL processing may still be running. Check the saved request again; no duplicate upload was sent.”**
+Search services:
 
-Replace normal processing with automatic, accurate progress, such as:
+CSS_AUTOMAP_RECIPES_V1 and CSS_FIR_KNOWLEDGE (5-minute lag).
+COLUMN_SEARCH_SVC (1-day lag; only populated by Phase 2; off by default).
+No embeddings are used anywhere in the code.
+Native v1: what is worth keeping
+Extract into generic modules before deleting:
+local SSO/PAT session factory (automap_native.py 245-339) plus the DEV-only guard (config.py 794-847);
+strict JSON parse rejecting duplicate keys and NaN (automap_native_tools.py 84-96);
+sqlglot literal/prose scan for guidance (automap_native_ports.py 133-156);
+the guidance-only NONEXECUTABLE record concept;
+compile_proposal (automap_native_ports.py 456-555);
+safe error vocabularies;
+exact-JSON VARIANT helpers (automap_native_store.py 51-79);
+the citation/binding checks from proposal validation;
+the spec-pin pattern.
+Already generic, keep as-is: the mapping_search.py configured-table hydration fix (uncommitted) and the target_profiles/crm_family passing (already in the fast path).
+Delete: RPC bridge, protocol probe/cold start, native final contract, native_search, native store/tables/procedures, the per-job CSS_AUTOMAP_SOURCE_COLUMNS_V2, the native Analyst slots and AUTOMAP_POP_* views, and both native agents.
+Not native, keep: semantic_registry_native.py and its test. "Native" there means SEM_NATIVE_VIEWS, not native Auto-map.
+Open-source / research assessment (context management)
+Approach	Verdict	Reason
+Anthropic "Contextual Retrieval" (contextual chunks, hybrid embeddings + BM25, rerank, top-20)	Adopt the pattern	Matches our problem. Column documents get their table/business context prepended; we retrieve hybrid and rerank. Cortex Search already provides hybrid retrieval with reranking inside Snowflake.
+Anthropic "Effective context engineering" (smallest high-signal set; hybrid upfront plus just-in-time retrieval; sub-agents return condensed results)	Adopt the pattern	Upfront per-target evidence pack, one bounded just-in-time evidence round, and the transformation agent as a focused sub-agent.
+Microsoft LLMLingua / LongLLMLingua (MIT; a small LM drops tokens, up to 20x)	Do not adopt	Token dropping corrupts identifiers, SQL and $placeholders, and it needs a local model in SPCS. Borrow only its idea of question-aware ordering: most relevant evidence first.
+LlamaIndex / LangChain retrievers and compressors	Do not add as dependencies	Same functions (hybrid retrieval, rerank, dedupe, cutoff) are available natively through Cortex Search and SQL. A new framework would add an unvetted runtime to the SPCS image.
+Letta / MemGPT agent memory	Not applicable	Auto-map decisions are stateless per batch; our long-term memory is the FIR tables.
+Decision: build a small in-repo context assembler, a deterministic budgeted packer. Use structured, de-duplicated evidence, never lossy compression of identifiers or SQL.
 
-```text
-Uploading → Parsing → Checking sources → Preview ready
-```
+2. Target design
+Context budget per batch (4 targets)
+Section	Content	Approx. size
+Shared capsule (once per batch, identical across batches)	project/STTM description, business goal, CRM source_system_key, target table description, CTE catalog (name, purpose, outputs with meaning), join graph, Values roster ($NAME, description, resolved flag), top 3 table-level FIR recommendations	8-15 KB
+Per target (x4)	target card (name, type, description, logical key, nullability); top 15 candidates with full description, synonyms, up to 5 sample values, type, table/CTE owner; learning pack (up to 4 precedents plus corrections/negatives)	6-9 KB each
+Compact index	names-only list of other selected columns per table, so the agent can request more	4-12 KB
+Contract	instructions pointer, response schema, 3 canonical examples (direct, Firm Value, CASE rule)	4 KB
+Total is about 50-70 KB per batch. Raise AGENT_OUTBOUND_MESSAGE_MAX_CHARS for Auto-map to 150k as headroom, but have the packer target 80k or less to protect latency. The trimming order is fixed: compact index, then sample values, then candidates 15 to 10 to 6, then precedent SQL bodies down to expression-only. Descriptions of admitted candidates, the target card and Values are never trimmed.
 
-Keep request identity, duplicate protection, automatic recovery, and generation fencing internally. **Do not merely hide the controls and leave uploads stuck.**
+Learning pack ranking (per target column)
+Deterministic SQL over TBL_FIR_TARGET_MAPPING_PATTERNS, joined to the latest published STTM rows. Match on UPPER(TARGET_COLUMN) plus the physical target table or payload:target_contract:logical_target_key. Keep the latest per (STTM, target column) using QUALIFY ROW_NUMBER() OVER (PARTITION BY sttm_id, target_table, target_column ORDER BY publication time DESC).
 
-On a confirmed failure, show a clear error and a safe retry action. An ambiguous network failure must not automatically create a duplicate upload.
+Tier	Meaning	Use
+T1	Same project, latest published version, or current corrections/negatives	Strongest; always included
+T2	Linked project (TBL_FIR_PROJECT_LINKS)	Strong
+T3	Same CRM (source_system_key / vendor_family), published, newest first	Strong if its source columns exist in the current bundle (applicable=true), else shape-only
+T4	Other CRM, published	Guidance only (pattern shape, Values usage); its source column names are never offered as candidates
+Each precedent carries pattern_id, CRM, project name, version, published date, expression, source columns, required joins/CTE names, placeholders, applicable (with which current columns match), and support count. If there are more than 4, keep the top 2 by tier plus the 2 most supported shapes, deduplicated by expression hash.
 
-### 2. Fix the deployment dependency and misleading failure handling
+Where Search fits
+Semantics: deterministic per-bundle ranking by default, with no index lag. Phase B adds a Cortex Search service over contextualized registry column documents (filtered by table FQN), measured by recall@15 on the answer key, and an optional AI_EMBED similarity behind a flag. Both are adopted only if they beat deterministic ranking. Note: docs/automap-context-rollout.md:256 records a missing embed grant, so grants must be verified first.
+FIR: deterministic SQL for exact target-column precedents. Search (CSS_AUTOMAP_RECIPES_V1 / CSS_FIR_KNOWLEDGE) is used only as a fallback when T1-T3 return nothing, once per target, run in parallel, and labelled guidance.
+Analyst: not in the main path. Sample values come from YAML / COLUMN_PROFILE_CACHE. Keep _auto_map_analyst_evidence reachable only through the single evidence round, for an explicit data question about value distribution needed by a CASE.
+Time budget (37 targets)
+Prep, once per job and cached by bundle hash plus target set: about 10-20 s.
+10 batches, up to 8 in flight: 2 waves of about 40-50 s each, roughly 90 s.
+Transformation wave (parallel, only rule targets): about 20-30 s.
+Goal: about 120 s in SPCS; 150 s or less locally.
+Model calls capped at 3 per batch: answer, optional evidence round, optional format repair. This replaces the current 64 calls / 8 rounds.
+3. Implementation steps
+Step 1: Baseline, branch, answer key, archive the native experiment
+Commit the current uncommitted native experiment to archive/automap-native-v1-experiments, with the user's approval before any git write. Keep the eval folder there.
+Create feature/automap-source-mapping-v3 from github/develop.
+Answer key (DEV): clone the accepted rows of mapping 10301 (Ft. Pitt 01-HHs, 45 rows) into a blank mapping in project 2901. Either register YAML for its 5 CRM lookup tables, or exclude the rows that depend on them. Use UAT mapping 3102 (project 501) as a second, read-only comparison.
+Add a benchmark script that scores each run:
+coverage;
+exact source/mode/expression match against the key;
+evidence citation validity;
+precedent_decision presence;
+time per stage (prep, each batch, transformation) and calls per batch.
+Record the master fa449c4 and current develop baselines.
+Step 2: Remove native v1 from code, after extracting reusable parts
+Move the reusable parts into generic modules:
+app/core/automap_local_session.py: SSO/PAT factory plus the DEV guard, renamed AUTOMAP_LOCAL_SSO_ENABLED;
+app/core/automap_json.py: strict parse and exact-JSON helpers;
+app/core/automap_guidance.py: literal/prose scan and guidance records;
+compile_proposal, moved next to _validate_auto_map_candidate.
+Delete these files:
+app/core/automap_native.py, _contract, _ports, _tools, _store, _rpc, _transport, _delivery;
+the tests/unit/core/test_automap_native_*.py tests, tests/test_automap_uat_native_probe.py and test_bootstrap_automap_native_upgrade.py;
+scripts/bootstrap_automap_native.py, render_automap_native.py, verify_automap_native_install.py and validate_automap_uat_native.py;
+infra/snowflake/automap_native_v1/;
+frontend/scripts/test-automap-native-v11.cjs.
+Remove the wiring:
+the automap_native_* settings in config.py;
+routing in sttm_builder.py (1007-1013) and auto_mapping_proxy.py (104, 2565);
+the UAT workflow native_install input and the "Verify native Auto-map installation" step (pipeline-ai-migration-uat.yml 8-9, 184-203; that step currently blocks deployment);
+the native profile in infra/snowflake/env/parallel.uat.json;
+the native lines in the local .env.local.
+Snowflake objects (both agents, the 9 SP_AUTOMAP_* procedures, TBL_AUTOMAP_NATIVE_*, CSS_AUTOMAP_SOURCE_COLUMNS_V2, Analyst slots, AUTOMAP_POP_* views): drop them in DEV, and in UAT only after the v3 release is live there, behind a separate approved teardown script that backs up the agent specs first. They are not dropped in this code step.
+Keep semantic_registry_native.py.
+Step 3: Semantic fidelity, so the bundle becomes complete knowledge
+In _merge_native_views, parse the YAML tables[].description, plus dimensions / time_dimensions / facts / metrics (name, expr column, description, synonyms, sample_values, data_type), into semantic_model.attributes. Fill attributes when they are empty or a name echo (reuse _is_name_echo in agent_payload_budget.py:132). Never overwrite human-authored descriptions from SEM_COLUMN_VIEWS / TBL_SEMANTIC_VIEW_VERSIONS.
+In the semantic context fallback, use YAML values before echoing the name, and mark the provenance (registry_yaml, column_view, human_override, name_only).
+In sttm_builder.py (3443-3458, 3248-3252), keep the YAML as non-executable semantic knowledge when no executable view name resolves (separate semantic_knowledge key). Analyst eligibility still requires an executable view.
+Semantic Column Catalog: a new automap_semantic_catalog.py builds {table_fqn, column, data_type, description, synonyms, sample_values (5 or fewer, 120 chars or fewer each), table_description, provenance} for physical columns, plus CTE outputs from column_semantics / CTE purpose. It is cached in memory and in the bundle row by bundle_hash.
+Stop DEFERRED_SEMANTIC_FIELDS from stripping descriptions and synonyms for admitted candidates.
+Contract test: for ACCOUNTS → HOUSEHOLD, at least 90% of admitted candidates have a non-name-echo description.
+Step 4: Candidate ranking, evidence pack and context packer
+Hybrid ranker in automap_candidates.py, combining by reciprocal rank fusion:
 
-The live test failed **before parsing**, because this required table was absent/unavailable:
+exact or normalized name match and synonyms;
+BM25-style token score over the contextualized document "table description | column | description | synonyms";
+type compatibility;
+FIR applicable-precedent source columns (forced in);
+user joins / CTE outputs feeding the target table;
+optional Phase B search or embedding signal.
+It returns the top 15 per target, with a short reason per candidate (for example "synonym", "precedent T1", "description match").
 
-```text
-SCH_STTM_METADATA.TBL_SQL_UPLOAD_REQUESTS
-```
+Shared capsule builder: business context from workspace_context, the CRM, the target table description from the target bundle, a CTE catalog with purpose and output meaning (full sql_text only for the transformation agent), the join graph, a first-class Values roster, and FIR table-level recommendations for the target FQN (TBL_FIR_AGENT_RECOMMENDATIONS / SP_FIR_GET_AGENT_RECOMMENDATIONS_V2).
 
-Observed sequence:
+Budgeted packer in automap_context_packer.py: a fixed section order (most relevant first), deterministic trimming, stable record IDs (src:<table>.<col>, cte:<name>.<col>, val:$NAME, fir:<pattern_id>), and a context_manifest (sizes, trimmed sections) logged per batch.
 
-```text
-Upload POST → HTTP 500 after 10.8 seconds
-            → 8 recovery GETs, all HTTP 500
-            → recovery message/buttons after ~74 seconds
-```
+Replace FastContextPlan lexical admission (automap_fast_context.py 402-469) with the ranker output.
 
-The initial database statement failed in 64 ms; most of this wait was not SQL parsing.
+Collapse the decision loop to 3 calls or fewer per batch (MAX_FAST_MODEL_CALLS, MAX_FAST_DECISION_ROUNDS).
 
-Required changes:
+Make meta.delegation a soft deficit, not a fatal error (automap_batch.py 668-669, 713). One evidence_requests round returns full catalog entries for up to 10 named columns per target.
 
-- Integrate the existing upload-recovery migration into the appropriate metadata bootstrap/deployment path.
-- Verify the complete table schema, including `PROCESSING_ID`, and exactly one `__admission_lock__` row.
-- Make initialization repeat-safe without resetting existing requests or leases.
-- Add deployment/readiness validation so the upload feature cannot appear healthy with missing dependencies.
-- Return a typed configuration/access error when admission definitively fails. Do not treat it as “processing may still be running.”
-- Distinguish confirmed rejection, recoverable transport uncertainty, active processing, and terminal failure.
-- Do not add broad grants or create infrastructure opportunistically in upload requests. Document required administrator actions separately.
-
-Relevant files:
-
-```text
-infra/snowflake/sql_upload_recovery_v1.sql
-infra/snowflake/create-table-ddl.sql
-scripts/bootstrap_sttm_metadata_infra.py
-services/sttm-builder/app/core/sql_upload_jobs.py
-services/sttm-builder/app/routers/upload.py
-```
-
-### 3. Correct recovery and retry behavior
-
-The investigation reproduced these defects:
-
-- A completed saved receipt can still contain old unresolved table references. Recovering it can overwrite newer verified references.
-- Clearing the recovery notice can hide controls while reference polling does not restart.
-- Reselecting the same file after a terminal failure can keep recovering the failed request instead of permitting a fresh attempt.
-- The nominal 60-second polling deadline can be exceeded by individual requests.
-
-Required behavior:
-
-- Recovered preview and enrichment state must be consistent and version-aware.
-- Never replace newer verified state with older receipt data.
-- Continue observation automatically while appropriate; clean up timers and requests on unmount.
-- Bound each request by the remaining observation deadline.
-- Permit explicit retry after confirmed terminal failure while retaining failure history.
-- Preserve caller/project isolation and prevent stale workers from publishing.
-- Do not confuse closing a dialog with cancelling server processing.
-
-Relevant frontend files:
-
-```text
-frontend/src/features/dashboard/NewMappingDialog.tsx
-frontend/src/features/sttm/mapping/sql-upload-recovery.ts
-frontend/src/features/sttm/mapping/sql-bundle-review-panel.tsx
-```
-
-### 4. Reduce unnecessary work before preview
-
-For the actual `Ft_Pitt_Contacts.sql`, offline results were:
-
-- Parsing: **0.41–0.57 seconds**
-- Individual output compilation: **49/49 passed**
-- Full local compilation: **approximately 0.47 seconds**
-- Preserved: **11 physical sources, 4 CTEs, repeated lookup instances and joins**
-
-Do not solve latency by simply increasing timeouts or weakening validation.
-
-Investigate and improve:
-
-- Repeated metadata qualification/DESCRIBE calls between preview and enrichment.
-- Sequential FIR canonical-pattern reads.
-- Transaction duration and database round trips.
-- Separation of usable preview from optional background FIR enrichment.
-
-The old 53 individual work-item MERGEs have already been replaced with a batch MERGE. **Do not mistakenly diagnose the old implementation.** However, the tested FIR path still performed 48 sequential canonical-pattern reads.
-
-Add stage timings so admission, parsing, metadata checks, persistence, enrichment, and frontend waiting can be distinguished.
-
-### 5. Fix backend/frontend lineage inconsistency
-
-Contacts compiles all 49 outputs through the frontend path, but backend lineage leaves `HEADOFHOUSEHOLD` unresolved for:
-
-```text
-xxxIndv_ACCOUNT_FinServ__SourceSystemID__c
-```
-
-FIR consequently extracts **48 patterns instead of 49**.
-
-Fix CTE-output resolution generically so parser lineage, mapping compilation, and FIR extraction agree. Do not suppress unresolved diagnostics or count unsupported rows as successful.
-
-Relevant files:
-
-```text
-services/sttm-builder/app/core/sql_parser.py
-services/sttm-builder/app/core/target_mapping_patterns.py
-frontend/src/features/sttm/mapping/sql-upload-workspace.ts
-```
-
-### 6. Fix the two previously deferred SQL-upload defects
-
-#### A. Column substitution corrupts function names
-
-Reproduction:
-
-```sql
-WITH c AS (
-    SELECT ID AS LENGTH, NAME
-    FROM D.S.T
-)
-SELECT LENGTH AS A, LENGTH(NAME) AS B
-FROM c;
-```
-
-A shared bare-name binding map can rewrite the function identifier `LENGTH` as though it were a column, producing an invalid expression such as:
-
-```sql
-cte_c.LENGTH(c.NAME)
-```
-
-Behavior can depend on projection order, while local readiness checks may accept the result.
-
-**Fix:** use SQL-aware binding/rewriting that distinguishes functions, columns, aliases, literals, comments, and quoted identifiers. Avoid global regex substitutions across unrelated scopes.
-
-Location: `frontend/src/features/sttm/mapping/sql-upload-workspace.ts`, previously around lines 307 and 356–361.
-
-#### B. Case-sensitive quoted sources collapse when reopening
-
-These are distinct Snowflake objects:
-
-```sql
-D.S."Country"
-D.S."country"
-```
-
-The reopen path uppercases source identities during deduplication. A saved graph with two sources and a join can become one source with no join, potentially compiling incorrect SQL.
-
-**Fix:** preserve quoted-identifier case and relation-instance identity through selection, serialization, reopening, and compilation. Only normalize identifiers where Snowflake’s unquoted-identifier rules permit it.
-
-Location: `frontend/src/features/sttm/store/sttm-builder-slice.ts`, previously around lines 6566–6569.
-
-### 7. Required verification
-
-Add focused regression tests for:
-
-- Actual Contacts file: all 49 outputs, CTE lineage, repeated joins, Apply Preview and reopen.
-- Function/column name collisions, including reversed projection order.
-- Distinct quoted-case sources across snapshot round-trips.
-- Simple SELECTs, nested CTEs, self-joins, aliases, supported variables, and qualified/unqualified names.
-- Missing recovery infrastructure and access failures.
-- Ambiguous POST outcomes without duplicate uploads.
-- Failed-request retry, stale receipts, dialog reopen, worker interruption, and stale-generation rejection.
-- Enrichment failure without losing an already usable preview.
-- Caller/project isolation and preservation of authored SQL, joins, filters, and user edits.
-
-**Deliver:** code changes, tests and results, measured local timings, remaining limitations, and exact deployment prerequisites. Clearly distinguish local parsing/compilation from live Snowflake execution and business correctness.
-
----
+Step 5: FIR learning pack, retrieval and data quality
+Retrieval: a new automap_learning_pack.py with one batched SQL query for all job targets, implementing tiers T1-T4. It uses the latest published version per STTM/target column, corrections and negatives, the applicable check against the catalog, and dedupe by expression hash. Remove discovered_only=True for Auto-map, so Search becomes a fallback only.
+Ranking fix: keep the scope rank in retrieve_candidates (2251-2256), and add recency (payload:provenance.publication_version_id / UPDATED_AT) as a tiebreak.
+Publish-side fixes in project_service.py:
+pass the project's source_system_key and logical_target_table_key into the publish projection context (4091-4096);
+add HUBSPOT to the fallback list;
+on republish, mark the previous version's patterns for the same STTM and target column SUPERSEDED_BY the new pattern, when the content differs.
+Review the canonical key (fir_canonical.py:15) so the identical recipe across projects accumulates support. Verify first with a unit test, because this is an inference.
+Add SOURCE_SYSTEM_KEY and PUBLISHED_AT as attributes to CSS_AUTOMAP_RECIPES_V1 (automap_recipe_search.sql), for the fallback path.
+Backfill: a one-time idempotent script that sets vendor_family from the project metadata and supersession for existing published patterns. Run it in DEV; UAT goes through the pipeline later.
+Read-only check of FIR task state (SHOW TASKS / TASK_HISTORY) in DEV and UAT, to confirm table-level recommendations are fresh. Their live state is currently unverified.
+Step 6: AGT_SOURCE_MAPPING fast-only protocol, spec and runtime
+Rewrite the spec (agent_spec_source_mapping.yaml): remove the delegation and tool text, and describe the packet sections and record IDs. Decision procedure per target:
+understand the target meaning;
+read the candidates' descriptions, synonyms and samples;
+check the business goal and CTE purpose;
+weigh precedents by tier and applicability;
+choose source | attribute ($Value) | constant | rule_needed | unresolved.
+Response per target: mapping_mode, sources or $NAME, decision_basis (cites candidate and precedent IDs plus a one-line semantic reason), precedent_decision (followed / adapted / rejected with reason) whenever precedents exist, rule_intent (natural-language rule plus required columns) when a CASE or custom rule is needed, and evidence_request (optional, once).
+Align the mode vocabulary with the backend schema. Add 3 canonical few-shot examples.
+Server-side "read" enforcement: every cited ID must exist in the packet. When precedents exist, precedent_decision is required. A target answered with no valid citation is downgraded to review. This is the read-receipt equivalent without tool loops.
+Model: benchmark claude-haiku-4-5 against a stronger model available on the account, under the same packet. Choose by accuracy within the time budget.
+Deployment: extend scripts/sync_workbench_agent_specs.py to allow approved model/budget changes (an explicit flag plus a diff report), and update agent_spec_manifest.json hashes. deploy_spcs_client_snow_safe.ps1 already hashes the spec files (311-317).
+Runtime:
+make build_fast_model_runtime independent of the scan pool (automap_runtime.py 742-757, 824-827);
+support SPCS OAuth plus local SSO through automap_local_session.py;
+make in-flight count and pool capacity configurable (default 8);
+set a per-batch deadline of 60 s and a job deadline of 180 s;
+cache the prep artifacts per job.
+Step 7: AGT_TRANSFORMATION_RULE with full context
+Trigger: rule_needed targets, plus existing complex/multi-source ones. This includes Values combined with sources (for example COALESCE(col, $FIRM_NAME)).
+Packet (automap_transform.py): the target card, the rule_intent, the full catalog entries (descriptions, samples) for the target's admitted candidates, CTE sql_text for referenced CTEs, the join path, the Values roster, and the top precedent expressions from the learning pack regardless of citation, labelled by tier/CRM/applicability.
+Scope: widen expression_within_selection to the target's admitted candidate set plus CTE outputs plus Values. The server re-derives source_attributes from the compiled expression with sqlglot. Columns outside the admitted set are still rejected.
+Raise the budget from 4500 to about 12k tokens. Keep one compile-feedback repair. Run rule targets in parallel and cap them inside the job deadline.
+Update the spec instructions to match (no legacy learning_context text). Include 2 canonical CASE examples, one from a precedent and one from samples.
+Step 8: Local acceptance, then SPCS DEV, then UAT
+Local: start-ai-workbench.ps1 with DEV external-browser SSO, AUTOMAP_FAST_PATH_V1 on, native settings absent.
+Run the answer-key benchmark and iterate on packer budgets, candidate K and the model choice.
+Acceptance gates (agreed before tuning):
+100% of targets get a decision record;
+0 invalid citations;
+precedent_decision present whenever precedents exist;
+accuracy against the key at or above the master baseline, and improving;
+wall time 150 s or less locally for 37 targets.
+DEV SPCS: manual scripts/deploy_spcs_client_snow_safe.ps1 with the DEV client.env, Zscaler/TLS settings untouched.
+Run the same benchmark with parallel batches (8 in flight).
+Target about 120 s.
+Check the Cortex Agent concurrency and warehouse queueing in query history.
+UAT: the GitHub Actions pipeline only, with the native step removed.
+Smoke run on UAT mapping 3102 (project 501) in review mode.
+Then run the approved native-object teardown script in DEV and UAT.
+4. Verification
+Unit tests:
+YAML parsing into attributes (descriptions, synonyms, samples, no overwrite of human edits);
+YAML retained when no view resolves;
+ranker RRF ordering and forced precedent columns;
+packer trimming order and byte limits;
+learning-pack tiers, supersession, recency, CRM applicability, dedupe;
+publish projection with source_system_key and HUBSPOT;
+citation enforcement;
+Values as first-class options;
+widened transformation scope and sqlglot source re-derivation;
+the local session guard (DEV-only).
+Contract tests: a golden packet for ACCOUNTS → HOUSEHOLD has non-echo descriptions, at least 1 FIR precedent per target that has one in the DEV data, the Values roster, the CTE catalog, and a size of 80 KB or less per batch.
+Regression: the existing tests/unit/core Auto-map, transformation, Values and review-flow tests. A frontend test confirms review-queue routing is unchanged.
+Removal check: rg -i "automap_native|AGT_AUTOMAP_INVESTIGATOR|AGT_AUTOMAP_TRANSFORMATION_V1" returns nothing in the app, scripts, infra or workflows (archive branch excepted). The UAT workflow lints and dry-runs.
+Benchmark report per run: coverage, accuracy, citation validity, precedent use by tier, rule compile rate, per-stage timing, calls per batch. Compared against the master and develop baselines.
+Security: no secrets in logs; TLS settings unchanged; DEV-only guards for local SSO.
+5. Decisions and assumptions to confirm during execution
+Git writes (archive branch, feature branch) and any Snowflake object drop need explicit approval at that step.
+The model upgrade for AGT_SOURCE_MAPPING depends on what the account offers and on benchmark results.
+Phase B Search/embedding ranking is adopted only if it beats deterministic ranking on recall@15, and only after grants are verified.
+The FIR tasks' live state and the cross-project canonical-key behaviour are unverified and checked in Step 5.
+6. Critical files
+services/sttm-builder/app/core/automap_fast_context.py: candidate admission and packet assembly, to be replaced by the ranker and packer.
+services/sttm-builder/app/core/semantic_model.py and semantic_context.py: where semantic descriptions are lost.
+services/sttm-builder/app/core/target_mapping_patterns.py and project_service.py: FIR ranking, supersession, CRM at publish.
+services/sttm-builder/app/core/sttm_builder.py: routing, validation, transformation stage, YAML pop.
+infra/snowflake/agents/agent_spec_source_mapping.yaml and agent_spec_transformation_rule.yaml: protocol-aligned instructions, examples, budgets.
