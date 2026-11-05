@@ -1,317 +1,183 @@
-# Requested changes to Auto-map candidates, suggestions, and review
+The main issue is that the UI mixes **having a mapping**, **validation**, and **AI review status**. A source can remain visible while an old validation/review flag makes the row appear unmapped. In the last test, retained definitions and newly applied AI proposals also followed different paths, which explains why only some rows showed AI controls.
 
-Auto-map should continue applying valid AI proposals to the **editable mapping draft**. Users should review, compare, and change those proposals directly in the mapping sheet. Applying an AI proposal must **not** confirm, finalize, or publish the mapping.
+The fix should separate those states—not simply mark every populated source as valid.
 
-The following changes should improve the layout, distinguish real alternatives from general guidance, and make the recommendations easier to understand.
+Below is a copy-ready implementation prompt.
 
-## 1. Move all row-level AI information into the Source Column cell
+---
 
-The **Target Column** cell should display the target column name and its normal metadata only.
+# Refine mapping status, row controls, recommendations, and navigation
 
-Move the following information into the **Source Column** cell, directly below the currently mapped source column or columns:
+Update the current Auto-map review experience without changing the underlying mapping logic or weakening validation. Preserve authored mappings, transformations, CTEs, joins, filters, Values, and unsaved edits.
 
-- AI review status.
-- **View candidates**.
-- **Suggestions**.
-- Candidate confidence, reasoning, and relevant warnings.
-- Actions such as **Use candidate**, **Confirm mapping**, **Undo AI change**, and **Clear suggestion**.
+## 1. Remove redundant AI-status messages from the Source Column
 
-The selected source must remain the primary information in that cell. Candidate details and suggestions should be collapsed by default to avoid excessively tall rows.
+Do not display persistent labels such as:
 
-**Example layout:**
+- “Unresolved — review suggestions”
+- “AI suggested — not reviewed”
+- “Unresolved — review candidates”
+
+These labels clutter the Source Column and incorrectly imply that a populated mapping is missing.
+
+The Source Column should primarily show the selected source column or columns. Below them, display compact blue links only when relevant:
 
 ```text
-Source Column
-
 ACCOUNTS.ADDRESS1_LINE1
-AI suggested — not reviewed
 
-View candidates (1)    Suggestions (1)
-Confirm mapping       Undo AI change
+Reasoning    View candidates (1)    Suggestions (2)
 ```
 
-Keep expanded content within the Source Column cell’s width, wrap long identifiers sensibly, and avoid expanding the Target Column cell.
+Rules:
 
-## 2. Show only genuinely different alternatives under “View candidates”
+- Show **Reasoning** only when an explanation exists.
+- Show **View candidates** only when genuinely different alternatives exist.
+- Show **Suggestions** only when actionable guidance or relevant warnings exist.
+- Do not show empty sections or placeholder candidates.
+- Suggestions, uncertainty, or low confidence must not automatically make an otherwise valid mapping unmapped.
+- Keep genuine blocking errors visible, with a concise explanation in the Status column or its details.
 
-The current mapping should not appear again as an alternative to itself.
+## 2. Separate mapping completeness from validation and review
 
-For an already mapped row:
+Use distinct internal states for:
 
-- Hide **View candidates** when there are no different mapping options.
-- Show it when another source column or combination of columns is suggested.
-- Also show it when the source columns are the same but the transformation is meaningfully different.
+- **Mapping definition:** whether the row has a complete source, transformation, or Value mapping.
+- **Validation:** whether that definition is valid for the current sources, joins, SQL, and Values.
+- **Review/provenance:** whether it came from AI or a person and whether someone reviewed it.
 
-For example, these are different candidates:
+These states must not overwrite one another.
 
-- `ACCOUNTS.NAME` using a **Direct** mapping.
-- `ACCOUNTS.NAME` using **TRIM**.
-- `ACCOUNTS.NAME` using **UPPER(TRIM(...))**.
+### Status behavior
 
-However, the same source and transformation with a different explanation or confidence score is **not** a separate candidate.
+- **Mapped:** a complete mapping exists and its required validation is current and successful.
+- **Unmapped:** no complete mapping definition exists.
+- **Needs validation:** a definition exists, but validation is missing or stale.
+- **Validation failed:** a definition exists but has a confirmed blocking error.
 
-Candidate comparison must consider the complete mapping definition: source identities, mapping mode, transformation, Value or placeholder, and required dependencies. Do not compare display strings alone.
+Use equivalent existing status names if available rather than introducing a competing status system.
 
-**Additional rules:**
+Specifically:
 
-- The button count must reflect only the alternatives actually displayed.
-- Show up to three genuine alternatives; do not manufacture options to fill the list.
-- Keep the current mapping’s confidence and reasoning accessible beneath the selected source, even when there are no alternatives.
-- A current mapping that requires revalidation should show that status directly—not appear as a duplicate candidate merely to offer an “Apply” button.
+- Missing AI review confirmation must not cause **Unmapped**.
+- A nonblocking recommendation or confidence warning must not cause **Unmapped**.
+- A failed alternative must not invalidate the current valid mapping.
+- Re-running Auto-map must not discard valid status for an unchanged retained definition when its validation context is also unchanged.
+- A visible source alone is insufficient to certify a mapping: missing required transformations, unresolved Values, invalid references, and required missing joins remain blockers.
 
-## 3. Separate mapping candidates from informational suggestions
+Make the row status, progress bar, SQL inclusion rules, and AI summary use the same authoritative state. Clearly distinguish selected proposals from mappings actually applied to the sheet.
 
-**Candidates** and **suggestions** serve different purposes and should have separate sections.
+## 3. Simplify and standardize AI-specific buttons
 
-### View candidates
+Currently, some rows show **Confirm mapping**, **Undo AI change**, and **Clear suggestion**, while other AI-originated rows do not. This should not depend on whether the suggestion came from the latest run or was restored from a saved draft.
 
-Use this section for concrete alternative mapping definitions, such as:
+The normal row should not require a separate confirmation just because AI populated it. Applying a validated candidate should update the editable draft; publishing remains a separate operation.
 
-- A specific source column or combination of columns.
-- The same source with a different transformation.
-- A complete approved Value or placeholder mapping.
+Requested behavior:
 
-Each candidate should display:
+- Remove the always-visible **Confirm mapping** button from normal rows.
+- Use the existing row actions or overflow menu for clearing and undoing changes.
+- Show **Undo AI change** only when an actual recoverable previous definition exists.
+- Keep **Use candidate** inside the expanded alternatives section.
+- Show **Revalidate** only when validation is genuinely required.
+- Preserve AI provenance internally without adding repetitive labels to every row.
+- Keep undo history separate from validation and review status.
 
-- **Source column(s)** or **Value**.
-- **Mapping type**.
-- **Transformation**, where applicable.
-- **Confidence**, when supplied.
-- **Why this option was suggested**.
-- **Relevant limitations or prerequisites**.
+Opening a row, confirming a choice, navigating, or autosaving must not destroy its undo history.
 
-A candidate with unresolved prerequisites may be shown as **Requires join**, **Requires Value**, or **Needs rule validation**, but its **Use candidate** action must remain disabled until those prerequisites are satisfied.
+## 4. Keep join recommendations in two existing locations only
 
-### Suggestions
+Join recommendations should appear in:
 
-Use this section for guidance that is not yet a complete mapping option:
+1. The affected mapping row’s **Suggestions** section.
+2. The existing AI Assistant **bell-icon recommendations panel**.
 
-- No suitable source was found.
-- A potentially relevant column is empty or has poor coverage.
-- Additional tables, relationships, or lookup data are needed.
-- A business rule or Firm Value must be provided.
-- A referenced source is outside the current selection.
-- More evidence is required before a mapping can be proposed.
+Do not add recommendation banners or cards:
 
-Do not generate an empty candidate such as:
+- On the Select Tables page.
+- Above the join-definition section.
+- Above the SQL editor.
+- In additional notification surfaces or repeated pop-ups.
+
+Both existing locations should reference the same recommendation and its current status, avoiding duplicates.
+
+### Applying a join recommendation
+
+Provide **Review suggested join** or **Apply recommendation**. This action opens the existing join editor with evidence-supported tables, join type, and conditions prefilled.
+
+It must not silently save anything.
+
+- The user reviews and explicitly saves the relationship.
+- Cancel leaves the source selection, joins, SQL, and saved mapping unchanged.
+- Opening the recommendation must not trigger autosave of provisional source selections.
+- Do not invent missing join conditions.
+- After saving, update the recommendation in both locations and indicate which mappings require revalidation.
+
+The selection page should show the normal editor—not a second recommendation feed.
+
+## 5. Keep confidence in its dedicated column
+
+The selected mapping’s confidence score and bar already have a dedicated **Confidence** column. Do not repeat them in the Source Column.
+
+Replace:
 
 ```text
-0% · Direct
-No source columns
-Unresolved — cannot select
+Confidence and reasoning · 95%
 ```
 
-Show that information under **Suggestions** instead. Absence of a proposal should not be presented as a fabricated **0% confidence** candidate.
-
-A column mentioned in explanatory prose is not automatically a candidate. For example, “`SI_FIRM` is entirely null; consider a firm lookup” is guidance, not an applicable mapping definition.
-
-### Join recommendations and navigation
-
-Where a suggestion identifies a required relationship, provide a **Review suggested join** action.
-
-That action should:
-
-1. Open the existing **Select Tables** page for the current mapping.
-2. Open the relationship or join-definition editor.
-3. Preselect the recommended source tables or existing relation instances.
-4. Prefill the proposed join type and conditions **when supported by evidence**.
-5. Identify the target mapping that needs the join and explain why.
-6. Require the user to review and explicitly save the join.
-
-For example:
+with:
 
 ```text
-Suggested relationship
-
-Purpose: Resolve the firm identifier for TRANSACTION_FIRM__C.
-Tables: ACCOUNTS and the recommended firm lookup.
-Condition: Display the proposed matching keys, if established.
-
-Review suggested join
+Reasoning
 ```
 
-Do not invent table names, join keys, or join types when the evidence does not establish them. In that case, open the editor with the known information and clearly identify what the user must complete.
+Opening **Reasoning** should show a concise explanation, relevant evidence, and limitations.
 
-Preserve existing tables, aliases, joins, filters, CTEs, and unsaved mapping changes. Do not silently save a relationship, change the driving table, or rerun Auto-map.
+Alternative candidates may still display their individual confidence scores inside their expanded cards, because users need those scores to compare alternatives.
 
-After the user saves the join, return to the affected mapping row and offer to **Reevaluate this mapping**.
+Continue using readable table and column names, structured bullets, and emphasis for important entities. Do not expose generated hash aliases.
 
-## 4. Improve formatting and make explanations row-specific
+## 6. Preserve valid selection-page state when navigating back
 
-Replace long, repetitive paragraphs with concise, structured details.
+Returning from Mapping to Select Tables should not require validation again when nothing relevant has changed.
 
-Use a consistent presentation:
+**Next should remain enabled when the current selection/SQL context exactly matches a previously successful validation.**
 
-> **Source:** `ACCOUNTS.SI_REVIEWFREQUENCY_FORMATTEDVALUE`  
-> **Mapping:** Direct  
-> **Confidence:** **82%**
->
-> **Why suggested**
-> - Contains readable review-frequency labels.
-> - Aligns with the target’s review-cadence meaning.
->
-> **Considerations**
-> - Highlight the relevant null rate or coverage limitation.
-> - State whether a fallback or business decision is needed.
+Require validation again only after changes that affect that validation, including:
 
-Formatting rules:
+- SQL or CTE definitions.
+- Selected source or target tables.
+- Join conditions or join types.
+- Driving table or population filters.
+- Referenced Values or other validation dependencies.
 
-- Use monospace for exact **table names, column names, placeholders, and SQL expressions**.
-- Bold **confidence scores, percentages, project names, statuses, and important actions**.
-- Use short bullets for reasoning and separate bullets for limitations.
-- Explain technical validation messages in plain language, with raw details available through an expandable section.
-- Remove duplicate warnings.
-- Show only warnings relevant to that row or candidate.
+Simply navigating back, opening an editor, expanding a panel, or viewing a recommendation must not invalidate validation.
 
-Do not attach another target’s warning to the current row—for example, a referral-data warning should not appear beneath an address mapping unless it genuinely affects that mapping.
+Implementation requirements:
 
-Render formatting safely. Agent-provided text must not be treated as unrestricted HTML.
+- Store the successfully validated context signature with the draft.
+- Compare the current context against that signature.
+- Associate validation responses with the exact revision they validated.
+- Ignore late results from an older revision.
+- If the user cancels an edit and restores the validated context, restore Next eligibility where that validation remains applicable.
+- If there is no successful validation, validation failed, or dependencies changed, keep Next disabled until validation succeeds.
+- Persist this behavior across autosave and reopening.
 
-## 5. Restore a moderately detailed, structured AI Assistant summary
+Do not implement this as a blanket “enable Next when SQL text is unchanged”; joins and other dependencies matter too.
 
-The AI Assistant should provide more than a one-line count, while leaving the actual review controls in the mapping sheet.
+## Acceptance tests
 
-Use the following structure:
+Verify that:
 
-### Auto-map results
+- A valid applied mapping remains **Mapped** despite suggestions or unreviewed AI provenance.
+- Retained valid mappings do not become **Unmapped** merely after Auto-map or navigation.
+- Incomplete and invalid definitions are not falsely certified.
+- Source cells contain only sources and relevant compact links.
+- Confidence appears once for the selected mapping.
+- Undo appears only when a recoverable change exists.
+- Join recommendations appear only in row suggestions and the existing bell panel.
+- Opening and canceling join review causes no persisted changes.
+- Returning to unchanged, previously validated selections leaves Next enabled.
+- Relevant edits disable Next until the matching revision validates.
+- Row statuses, progress totals, and summary counts agree.
 
-Summarize:
-
-- Targets evaluated.
-- New draft mappings applied.
-- Existing definitions retained.
-- Rows with alternative candidates.
-- Rows still unresolved.
-- Rows requiring validation or business input.
-
-These categories can overlap; label them clearly rather than presenting them as mutually exclusive totals.
-
-### Notable mappings and alternatives
-
-Highlight a small number of useful examples:
-
-- What source was selected and why.
-- Where a meaningful alternative exists.
-- Important differences between alternatives.
-- Confidence or coverage limitations worth reviewing.
-
-Provide a **View row** link that opens the relevant row and expands its candidates or suggestions.
-
-### Suggestions and next actions
-
-Group recommendations by action:
-
-- **Relationships to review**.
-- **Firm Values or business rules required**.
-- **Source-data limitations**.
-- **Mappings requiring closer review**.
-
-### Review reminder
-
-End with a short statement such as:
-
-> These changes are saved as draft suggestions. Review the highlighted rows before confirming or publishing.
-
-Do not restore a second “accept all candidates” workflow in chat. Candidate selection remains in the sheet.
-
-Generate counts from the resulting mapping state, not from model-written prose. Distinguish **retained definitions** from **validated mappings**, and avoid duplicate completion messages.
-
-## 6. Replace generated hash aliases with accurate, user-friendly names
-
-User-facing content should not display generated aliases such as:
-
-```text
-accounts_enueh8.SI_REVIEWFREQUENCY_FORMATTEDVALUE
-```
-
-Display the resolved table and column name instead:
-
-```text
-ACCOUNTS.SI_REVIEWFREQUENCY_FORMATTEDVALUE
-```
-
-Apply this consistently to:
-
-- Selected source columns.
-- Candidate details.
-- Suggestions and warnings.
-- Confidence explanations.
-- AI Assistant summaries.
-- Transformation explanations.
-- Join recommendations.
-
-### Preserve executable identity
-
-This must be an **identity-aware display change**, not a global string replacement.
-
-Internally, retain the canonical relation ID, executable alias, and exact column identifier required for SQL generation and validation.
-
-Resolve friendly names through the current source/relationship metadata. Do not simply remove a suffix that looks like a hash: legitimate table names and user-authored aliases may contain similar text.
-
-When a table appears more than once, use a meaningful role or authored alias to distinguish it, for example:
-
-```text
-ACCOUNTS (Household).NAME
-ACCOUNTS (Parent account).NAME
-```
-
-When necessary, show `SCHEMA.TABLE.COLUMN` or provide the full qualified name in a tooltip.
-
-For CTEs, display the authored CTE name.
-
-Both `AGT_SOURCE_MAPPING` and `AGT_TRANSFORMATION_RULE` should receive the distinction between **execution references** and **display names**. Their structured outputs must remain precisely bound to real sources; the application should enforce consistent friendly rendering rather than relying solely on agent wording.
-
-Do not silently rewrite executable SQL just to make the display prettier.
-
-## 7. Keep the previous mapping available when an alternative is applied
-
-When a user selects another candidate:
-
-- The chosen candidate becomes the current mapping.
-- Remove it from **View candidates** because it is now selected.
-- Move the previous mapping into the alternatives list, provided it is a meaningful, distinct mapping.
-- Preserve its original confidence, reasoning, transformation, and dependencies.
-- Label it **Previously applied**.
-- Update the candidate count immediately.
-
-**Example:**
-
-Before switching:
-
-```text
-Current: ACCOUNTS.ADDRESS1_LINE1 — Direct — 85%
-
-View candidates (1)
-ACCOUNTS.ADDRESS1_COMPOSITE — Direct — 72%
-```
-
-After switching:
-
-```text
-Current: ACCOUNTS.ADDRESS1_COMPOSITE — Direct — 72%
-
-View candidates (1)
-Previously applied:
-ACCOUNTS.ADDRESS1_LINE1 — Direct — 85%
-```
-
-For a manually authored previous mapping, show **Manual mapping** and **Confidence not available** if no AI confidence exists. Never invent a score or explanation.
-
-Revalidate candidates before applying them, particularly if joins, Values, or source selections have changed.
-
-Persist the selected mapping, alternatives, explanations, and review status across autosave and reopening. Preserve **Undo AI change** independently so confirming the current option does not destroy the earlier undo point.
-
-## Acceptance criteria
-
-The change is complete when:
-
-- All row-level AI details appear beneath the source—not the target.
-- The current mapping is excluded from its own alternatives.
-- Same-source, different-transformation options remain available.
-- Empty or guidance-only responses appear under **Suggestions**, not candidates.
-- Join recommendations open a prefilled, reviewable editor without saving automatically.
-- User-facing identifiers are readable and unambiguous, with execution bindings preserved.
-- Candidate switching retains the previous mapping and its original explanation.
-- The AI Assistant provides a structured summary with accurate counts and useful next actions.
-- Existing authored mappings, SQL, CTEs, joins, filters, and Values remain protected.
-- Applying a candidate changes only the draft; confirmation and publishing remain separate actions.
+**Do not change deployment configuration, agent budgets, authentication, or publishing behavior as part of this update.**
