@@ -1,25 +1,8 @@
-## Fixes required in the current version
+Current capability
+Deep Agent can take a migration request, research the available information, ask questions and produce a mapping for review. Your test demonstrated that delivery.
 
-1. **Change button text to white**, with a contrasting background for readability.
-
-2. **Remove the row-level Clear mapping action.** Use the existing toolbar action after selecting or checking target rows.
-
-3. **Remove the routine Revalidate button.** Use the existing validation workflow when mappings or dependencies change. Keep genuine validation failures visible and do not weaken validation.
-
-4. **Remove internal diagnostics from suggestion cards**, including:
-   - “Precedents were supplied without a `precedent_decision`.”
-   - “Review packet evidence and citation receipts.”
-
-   Keep these details in expandable technical diagnostics. User-facing suggestions should describe a concrete action: add a required join, supply a Firm Value, choose between sources, or resolve a missing transformation. Do not invent business recommendations merely to replace technical messages. These warnings must not automatically make an otherwise valid mapping **Unmapped**.
-
-5. **Remove suggested-join banners and recommendation text from the selection page and Join Definition / Establish Join component.** Use this flow:
-   - Show the suggestion beneath the source in the mapping row.
-   - Clicking it opens the matching recommendation in the AI Assistant’s existing **bell panel**.
-   - **Review suggested join** opens the standard join editor, prefilling only evidence-supported tables and conditions.
-   - The user reviews and explicitly saves.
-
-   The join editor should contain only its normal controls—no repeated recommendation text or extra notifications. Opening or canceling it must not save changes.
-
-6. **Resolve the three failing legacy frontend tests.** The latest checks showed **468 backend tests passing**, **TypeScript passing**, and **409 frontend tests passing with 3 failures**. Investigate the missing table IDs in the legacy fixtures and rerun the suite without removing assertions or weakening coverage.
-
-Keep these changes scoped to the current version. Preserve existing local fixes, authored mappings, and validation safeguards; do not push or deploy.
+Four improvements to prioritize
+Stay focused: Complete the requested mapping without unnecessary questions about unrelated fields.
+Make approvals clearer: Explain the proposed plan, get approval when needed, and show exactly what was created or changed.
+Improve speed and visibility: Reduce repeated research and show accurate progress instead of a stuck “Submitting” message.
+Bring it into the latest app: Combine Deep Agent with current develop/UAT improvements and test mapping quality across more scenarios.
