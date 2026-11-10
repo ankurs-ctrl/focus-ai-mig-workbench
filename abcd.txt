@@ -1,8 +1,357 @@
-Current capability
-Deep Agent can take a migration request, research the available information, ask questions and produce a mapping for review. Your test demonstrated that delivery.
+I’ll trace the four quarantined slots back to their original operations and look for completion evidence. I won’t release or reset them during the investigation.**The four slots belong to older operations from November 6. They were quarantined after failures, and the application does not automatically recover quarantined slots. That is why new Auto-map runs cannot start model calls.**
 
-Four improvements to prioritize
-Stay focused: Complete the requested mapping without unnecessary questions about unrelated fields.
-Make approvals clearer: Explain the proposed plan, get approval when needed, and show exactly what was created or changed.
-Improve speed and visibility: Reduce repeated research and show accurate progress instead of a stuck “Submitting” message.
-Bring it into the latest app: Combine Deep Agent with current develop/UAT improvements and test mapping quality across more scenarios.
+### What happened originally
+
+I inspected the admission table and historical worker logs in UAT:
+
+`FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AUTOMAP_CALL_ADMISSION_UAT`
+
+- Four quarantine updates occurred between **03:48 and 03:57 UTC on November 6**.
+- Each update **succeeded and changed one row**.
+- Nearby worker errors showed **three HTTP read timeouts** and **one `ScanStopped`**.
+- Those operations failed after approximately **132–135 seconds**.
+- Logs also reported that detailed failure archives were unavailable.
+
+The errors closely match the quarantine timestamps, but the logs do not contain enough identifiers to prove every slot-to-error association conclusively.
+
+### Why they stayed blocked
+
+When a request times out, the application cannot assume the remote AI operation stopped. It therefore quarantines the permit rather than making it available for another call.
+
+However, the implementation has **no automatic reconciliation process**:
+
+```text
+Earlier request fails with uncertain outcome
+                    ↓
+Its permit becomes QUARANTINED
+                    ↓
+Expiry does not release it
+Deployment does not release it
+                    ↓
+All four permits remain unavailable
+                    ↓
+New Auto-map batches wait, then expire
+```
+
+This explains why your code deployment did not unblock the pool: **the persistent permit records survived the deployment.**
+
+### Original threads identified
+
+| Slot | Quarantined at — Nov 6 UTC | Recorded agent thread |
+|---|---|---|
+| 1 | 03:48:00 | `8227014465` |
+| 2 | 03:57:07 | `8227014545` |
+| 3 | 03:48:11 | `8227014481` |
+| 4 | 03:56:55 | `8227014541` |
+
+All reference:
+
+`FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.AGT_SOURCE_MAPPING`
+
+Their completion fields display blank. **That means completion evidence is missing from these records—not necessarily that the remote operations are still running.**
+
+### Can they be released?
+
+**Not safely justified yet.** The next step is to inspect each recorded thread’s authoritative terminal status and match it to the original request and permit. Once termination is proven, the existing operator reconciliation mechanism can record that proof and conditionally release the corresponding slot.
+
+Two separate issues need addressing:
+1. **Recover the four old permits safely** to restore usable capacity.
+2. **Investigate the original read timeouts and add a reliable reconciliation workflow** so another set of uncertain failures cannot block the pool indefinitely.
+
+I have not released, reset, or modified any permit.
+
+
+You are implementing a durable fix for Auto-map admission capacity and recovery in our Snowflake migration workbench.
+
+Keep Claude Code responsible for repository changes and tests. Use Snowflake/Cortex tooling only for explicitly authorized diagnostics and operations. Read the relevant code before proposing changes.
+
+FIRST produce an evidence-grounded implementation and operational plan. Do not immediately reset permits, change capacity, commit, push, or deploy.
+
+## 1. Repository and environment
+
+Repository:
+FocusFP/ffp_ai_mig_workbench
+
+Authoritative branch:
+GitHub UAT — remote name `github`, not `origin`.
+`origin` points to Azure DevOps.
+
+Last deployed commit:
+1a17735496ab5dad05dfc21c1139005e665dbd5e
+
+Deployment:
+https://github.com/FocusFP/ffp_ai_mig_workbench/actions/runs/42679319165
+
+Known UAT release worktree:
+C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench_release_uat_20261105
+
+Verify current GitHub HEAD and local changes before working. Do not overwrite unrelated work or assume the main checkout is UAT.
+
+UAT account:
+MHSUEJT-FFP_HDP_SNOW_ACCOUNT_PROD
+
+UAT database/schema:
+FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA
+
+UAT role:
+FFP_HDP_DLAB_MIG_WORKBENCH_DB_DEPLOY_ROLE_UAT
+
+IMPORTANT:
+The Desktop SQL connection previously resolved to DEV account GD01711 even when connection="client-spcs" was requested. Verify actual account/user/role before every operational workflow. Never run UAT remediation against DEV.
+
+Never print, commit, or reuse credentials exposed in old conversations.
+
+## 2. Relevant objects
+
+Admission table:
+FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AUTOMAP_CALL_ADMISSION_UAT
+
+Archive table:
+FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AUTOMAP_CONTEXT_ARCHIVE_UAT
+
+Source-mapping agent:
+FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.AGT_SOURCE_MAPPING
+
+Worker:
+FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.AI_WORKBENCH_AUTOMAP_WORKER_UAT
+
+Webapp:
+FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.AI_WORKBENCH_OKTA_WEBAPP_UAT_V4
+
+Both services were verified running image tag 42679319165:
+- Worker: 5/5 instances.
+- Webapp: 1/1; backend ready.
+
+Service health is not proof of Auto-map functionality.
+
+## 3. Confirmed blocking condition
+
+The admission pool has:
+- FREE: 0
+- HELD: 0
+- QUARANTINED: 4
+
+All four quarantined records originate from November 6.
+Their state persisted across deployment and later tests.
+
+Only FREE slots can be claimed. Quarantined or expired HELD slots are not automatically reclaimed.
+
+Consequently, fresh batches wait for admission until their deadline expires, before sending a model request.
+
+The exact outer error is:
+"Auto-map evidence_block_review failed; remaining targets require review."
+
+The actual blocking phase is:
+runtime_phase = admission_wait
+
+Do not interpret this as the model rejecting evidence.
+
+## 4. Original quarantined operations
+
+Pool epoch:
+9078a6fb-0c1e-45b3-9b34-ab0c8a97bf0a
+
+Caller:
+ANKURSINHA
+
+Slot 1:
+- Fence: 139
+- Runtime job: 3fae5ee241f041e29767a07e9f78d6f6
+- Thread: 8227014465
+- Updated: 2026-11-06 03:48:00.801 UTC
+
+Slot 2:
+- Fence: 149
+- Runtime job: 933713122f5b464ca7a61cb72387c580
+- Thread: 8227014545
+- Updated: 2026-11-06 03:57:07.447 UTC
+
+Slot 3:
+- Fence: 131
+- Runtime job: 48927852448141d5bdf124f9a4dee7a5
+- Thread: 8227014481
+- Updated: 2026-11-06 03:48:11.218 UTC
+
+Slot 4:
+- Fence: 101
+- Runtime job: 6b31827929304081bdde2beb5d8d5958
+- Thread: 8227014541
+- Updated: 2026-11-06 03:56:55.890 UTC
+
+All completion cells displayed blank.
+Each quarantine UPDATE succeeded and affected one row.
+Nearby original worker logs showed three HTTP read timeouts and one ScanStopped, around 132–135 seconds.
+
+The association between these errors and individual slots is temporal; exact request/thread joins were not fully proven. Remote terminal outcomes have not yet been verified.
+
+The owner confirms these were old test runs and wants the capacity released. Treat that as permission to prepare a narrowly scoped recovery/abandonment operation—not permission to fabricate terminal-completion proof or reset every permit.
+
+## 5. Fresh test evidence
+
+Latest unchanged-settings rerun:
+Mapping 4001, project 501
+Job:
+5f525dbf-1479-5d35-b1c8-2b4bb108db26
+
+Request:
+580d4de2-bba7-4f9c-b004-2c7c4693b982
+
+Window:
+2026-11-10 06:16:30.748–06:22:29.358 UTC
+
+Result:
+- 10 batches.
+- All failed in admission_wait.
+- stop_reason = deadline_expired.
+- Zero thread/model POST attempts.
+- Mapping remained 0/37.
+- Four quarantined slots unchanged before/after.
+- No session-lease saturation in this fresh window.
+
+Earlier post-deployment runs:
+4001 job a52ebfcc-fd2a-54e0-ab28-f7ba622bae02
+3102 job fb4b752c-5952-5e5f-87d8-3aaecc23d0af
+
+Each had:
+- Nine batches.
+- Eight admission deadline expirations.
+- One admission_unavailable.
+- Zero model/thread POST attempts.
+- Zero mapping-validation time.
+
+Worker instance 3 logged CONTROL session-lease saturation immediately before the two admission_unavailable failures:
+- Nov 9 19:24:50 UTC, wait 5005.2 ms.
+- Nov 9 19:32:12 UTC, wait 5000.1 ms.
+
+Do not conflate this separate connection-pool issue with the four quarantined model-call permits.
+
+## 6. Relevant code
+
+Inspect these files at the current UAT revision:
+
+services/sttm-builder/app/core/
+- automap_admission.py
+- automap_runtime.py
+- automap_fast_transport.py
+- automap_scan_transport.py
+- automap_scan.py
+- automap_batch.py
+- auto_mapping_proxy.py
+- automap_evidence_blocks.py
+- snowflake.py
+- config.py
+
+Also:
+- infra/snowflake/env/parallel.uat.json
+- scripts/render_spcs_spec.py
+- scripts/prepare_parallel_automap_infra.py
+- existing admission/runtime/transport/deployment tests
+
+Current design includes:
+- Four global durable permits.
+- Fast/proxy/worker concurrency settings of 12.
+- A separate reusable caller-session pool defaulting to two sessions per matching key/process in the admission path.
+- Approximately five-second session acquisition waits.
+- A 120-second permit lease with periodic renewal.
+- Explicit operator reconciliation, but no automatic quarantine recovery.
+
+Verify these against actual configuration; do not confuse defaults with effective runtime values.
+
+## 7. Required design: safe recovery
+
+Prefer extending existing reconciliation mechanisms.
+
+Automatic recovery:
+- Inspect expired HELD and QUARANTINED operations using bounded work and backoff.
+- Verify authoritative remote terminal state using the original caller/account context.
+- Correlate thread, original request digest, runtime job, generation, shard, owner, epoch and fence.
+- Confirm the original dispatcher can no longer resume or submit work.
+- Persist audit evidence before or atomically with release.
+- Release through a conditional update; increment fences so stale workers cannot act.
+- Make duplicate and concurrent recovery attempts safe.
+- Keep unknown/unreadable outcomes quarantined.
+- Never resubmit the original model request during recovery.
+- Never free a slot solely because its lease expired or a service restarted.
+
+Explicit abandoned-test recovery:
+- Provide a separate administrator-only action when terminal proof is unavailable.
+- Label the outcome operator_abandoned, not completed.
+- Require specific slot identities, reason, acknowledgment of unknown remote outcome, and verified dispatcher retirement.
+- Preserve immutable prior ownership and recovery history.
+- Prevent stale local work from resuming; document that fencing alone cannot stop an already-running remote call.
+- Present the exact four-slot action for approval before execution.
+- If safe abandonment cannot be established, explain the blocker and propose an alternative.
+
+Do not disguise a table-wide reset as recovery.
+
+## 8. Required design: additional slots
+
+Recommend eight GLOBAL slots initially, configurable to twelve after testing. These are application recommendations, not verified account throughput limits.
+
+Before changing capacity:
+- Inspect how inventory length, slot IDs and epochs are validated.
+- Current readers may require exactly capacity rows. Simply inserting extra rows can break old workers.
+- Design coordinated reader/config/inventory rollout and rollback.
+- Use a quiesced rollout if mixed-version safety cannot be guaranteed.
+- Add slots idempotently with unique IDs.
+- Never overwrite occupied rows or reseed existing fences.
+- Preserve unknown outstanding operations in capacity accounting.
+- Prevent unsafe shrinking below occupied capacity.
+- Do not automatically expand without a configured hard ceiling and cost/rate-limit controls.
+- Do not expand on every quarantine until the system has unbounded unknown remote work.
+
+Evaluate global permits, outer dispatch concurrency, caller-session capacity, warehouse load and provider rate limits together.
+
+Adding model slots must not silently assume the two-session database pool is sufficient.
+
+## 9. Observability and user experience
+
+Add or improve:
+- FREE/HELD/QUARANTINED counts and oldest quarantine age.
+- Admission wait time and reason.
+- Session-pool acquisition timing separately from permit waiting.
+- Actual thread/model POST counts separately from runtime attempts.
+- Last recovery result and unresolved recovery reason.
+- Safe underlying exception class/code/query correlation.
+- Clear UI: "Waiting for Auto-map execution capacity" rather than suggesting evidence was invalid.
+- Alerting when all slots are unavailable or quarantine persists.
+
+Do not expose tokens, prompts, raw customer SQL, or unauthorized users' diagnostics.
+Inspection endpoints must not unexpectedly resume jobs or execute writes.
+
+## 10. Tests and acceptance
+
+Include:
+- Terminal success/error/cancel/timeout recovery.
+- Unknown outcomes retained.
+- Expired lease alone cannot release.
+- Concurrent recovery, duplicate execution and stale-fence rejection.
+- Retired versus active dispatcher.
+- Missing archives, authentication failures and lost commit acknowledgment.
+- Audited operator abandonment.
+- Expansion 4→8, repeat expansion, mixed configuration, rollback and unsafe shrink.
+- Session contention with nine or more batches.
+- Exact source context and existing mapping preservation.
+
+Then validate progressively:
+1. One controlled batch obtains admission and reaches the model.
+2. Terminal completion releases its permit safely.
+3. Full blank mapping4001.
+4. Existing mapping3102 with replacements unaccepted.
+5. Failure/recovery scenario proves the pool cannot remain silently blocked forever.
+
+Do not call compilation, HTTP200, green CI or all targets "processed" mapping success.
+Report actual proposals, unresolved targets, validation results and business correctness separately.
+
+## 11. Change and deployment boundaries
+
+For this first response:
+- Produce the investigation/design and ordered implementation plan.
+- Identify exact files, migrations, tests and operational steps.
+- State verified facts versus hypotheses.
+- Present the proposed four-slot recovery and 4→8 expansion separately.
+- Do not perform live changes or deployment yet.
+
+Preserve unrelated dirty files.
+Do not change protected deployment scripts, broaden privileges, disable TLS, or reset epochs as a shortcut.
+Deploy only through the established GitHub UAT workflow after scoped review and approval.
