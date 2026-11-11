@@ -1,4 +1,46 @@
-FFP_HDP_CRM_MIG_DB_UAT.SCH_DYNAMICS_MAPPER_TEMPLATES.MAPPER_ACCOUNTCONTACTRELATION
-FFP_HDP_CRM_MIG_DB_UAT.SCH_DYNAMICS_MAPPER_TEMPLATES.MAPPER_CONTACT_MASTER
-FFP_HDP_CRM_MIG_DB_UAT.SCH_DYNAMICS_MAPPER_TEMPLATES.MAPPER_HH_MASTER
-FFP_HDP_CRM_MIG_DB_UAT.SCH_DYNAMICS_MAPPER_TEMPLATES.MAPPER_USER
+## 1. Missing source columns and row counts
+
+**I found a separate code gap for row counts—not just the failed column request.**
+
+### Why the target shows columns
+
+The target has its own small metadata request; all **287 sources** are fetched in a separate large batch. The target can therefore succeed independently. Also, a previously populated count is enough to display “37 cols.”
+
+The source request ended with **HTTP 499**, meaning the client disconnected before receiving its response. We have not proved whether this was a timeout or cancellation.
+
+### Why row counts remain blank
+
+When reopening a saved mapping, the frontend initializes table nodes with **blank row counts**. It then fetches columns and relationships, **but does not fetch row counts again**.
+
+See `frontend/src/features/sttm/store/sttm-builder-slice.ts:6932` and `frontend/src/features/sttm/context/sttm-builder-context.tsx:901`.
+
+### Recommended fixes
+
+1. **Restore counts independently:** fetch lightweight catalog row counts and column counts when opening a mapping. Avoid running `COUNT(*)` against every source.
+2. **Load columns in smaller batches:** start with approximately 25 tables per request and limited concurrency, then tune using measured timings.
+3. **Keep partial successes:** one failed table should not discard metadata for the entire batch.
+4. **Use per-table errors and retry:** clear errors after successful retries. Currently a shared error flag can mark every unloaded source “Columns unavailable.”
+5. **Add request timings and query IDs:** distinguish slow Snowflake queries, client timeouts, and navigation cancellations.
+
+These are recommendations; **I haven’t implemented them**. Generating missing semantic YAML will not repair these metadata-loading issues.
+
+## 2. Bootstrap changes I made
+
+Your changes already introduced the project lock table. **I connected its creation and validation to the existing CI bootstrap.**
+
+- Added `project-bootstrap-lock.sql` immediately after the base table DDL in `scripts/bootstrap_sttm_metadata_infra.py:31`.
+- Qualified the table using the configured metadata namespace.
+- Used **create-if-absent** to initialize one row:
+  - `LOCK_KEY = 'project-bootstrap'`
+  - `FENCE = 0`
+- Added immediate validation requiring exactly one correctly keyed row with a nonnegative integer fence: `scripts/bootstrap_sttm_metadata_infra.py:590`.
+- Preserved existing valid fence values. Invalid inventory stops bootstrap—**no reset, deletion, or automatic repair**.
+- Added tests and corrected installation instructions. **No new grants or workflow changes** were added.
+
+The resulting UAT object is:
+
+```text
+FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_PROJECT_BOOTSTRAP_LOCK
+```
+
+It coordinates concurrent project-creation requests to prevent duplicate initialization. **It does not load columns, generate semantics, or make queries parallel.** Its bootstrap step completed successfully in deployment `43069549191`.
