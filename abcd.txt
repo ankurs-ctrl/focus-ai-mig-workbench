@@ -1,746 +1,284 @@
-Below is the detailed history, separating **your ZIP**, **the durable-v2 activation I performed**, **the subsequent fixes I wrote**, and **the errors that remain**.
+## Fix handoff: project-creation timeout and hidden AI Recommendations tab
 
-**Latest verified state:** GitHub `develop` and `UAT` both contain commit **`e924e3e`**. UAT is running image **`42871426887`**, with durable-v2 enabled. Deployment succeeded, but the latest Auto-map test was **not functionally successful**.
-
-## 1. Release sequence
-
-### A. Your combined ZIP — `e9528f1`
-
-Package:
-
+**Baseline inspected:** UAT commit `7a3fd4e`  
+**Local folder:**
 ```text
-automap-login-session-cache-combined-2026-11-10.zip
+C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench_combined_20261110
 ```
 
-I applied it to the synchronized GitHub baseline and pushed the same commit to both branches:
-
-```text
-e9528f1c436376a0eaaa069c3eaeea4efe0f1dd7
-Ship combined Auto-map recovery and login session cache fixes
-```
-
-The package contained 62 files; 59 differed from the baseline. I verified all 61 hashes listed in its manifest. Git normalized line endings where applicable; I did not redesign the supplied implementation.
-
-**Your package supplied:**
-- Durable background-run execution and recovery.
-- The separate V2 admission-pool design.
-- Migration and validation scripts.
-- Original-caller OAuth restoration for recovery.
-- Durable job resumption.
-- Login/session reuse and navigation-cache changes.
-- A workflow switch for selecting the durable-v2 profile.
-
-**Initially, I deployed the package without activating durable-v2.** Its rollout document required a separate migration before enablement.
-
-[Initial package deployment: 42827835093](https://github.com/FocusFP/ffp_ai_mig_workbench/actions/runs/42827835093) succeeded.
-
-### B. Durable-v2 activation — operational changes, no new source commit
-
-After your approval, I migrated the UAT inventory, enabled the GitHub variable, and redeployed the same `e9528f1` code.
-
-[Durable-v2 deployment: 42838798613](https://github.com/FocusFP/ffp_ai_mig_workbench/actions/runs/42838798613) succeeded.
-
-### C. My subsequent code fixes — `e924e3e`
-
-After investigating the hash mismatch and string error, I changed four files and pushed:
-
-```text
-e924e3e090302bfaa7ad1252f4a40553db3d295c
-Fix durable Auto-map JSON integrity and retry response handling
-```
-
-[Fix deployment: 42871426887](https://github.com/FocusFP/ffp_ai_mig_workbench/actions/runs/42871426887) succeeded. I then verified both services were READY before testing.
+Line numbers below refer to that revision. No fixes have been made for these two issues.
 
 ---
 
-## 2. What I changed when enabling durable-v2
+## 1. Project creation times out while initializing target mappings
 
-### The original blockage
+### Reproduction
 
-The old admission table had:
+In **New Project**:
+1. Select **CRM Migration**.
+2. Select **Create target mappings automatically**.
+3. Select all ten approved target tables.
+4. Click **Create Project**.
 
-```text
-FREE:          0
-HELD:          0
-QUARANTINED:   4
-```
-
-Those four old testing operations still consumed all available admission capacity. Repeated Auto-map runs therefore expired in `admission_wait`, before model submission.
-
-A lease expiry alone did not release a quarantined operation because it did not prove the remote work had finished.
-
-### The migration I executed
-
-Using the existing authenticated UAT Snowsight session, I:
-
-1. Suspended the web app and Auto-map worker after your exclusive-cutover approval.
-2. Waited until both services had zero running instances and empty container-status lists.
-3. Executed the supplied, account-guarded migration.
-4. Validated the resulting inventory and imported identities.
-5. Enabled the workflow variable and redeployed.
-6. Verified the new service specifications before resuming services.
-
-The migration created these objects under:
+The UI reports:
 
 ```text
-FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA
+Request failed with status code 504
 ```
+
+The endpoint is:
 
 ```text
-TBL_AUTOMAP_CALL_ADMISSION_UAT_V2
-TBL_AUTOMAP_CALL_ADMISSION_UAT_V2_CONTROL
-TBL_AUTOMAP_CALL_ADMISSION_UAT_V2_EVENTS
+POST /api/v1/projects/from-template
 ```
 
-The resulting layout was:
+The backend can continue processing and save the project after the client-facing connection closes.
+
+### Verified incident evidence
+
+Two ACTIVE projects named `Kovitz_3` were found:
 
 ```text
-Slots 1–12:   12 FREE execution reservations
-Slots 13–16:   4 imported QUARANTINED recovery reservations
-Control rows: 64
-Import events: 4
+Project IDs: 1001 and 1002
 ```
 
-**I did not clear the old quarantine records or reset their fences.** I verified that ownership, fences, job/caller identifiers, generation, shard, completion and thread references were preserved in the imported records. The legacy table remained unchanged.
+Each eventually contained:
+- Ten distinct draft target mappings.
+- 242 target-attribute rows.
+- Populated snapshots and valid latest-snapshot references.
 
-### Settings activated
+At the first two logged disconnects, the corresponding project had **9/10 committed mappings**. The last mapping was saved afterward.
 
-The workflow variable became:
+Nginx recorded **499**, while the screenshot showed **504**. The precise component issuing the 504 remains unverified; do not assume nginx’s default timeout caused it.
+
+### Main performance issue
+
+The implementation creates the ten mappings **serially**, and each mapping goes through the normal full autosave workflow:
 
 ```text
-AUTOMAP_USE_DURABLE_V2=true
+Create project
+→ Create mapping header
+→ Read mapping
+→ Run full autosave
+→ Save snapshot and target attributes
+→ Update draft and metadata
+→ Read mapping and recalculate counts
+→ Repeat for next target
 ```
 
-This selected the supplied `parallel.uat.durable-v2.json` profile, including:
+For a blank target-only mapping, this performs unnecessary prior-state reads, empty deletes, repeated updates and count calculations.
+
+Observed database-session evidence:
+
+| Correlated project | Relevant metadata queries | Operation span | Sum of SQL elapsed time |
+|---|---:|---:|---:|
+| 1001 | 134 | 75.1 seconds | 56.2 seconds |
+| 1002 | 134 | 95.9 seconds | 75.0 seconds |
+
+For the slower session, approximately:
+- 40 seconds were SQL compilation.
+- 29 seconds were execution.
+- 6 seconds were transaction blocking.
+
+These are database metrics, **not exact HTTP request durations**.
+
+Compilation here means Snowflake planning the application’s metadata `INSERT`, `UPDATE`, `SELECT` and related statements—not generating or validating source-to-target transformation SQL.
+
+**No Auto-map inference runs in this blank project-bootstrap path.**
+
+### Specific implementation problems
+
+**A. Full autosave is reused for initial creation**
+
+New mappings are treated like existing edited mappings, causing unnecessary persistence work.
+
+Relevant locations:
+```text
+services/sttm-builder/app/core/project_service.py:1227
+services/sttm-builder/app/core/project_service.py:1715
+services/sttm-builder/app/core/project_service.py:2245
+```
+
+**B. Global mapping counts are repeatedly recalculated**
+
+`get_sttm_record()` invokes `_mapping_counts_by_sttm()`, which aggregates counts across mappings instead of retrieving only the newly created mapping’s count. This happens repeatedly during the ten-target loop.
 
 ```text
-AUTOMAP_DURABLE_RUNS_V2=true
-AUTOMAP_PARALLEL_POOL_CAPACITY=12
-AUTOMAP_RECOVERY_CAPACITY=4
-AUTOMAP_ADMISSION_SESSION_CAPACITY=6
-AUTOMAP_RUN_SECONDS=330
-AUTOMAP_QUEUE_SECONDS=900
+services/sttm-builder/app/core/project_service.py:2105
+services/sttm-builder/app/core/project_service.py:3157
 ```
 
-These are **global reservations**, not twelve reservations per worker.
+**C. Transaction ownership is broken**
 
-The deployment updated specifications but left the intentionally suspended services suspended. I therefore verified their V2 configuration, resumed both services, and confirmed:
-- Web: 1/1 instance, all four containers READY.
-- Workers: 5/5 instances READY.
-- Expected image tag and zero restarts.
+The outer bootstrap starts a transaction, but nested autosave also starts and commits a transaction on the **same session**.
+
+The inner commit can commit the project and earlier mappings before the entire bootstrap finishes. A later outer rollback cannot undo those already committed changes.
+
+```text
+services/sttm-builder/app/core/project_service.py:1110
+services/sttm-builder/app/core/project_service.py:2160
+```
+
+**D. Completion is marked too early**
+
+Project metadata is assigned:
+
+```text
+bootstrap_status="COMPLETE"
+```
+
+before the mapping-creation loop has completed.
+
+```text
+services/sttm-builder/app/core/project_service.py:1194
+```
+
+**E. Retry handling is not sufficiently safe**
+
+The existing idempotency logic:
+- Searches for a matching key.
+- Skips existing logical target mappings.
+- Does not fully verify that each existing shell has completed attributes and snapshots.
+- Does not provide a concurrency-safe creation claim.
+
+Closing/reopening the modal generates a new key. A timeout followed by a new attempt can therefore create another project while the original request is still completing.
+
+```text
+frontend/src/features/projects/new-project-modal.tsx:116
+services/sttm-builder/app/core/project_service.py:1177
+```
+
+**F. Cache behavior can hide completed work**
+
+Frontend summary invalidation runs only after a successful response. A timeout can leave an old project list visible even though the project was committed. Backend invalidation occurs before creation, allowing concurrent reads to repopulate stale summaries.
+
+### Required fix direction
+
+- Implement a **bootstrap-specific bulk initialization path** for mapping headers, target attributes and snapshots.
+- Build the blank mapping payloads in memory before writing.
+- Avoid full autosave, empty deletes and prior-snapshot reads for new mappings.
+- Calculate counts once.
+- Give the operation **one transaction owner**.
+- Mark bootstrap complete only after all required children are persisted.
+- Make retries concurrency-safe and completeness-aware.
+- Invalidate caches after commit.
+- If processing remains long-running, return a durable operation ID and progress status instead of holding the HTTP request.
+
+**Do not simply parallelize the current loop on the shared session.** That risks transaction interference. Reduce and batch the database work first.
+
+### Timeout investigation still needed
+
+The inspected configuration has:
+- Frontend template-create timeout: **300 seconds**.
+- Nginx `/api/` read/send timeouts: **3,600 seconds**.
+
+Therefore, raising those values without identifying the actual 504 responder is not an evidence-based fix. Add request correlation and timing across ingress, nginx and backend.
+
+### Acceptance tests
+
+- Ten targets create exactly ten mappings with correct initial attributes and snapshots.
+- No model calls or source-data reads occur.
+- Query count is substantially reduced and measured.
+- A mid-operation failure follows the chosen atomicity/recovery contract.
+- Concurrent retries with the same key do not duplicate projects or mappings.
+- A disconnected client can recover the final result without creating a second project.
+- An incomplete existing shell is repaired or explicitly reported—not silently skipped.
+- The project list reflects committed completion.
+
+**Do not automatically delete projects 1001 or 1002.** One associated mapping already has later edits.
 
 ---
 
-## 3. The `209.0` versus `209` hash issue
+## 2. AI Recommendations tab is hidden in the main Join Definitions dialog
 
-### Observed failure
+### Observed behavior
 
-The first durable-v2 job failed with:
-
-```text
-_FastInvariantError: prepared_hash_mismatch
-Fast Auto-map requires the frozen prepared proxy handoff
-```
-
-Job:
+In:
 
 ```text
-39d5074e-6aec-5f4e-9357-c11371cf367a
+Source Selection → Join Definitions
 ```
 
-It failed while reconstructing and validating pending batches.
+the **AI Recommendations** tab is hidden.
 
-### Why numeric representation matters
-
-The preparation hash uses JSON serialization. These values are numerically equal but serialize differently:
-
-```json
-{"duration_ms":209.0}
-```
-
-```json
-{"duration_ms":209}
-```
-
-Consequently, their hashes differ.
-
-The hash includes learning-context diagnostics. Some of those dictionaries contain untyped values, so model validation does not necessarily restore an integer to a float.
-
-In Snowsight, I verified that:
-
-```text
-PARSE_JSON({"x":209.0}) → stored INTEGER 209
-```
-
-The failed job contained:
-
-```text
-project_context.duration_ms = 209        INTEGER
-correction_history.duration_ms = 489.3  DECIMAL
-```
-
-An offline test using the actual restoration and pending-request functions reproduced the exact failure by changing only `12.0` to `12`.
-
-**Important qualification:** this proves the defect mechanism. We did not retain enough original pre-storage evidence to prove that `209.0 → 209` was the sole change responsible for that particular live job.
-
-### My fix
-
-I did **not**:
-- Disable hash validation.
-- Recompute hashes on load to make corrupted records pass.
-- Convert arbitrary integers back into guessed floats.
-
-Instead, persistence now stores an additional versioned exact-JSON representation of the hash-bearing sections:
-
-```text
-request_envelope
-partial_responses
-response
-```
-
-The marker is:
-
-```text
-_automap_exact_json
-encoding: automap-exact-json-v1
-```
-
-The existing SQL-visible fields remain available for operational queries. On load, the decoder restores the exact JSON sections before model validation.
-
-It checks:
-- Encoding/version and expected structure.
-- Duplicate keys.
-- Non-finite numbers.
-- Consistency with the SQL-visible projection.
-
-Mutable job status, ownership and lease fields are not overwritten from the exact-JSON supplement.
-
-I also updated the **background restart path**, because fixing only browser-triggered loading would leave restart recovery vulnerable.
-
-**Legacy records still use the original validation. Already-damaged old jobs are not silently repaired.**
-
----
-
-## 4. The `'str' object has no attribute 'get'` issue
-
-### Observed failure
-
-The next fresh run failed all ten batches with:
-
-```text
-'str' object has no attribute 'get'
-```
-
-Job:
-
-```text
-19269947-4863-5660-bc3b-5b0106e97392
-```
+The tab implementation still exists. It is not removed globally, and it remains available in the CTE/derived-source editor.
 
 ### Exact cause
 
-The real worker response contains:
+The main relationship-flow component passes:
 
-```python
-response.meta["auto_map_fast_path"] == "v1"
+```tsx
+showRecommendations={Boolean(tables || onJoinsChange)}
 ```
 
-That field is a **selector string**.
-
-The durable retry code mistakenly treated it as a dictionary:
-
-```python
-(response.meta.get("auto_map_fast_path") or {}).get("fast_diagnostics")
-```
-
-The actual diagnostics are here:
-
-```python
-response.meta["auto_map_retrieval"]["auto_map_fast_path"]["fast_diagnostics"]
-```
-
-I reproduced the exception through actual worker-response construction, HTTP serialization, proxy parsing and completion logic. It occurred even with successful model output—not only malformed responses.
-
-### My fix
-
-I corrected both diagnostics reads:
-- The initial response.
-- The replacement response after a retry.
-
-A shared helper now reads the canonical nested structure:
-- Missing/null optional diagnostics are handled.
-- Malformed diagnostic objects produce an explicit contract error.
-- The `"v1"` selector is not treated as diagnostics.
-
-The old retry test used an artificial root-level dictionary, which concealed the problem. I replaced that assumption with real worker-response shapes in regression tests.
-
----
-
-## 5. Additional retry defect caught during review
-
-Review found another problem exposed by the corrected retry path:
-
-1. An attempt produces a validated candidate.
-2. A subsequent retry stops before model execution.
-3. Latest-attempt metadata reports zero model calls.
-4. Parent acceptance interprets that as no worker result and discards the previously valid candidate.
-
-I reproduced and fixed this.
-
-The implementation now separates:
-- Latest-attempt diagnostics, used for retry control.
-- Accumulated attempt information.
-- Exact proof of retained validated results.
-
-Only the specific proven retained mapping can survive the zero-call replacement. All-zero-call attempts and invalid replacements remain unresolved. Reported model-call counts are **not relabeled as HTTP POST counts**.
-
-### Files in my latest push
+Location:
 
 ```text
-services/sttm-builder/app/core/auto_mapping_proxy.py
-services/sttm-builder/app/core/automap_restart.py
-services/sttm-builder/tests/test_automap_durable_json.py
-services/sttm-builder/tests/unit/core/test_automap_durable_runs_v2.py
+frontend/src/features/sttm/source-target/table-relationship-flow.tsx:1266
 ```
 
-No frontend, agent specification, workflow or environment files were changed in this four-file fix.
+The main Source Selection page mounts the component without either prop:
 
-### Validation
+```tsx
+<SttmTableRelationshipFlow />
+```
 
-- **201 focused tests passed.**
-- Broader checks: **776 passed**, with **5 failures and 7 setup errors** attributed to missing Node dependencies.
-- Final review found no remaining concrete blocker in these fixes.
-- Full live crash/restart recovery across every case was not established.
-
----
-
-## 6. What happened after the latest push
-
-Latest test:
+Therefore:
 
 ```text
-Job:     8f90718b-4336-538e-857b-8ef486c118eb
-Request: 5e367007-b1c5-4114-9233-daeb0f478021
+tables = undefined
+onJoinsChange = undefined
+showRecommendations = false
 ```
 
-It ran approximately **18:25–18:34 UTC on November 10** and ended `partial_failure`.
+The modal conditionally omits the tab.
 
-**Neither the explicit hash-mismatch error nor the string `.get` error appeared in the inspected fresh results.** That is encouraging, but it is not proof that all recovery scenarios are correct.
-
-Results:
-- 1 backend proposal.
-- 0 executable mappings.
-- All 37 targets still requiring input.
-- The UI automatically installed and autosaved 13 draft definitions.
-- No manual Apply/Save/Accept action was performed, and nothing was published.
-
-## 7. Current errors and unresolved behavior
-
-### A. Evidence-block review failures
-
-Seventeen targets ended with incomplete evidence-block outcomes.
-
-Examples include:
-- A returned quote was not an exact substring of the supplied evidence.
-- Wrong or unsupported review-agent identity.
-- Incorrect block identity.
-- Review output exceeding the accepted structure/size.
-
-These are failures in the evidence-reading protocol. They do **not** establish that FIR guidance is absent.
-
-### B. `thread_persist` failures
-
-Batches 5 and 7 failed after attempting thread creation but before model submission:
+Relevant locations:
 
 ```text
-runtime_phase=thread_persist
-failure_kind=unknown_failure
-thread_post_attempts=1
-model_post_attempts=0
+frontend/src/app/sttm/builder/new/page.tsx:44
+frontend/src/features/sttm/source-target/join-definitions-modal.tsx:714
 ```
 
-The underlying SQL/session exception was not recovered from the available log tails.
+**This is not caused by empty recommendations.** When enabled, the tab has an empty-state display.
 
-Therefore, I cannot yet truthfully attribute these to a specific lock, timeout, expired token, or persistence statement.
+### When it was introduced
 
-### C. Invalid source references reach working SQL
-
-References such as:
+Commit:
 
 ```text
-src:mapper_hh_master.LEGACYHHNAME
+3ccecacddfe3857b0fc2efaaf0ee44bead5f0677
+Apply Auto-map v3 and inline candidate review fixes
 ```
 
-are evidence identifiers, not SQL aliases.
+Date: **November 5, 2026**
 
-They remain in rejected candidate rosters, get copied into draft rows, and are emitted verbatim by the working-SQL serializer.
+That push’s deployment failed. The change was included in the subsequent successful UAT deployment of `fce9e7e`:
 
-This is separate from the hash and retry fixes and **remains unfixed**.
+[UAT run 42041987548](https://github.com/FocusFP/ffp_ai_mig_workbench/actions/runs/42041987548)
 
-### D. Transformation rules were not generated
+It was **not introduced by the November 11 overlay or the durable-v2 fixes**.
 
-No transformation-model calls were recorded for the latest run. The UAT agent exists:
+### Required fix direction
 
-```text
-FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.AGT_TRANSFORMATION_RULE
-```
+- Enable AI Recommendations explicitly for the main Source Selection dialog.
+- Do not infer feature visibility from whether `tables` or `onJoinsChange` were supplied.
+- Preserve CTE-editor behavior.
+- Verify recommendation loading, review and application work correctly in the main context.
+- Keep suggested joins separate from accepted joins; do not automatically modify the graph.
+- Preserve existing manual joins and row-level “Review suggested join” navigation.
 
-The backend selects transformation work from primary mappings. Rejected source proposals can survive only in the separate candidate roster, which the frontend later uses for drafts.
+### Acceptance tests
 
-That explains:
-- STREET/OWNERNAME having NL instructions.
-- No executable preprocessing expression.
-- `<missing expression>` appearing in working SQL.
+- Main Join Definitions shows:
+  - Driving Joins
+  - Additional Joins
+  - AI Recommendations
+- Empty recommendations display an empty state rather than hiding the tab.
+- Loading and retrieval failures have visible states.
+- Reviewing a suggestion does not apply it.
+- Explicit acceptance adds the intended join once without overwriting manual joins.
+- CTE-editor recommendations continue working.
+- Existing row-level join-review navigation still works.
 
-The code path is `services/sttm-builder/app/core/sttm_builder.py:1664`.
-
-### E. FIR exists, but compatibility is unresolved
-
-The frozen job retained **102 distinct FIR patterns across all 37 targets**. All were marked guidance-only and not applicable as executable recipes.
-
-Identified gaps included:
-- Source type compatibility.
-- Source grain compatibility.
-- `ISRCPCLIENT` semantic role.
-- `NEXTREVIEWDATE` semantic role.
-- Missing `JIMSHH` derived-output dependency.
-
-So the correct diagnosis is **not “no learning available.”** Guidance exists, but the system cannot establish all required compatibility and dependencies.
-
-Some NL guidance was already sufficient to describe the intended STREET, OWNERNAME and RCP transformations. Missing executable SQL for those cannot be explained solely by missing instructions.
-
-### F. Drafts are presented as mappings
-
-The frontend can install concrete candidates even when their validation status is invalid.
-
-`MAPPED` currently means the row contains a definition—source text, an expression, a value or an NL rule—not that it is executable.
-
-Relevant path:
-
-```text
-frontend/src/features/sttm/store/sttm-builder-slice.ts:2853
-```
-
-This behavior predates my latest four-file fix. It accounts for the 13 automatically saved drafts.
-
-### G. The 100% metadata count is incorrect
-
-Persistence falls back to rule labels such as:
-
-```text
-Direct
-Select...
-```
-
-when constructing transformation text. The metadata count then treats any nonempty transformation text as mapped.
-
-I reproduced:
-
-```text
-13 actual draft rows
-24 blank rows with Select...
-→ metadata reports 37 mapped / 100%
-```
-
-The relevant paths are:
-
-```text
-services/sttm-builder/app/core/project_service.py:3180
-services/sttm-builder/app/core/project_service.py:3563
-```
-
-This counting defect remains unfixed.
-
-### H. Confidence is unknown or capped—not a correctness guarantee
-
-The inspected roster contained:
-- 15 invalid candidates.
-- 4 unvalidated candidates.
-- 1 valid candidate with review warnings.
-
-Missing confidence stays unknown. Validation errors can cap scores at 0.49, 0.69 or 0.79 depending on the category.
-
-Those numbers are policy-adjusted scores, **not calibrated probabilities that the SQL is correct**.
-
----
-
-## 8. What is fixed versus what remains
-
-**Implemented and deployed:**
-- Durable-v2 inventory and operational enablement.
-- Exact-JSON preservation for newly persisted hash-bearing job sections.
-- Decoder coverage for background restart.
-- Correct worker diagnostics extraction.
-- Preservation of proven mappings across zero-call retries.
-
-**Still unresolved:**
-- Evidence-review protocol failures.
-- Underlying `thread_persist` exception.
-- Evidence IDs leaking into SQL references.
-- Primary-source-to-transformation handoff gaps.
-- Invalid drafts being presented as mapped definitions.
-- Incorrect metadata coverage.
-- FIR compatibility/dependency gaps.
-- Business decisions still missing for some targets.
-
-**Why these escaped:** the earlier tests covered ordinary Python JSON round trips rather than Snowflake’s numeric normalization, and the retry tests used a response shape different from the real worker contract. The remaining problems involve additional boundaries—evidence admission, candidate retention, transformation selection and UI status—that are not fixed merely by repairing persistence and retries.
-
-The latest deployment removed two concrete crashes, but **Auto-map still does not meet end-to-end acceptance**. No changes were made in preparing this summary.
-
-
-I’ll trace BILLINGSTREET from its published mapping and SQL through FIR extraction, retrieval, compatibility checks, and the transformation handoff. I’ll also compare OWNERNAME and NEXTREVIEW to distinguish shared code defects from genuinely missing dependencies.
-
-This stays read-only: no new Auto-map run, data repair, or code changes.
-The trace confirms that the published BILLINGSTREET SQL was preserved in FIR. Its exact rejection was **missing source-grain evidence**, not missing SQL or source types. I also found a producer/consumer mismatch: the normal published snapshot omits physical-table grain, while the reuse matcher requires it.
-
-NEXTREVIEW has a published direct-column precedent as well as a JIMSHH-based precedent. The direct one was also blocked only by missing grain, so the missing JIMSHH CTE does not explain the whole failure.
-**Yes—the published SQL and mappings are present in FIR. I traced the exact published versions, and the main problem is how our code represents, qualifies, and hands off that knowledge—not simply missing learning.**
-
-There are several independent gates. Fixing only one will not make these mappings reusable.
-
-## 1. BILLINGSTREET: the complete SQL was preserved
-
-I traced:
-
-```text
-Published mapping: STTM 2001
-Published version ID: 1601, version 5
-Project: 301
-FIR pattern: tmp_1e82f3062a339f9b5d3dbdaa
-```
-
-The published expression and FIR expression match:
-
-```sql
-accounts_80ydxi.ADDRESS1_LINE1
-|| COALESCE(CHR(10) || accounts_80ydxi.ADDRESS1_LINE2, '')
-|| COALESCE(CHR(10) || accounts_80ydxi.ADDRESS1_LINE3, '')
-```
-
-The frozen Auto-map request also contains:
-- All three selected address columns.
-- Their `VARCHAR` types.
-- Matching physical-table identities and aliases.
-
-**The exact recorded applicability failure was only:**
-
-```text
-compatible_source_grain
-```
-
-This corrects my earlier broader description: **for this particular STREET recipe, neither missing SQL nor missing source types was the recorded problem.**
-
-### Root cause: producer and consumer disagree
-
-The normal publication snapshot includes physical column names and types, but does **not** consistently include physical-table grain—the meaning of one row and relevant uniqueness assumptions.
-
-The FIR matcher then requires known, compatible grain **even when the source columns match exactly**.
-
-Consequently:
-
-```text
-Publication produces a valid FIR record with grain=null
-→ Matcher requires positive grain evidence
-→ Recipe becomes unresolved
-```
-
-Relevant code:
-- Snapshot construction: `frontend/src/features/sttm/context/workbench-context.ts:187`
-- FIR projection: `services/sttm-builder/app/core/project_service.py:4135`
-- Compatibility checks: `services/sttm-builder/app/core/target_mapping_patterns.py:2146`
-
-I reproduced this with the actual constructor and matcher:
-- Missing historical grain → unresolved.
-- Explicit matching contracts on both sides → exact precedent accepted.
-
-**We should fix the missing contract, not invent grain or bypass the check.** The published mapping also used a filtered `cte_hh_src` population that the current graph does not contain; matching column names alone does not prove equivalent population behavior.
-
-## 2. A separate cross-project gate also blocks reuse
-
-For STREET, OWNERNAME and the direct NEXTREVIEW recipe, the frozen job records:
-
-```text
-Source project: 301
-Current project: 501
-Linked projects: []
-Tier: T4
-guidance_only: true
-legacy_guidance: false
-```
-
-The publication IDs are present and valid. **These are not being downgraded because their published versions were missing.**
-
-The ranking code uses:
-- Same project → T1.
-- Explicitly linked project → T2.
-- Matching explicit CRM → T3.
-- Otherwise → T4 guidance.
-
-The relevant `source_system_profile.crm` field is absent. Both sides having `source_system_key="OTHER"` does not satisfy that CRM check.
-
-Therefore, **repairing grain alone would not remove the independent T4 restriction.**
-
-Code: `services/sttm-builder/app/core/automap_learning_pack.py:20`
-
-This is partly conservative policy and partly metadata/configuration completeness. We must establish the intended project linkage or CRM relationship—not automatically treat every historical project as trusted for execution.
-
-## 3. NEXTREVIEW: a usable-looking direct precedent was overlooked in the explanation
-
-There are different historical recipes:
-
-### Direct published recipe
-
-STTM 2001, published version 1601:
-
-```sql
-accounts.SI_NEXTREVIEWDATE AS FINSERV__NEXTREVIEW__C
-```
-
-For this recipe:
-- The source column exists in the frozen current selection.
-- Source type is known.
-- Physical identity matches.
-- The recorded applicability deficit is **grain**, plus the independent guidance-tier restriction.
-
-### JIMSHH-based published recipe
-
-STTM 3301, published version 1401:
-
-```sql
-JIMSHH.nextReviewDate AS FINSERV__NEXTREVIEW__C
-```
-
-Its published SQL constructs `nextReviewDate` from `si_nextreviewdate` inside JIMSHH. The current mapping graph has no JIMSHH derived node.
-
-That dependency gap is real for **that recipe**, but it does not explain the rejection of the separate direct recipe.
-
-There is also an accepted-draft recipe from STTM 701. It is **not a published-version artifact**, so it must not be presented as equivalent published evidence.
-
-### Additional root cause: logical lineage is not reconciled
-
-The matcher sees:
-
-```text
-JIMSHH.NEXTREVIEWDATE
-ACCOUNTS.SI_NEXTREVIEWDATE
-```
-
-as different semantic roles unless sufficient lineage/adaptation evidence connects them. Derived compatibility also relies on the required CTE identity.
-
-We reproduced the resulting exclusions:
-
-```text
-semantic_role:NEXTREVIEWDATE
-derived_output:JIMSHH
-compatible_source_types
-compatible_source_grain
-```
-
-Here, some compatibility errors follow from failure to match the dependency; they do not necessarily mean the physical column has the wrong type.
-
-**The safe fix must preserve CTE filters and joins.** Simply replacing `JIMSHH.NEXTREVIEWDATE` with the physical column could change the population.
-
-Also, the generated explanation incorrectly called **3301 a project**. It is an STTM ID; its project is 301.
-
-## 4. OWNERNAME: the actual published rule was NULL—not full-name concatenation
-
-This was an important finding.
-
-The exact published version contains:
-
-```sql
-NULL AS OWNERNAME
-```
-
-Its mapping row records:
-
-```text
-mapping_mode: constant
-constant_value: "NULL"
-```
-
-The FIR extractor explicitly treats SQL `NULL` as a literal, then records:
-
-```text
-mode: value
-has_project_specific_literal: true
-expression: null
-scope: project
-```
-
-It attaches:
-
-```text
-Do not reuse the project-specific literal.
-```
-
-The recipe does not preserve the constant as an executable value.
-
-Because the recipe belongs to project 301, the strict project-scoped lookup excludes it for project 501. A broader retrieval path reintroduces it as guidance, explaining why it can appear with an empty applicability-exclusion list while remaining unresolved.
-
-### Root cause
-
-There are two things to distinguish:
-- **Intentional policy:** do not blindly copy project-specific constants.
-- **Lossy representation:** the FIR recipe no longer clearly distinguishes intentional SQL NULL from an unavailable/redacted expression.
-
-Code: `services/sttm-builder/app/core/target_mapping_patterns.py:373`
-
-**I cannot justify copying NULL into the current mapping without confirming the intended business behavior.** Likewise, the full-name draft produced by Auto-map is not evidence that the traced published OWNERNAME rule required concatenation.
-
-## 5. Why published SQL alone does not repair these gaps
-
-The publication flow stores the full SQL and parsed model. But the FIR target-pattern projection primarily consumes **snapshot mapping rows and their attached metadata**.
-
-It does not generally reconstruct complete per-source contracts and lineage from the stored SQL.
-
-That creates this gap:
-
-```text
-Correct published SQL exists
-→ Mapping-row projection is incomplete
-→ FIR recipe lacks required compatibility metadata
-→ Retrieval retains it as guidance
-→ Primary source decision remains unresolved
-```
-
-The enrichment path adds explanatory text and applicability conditions, but does not reliably fill missing type/grain contracts.
-
-Some tests missed this because their positive fixtures manually supplied grain. They did not exercise the ordinary frontend snapshot that omits it.
-
-## 6. Why no transformation expression emerged afterward
-
-The earlier handoff finding still applies:
-
-```text
-Recipe remains guidance / source selection fails validation
-→ Primary mapping has no eligible selected sources
-→ Transformation specialist has nothing eligible to process
-→ Rejected candidate survives in a separate draft roster
-→ Frontend installs that draft
-→ Working SQL shows src: references or missing expressions
-```
-
-The specialist examines primary mappings, not every retained draft candidate:
-
-`services/sttm-builder/app/core/sttm_builder.py:1664`
-
-This explains why the UI can show an NL rule while no transformation-model call was recorded.
-
-One part remains unproven: the exact packet-building step behind the model’s claim that the STREET columns were absent from `selectable_sources`. **They were present in the frozen selected columns and semantics**, so the explanation does not establish global source absence.
-
-## What should be fixed
-
-1. **Preserve explicit per-source contracts and lineage through publication.** Reuse verified metadata; leave genuinely unknown grain unresolved.
-2. **Make project/CRM eligibility explicit and explainable.** Distinguish scope rejection from missing compatibility.
-3. **Reconcile proven logical-to-physical lineage**, preserving CTE population semantics.
-4. **Represent SQL NULL distinctly from redacted project literals.**
-5. **Repair the source-to-transformation handoff** for safely bound candidates awaiting an expression.
-6. **Stop presenting invalid drafts as completed mappings**, and fix the placeholder-based coverage count.
-
-**Conclusion:** the knowledge was largely captured, but layered metadata, eligibility and handoff problems prevented its safe reuse. Some restrictions are legitimate; the code currently does not explain them well enough and sometimes loses information needed to satisfy them.
-
-No code, mappings, FIR records, configuration, or agents were changed, and no new Auto-map run was started.
-
-**Evidence sources:** `FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_STTM`, `TBL_STTM_VERSIONS`, `TBL_FIR_TARGET_MAPPING_PATTERNS`, and `TBL_AUTO_MAP_JOBS`; frozen job `8f90718b-4336-538e-857b-8ef486c118eb`; deployed source `e924e3e`.
-
+**Scope:** fix these two workflows without changing Auto-map inference, FIR eligibility, durable-v2 capacity, or unrelated mapping behavior.
