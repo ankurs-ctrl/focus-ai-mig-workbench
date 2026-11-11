@@ -1,357 +1,746 @@
-I’ll trace the four quarantined slots back to their original operations and look for completion evidence. I won’t release or reset them during the investigation.**The four slots belong to older operations from November 6. They were quarantined after failures, and the application does not automatically recover quarantined slots. That is why new Auto-map runs cannot start model calls.**
+Below is the detailed history, separating **your ZIP**, **the durable-v2 activation I performed**, **the subsequent fixes I wrote**, and **the errors that remain**.
 
-### What happened originally
+**Latest verified state:** GitHub `develop` and `UAT` both contain commit **`e924e3e`**. UAT is running image **`42871426887`**, with durable-v2 enabled. Deployment succeeded, but the latest Auto-map test was **not functionally successful**.
 
-I inspected the admission table and historical worker logs in UAT:
+## 1. Release sequence
 
-`FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AUTOMAP_CALL_ADMISSION_UAT`
+### A. Your combined ZIP — `e9528f1`
 
-- Four quarantine updates occurred between **03:48 and 03:57 UTC on November 6**.
-- Each update **succeeded and changed one row**.
-- Nearby worker errors showed **three HTTP read timeouts** and **one `ScanStopped`**.
-- Those operations failed after approximately **132–135 seconds**.
-- Logs also reported that detailed failure archives were unavailable.
-
-The errors closely match the quarantine timestamps, but the logs do not contain enough identifiers to prove every slot-to-error association conclusively.
-
-### Why they stayed blocked
-
-When a request times out, the application cannot assume the remote AI operation stopped. It therefore quarantines the permit rather than making it available for another call.
-
-However, the implementation has **no automatic reconciliation process**:
+Package:
 
 ```text
-Earlier request fails with uncertain outcome
-                    ↓
-Its permit becomes QUARANTINED
-                    ↓
-Expiry does not release it
-Deployment does not release it
-                    ↓
-All four permits remain unavailable
-                    ↓
-New Auto-map batches wait, then expire
+automap-login-session-cache-combined-2026-11-10.zip
 ```
 
-This explains why your code deployment did not unblock the pool: **the persistent permit records survived the deployment.**
+I applied it to the synchronized GitHub baseline and pushed the same commit to both branches:
 
-### Original threads identified
+```text
+e9528f1c436376a0eaaa069c3eaeea4efe0f1dd7
+Ship combined Auto-map recovery and login session cache fixes
+```
 
-| Slot | Quarantined at — Nov 6 UTC | Recorded agent thread |
-|---|---|---|
-| 1 | 03:48:00 | `8227014465` |
-| 2 | 03:57:07 | `8227014545` |
-| 3 | 03:48:11 | `8227014481` |
-| 4 | 03:56:55 | `8227014541` |
+The package contained 62 files; 59 differed from the baseline. I verified all 61 hashes listed in its manifest. Git normalized line endings where applicable; I did not redesign the supplied implementation.
 
-All reference:
+**Your package supplied:**
+- Durable background-run execution and recovery.
+- The separate V2 admission-pool design.
+- Migration and validation scripts.
+- Original-caller OAuth restoration for recovery.
+- Durable job resumption.
+- Login/session reuse and navigation-cache changes.
+- A workflow switch for selecting the durable-v2 profile.
 
-`FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.AGT_SOURCE_MAPPING`
+**Initially, I deployed the package without activating durable-v2.** Its rollout document required a separate migration before enablement.
 
-Their completion fields display blank. **That means completion evidence is missing from these records—not necessarily that the remote operations are still running.**
+[Initial package deployment: 42827835093](https://github.com/FocusFP/ffp_ai_mig_workbench/actions/runs/42827835093) succeeded.
 
-### Can they be released?
+### B. Durable-v2 activation — operational changes, no new source commit
 
-**Not safely justified yet.** The next step is to inspect each recorded thread’s authoritative terminal status and match it to the original request and permit. Once termination is proven, the existing operator reconciliation mechanism can record that proof and conditionally release the corresponding slot.
+After your approval, I migrated the UAT inventory, enabled the GitHub variable, and redeployed the same `e9528f1` code.
 
-Two separate issues need addressing:
-1. **Recover the four old permits safely** to restore usable capacity.
-2. **Investigate the original read timeouts and add a reliable reconciliation workflow** so another set of uncertain failures cannot block the pool indefinitely.
+[Durable-v2 deployment: 42838798613](https://github.com/FocusFP/ffp_ai_mig_workbench/actions/runs/42838798613) succeeded.
 
-I have not released, reset, or modified any permit.
+### C. My subsequent code fixes — `e924e3e`
 
+After investigating the hash mismatch and string error, I changed four files and pushed:
 
-You are implementing a durable fix for Auto-map admission capacity and recovery in our Snowflake migration workbench.
+```text
+e924e3e090302bfaa7ad1252f4a40553db3d295c
+Fix durable Auto-map JSON integrity and retry response handling
+```
 
-Keep Claude Code responsible for repository changes and tests. Use Snowflake/Cortex tooling only for explicitly authorized diagnostics and operations. Read the relevant code before proposing changes.
+[Fix deployment: 42871426887](https://github.com/FocusFP/ffp_ai_mig_workbench/actions/runs/42871426887) succeeded. I then verified both services were READY before testing.
 
-FIRST produce an evidence-grounded implementation and operational plan. Do not immediately reset permits, change capacity, commit, push, or deploy.
+---
 
-## 1. Repository and environment
+## 2. What I changed when enabling durable-v2
 
-Repository:
-FocusFP/ffp_ai_mig_workbench
+### The original blockage
 
-Authoritative branch:
-GitHub UAT — remote name `github`, not `origin`.
-`origin` points to Azure DevOps.
+The old admission table had:
 
-Last deployed commit:
-1a17735496ab5dad05dfc21c1139005e665dbd5e
+```text
+FREE:          0
+HELD:          0
+QUARANTINED:   4
+```
 
-Deployment:
-https://github.com/FocusFP/ffp_ai_mig_workbench/actions/runs/42679319165
+Those four old testing operations still consumed all available admission capacity. Repeated Auto-map runs therefore expired in `admission_wait`, before model submission.
 
-Known UAT release worktree:
-C:\Users\ankur.sinha\Desktop\bbi-workbench-dev\ffp_ai_mig_workbench_release_uat_20261105
+A lease expiry alone did not release a quarantined operation because it did not prove the remote work had finished.
 
-Verify current GitHub HEAD and local changes before working. Do not overwrite unrelated work or assume the main checkout is UAT.
+### The migration I executed
 
-UAT account:
-MHSUEJT-FFP_HDP_SNOW_ACCOUNT_PROD
+Using the existing authenticated UAT Snowsight session, I:
 
-UAT database/schema:
+1. Suspended the web app and Auto-map worker after your exclusive-cutover approval.
+2. Waited until both services had zero running instances and empty container-status lists.
+3. Executed the supplied, account-guarded migration.
+4. Validated the resulting inventory and imported identities.
+5. Enabled the workflow variable and redeployed.
+6. Verified the new service specifications before resuming services.
+
+The migration created these objects under:
+
+```text
 FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA
+```
 
-UAT role:
-FFP_HDP_DLAB_MIG_WORKBENCH_DB_DEPLOY_ROLE_UAT
+```text
+TBL_AUTOMAP_CALL_ADMISSION_UAT_V2
+TBL_AUTOMAP_CALL_ADMISSION_UAT_V2_CONTROL
+TBL_AUTOMAP_CALL_ADMISSION_UAT_V2_EVENTS
+```
 
-IMPORTANT:
-The Desktop SQL connection previously resolved to DEV account GD01711 even when connection="client-spcs" was requested. Verify actual account/user/role before every operational workflow. Never run UAT remediation against DEV.
+The resulting layout was:
 
-Never print, commit, or reuse credentials exposed in old conversations.
+```text
+Slots 1–12:   12 FREE execution reservations
+Slots 13–16:   4 imported QUARANTINED recovery reservations
+Control rows: 64
+Import events: 4
+```
 
-## 2. Relevant objects
+**I did not clear the old quarantine records or reset their fences.** I verified that ownership, fences, job/caller identifiers, generation, shard, completion and thread references were preserved in the imported records. The legacy table remained unchanged.
 
-Admission table:
-FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AUTOMAP_CALL_ADMISSION_UAT
+### Settings activated
 
-Archive table:
-FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AUTOMAP_CONTEXT_ARCHIVE_UAT
+The workflow variable became:
 
-Source-mapping agent:
-FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.AGT_SOURCE_MAPPING
+```text
+AUTOMAP_USE_DURABLE_V2=true
+```
 
-Worker:
-FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.AI_WORKBENCH_AUTOMAP_WORKER_UAT
+This selected the supplied `parallel.uat.durable-v2.json` profile, including:
 
-Webapp:
-FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.AI_WORKBENCH_OKTA_WEBAPP_UAT_V4
+```text
+AUTOMAP_DURABLE_RUNS_V2=true
+AUTOMAP_PARALLEL_POOL_CAPACITY=12
+AUTOMAP_RECOVERY_CAPACITY=4
+AUTOMAP_ADMISSION_SESSION_CAPACITY=6
+AUTOMAP_RUN_SECONDS=330
+AUTOMAP_QUEUE_SECONDS=900
+```
 
-Both services were verified running image tag 42679319165:
-- Worker: 5/5 instances.
-- Webapp: 1/1; backend ready.
+These are **global reservations**, not twelve reservations per worker.
 
-Service health is not proof of Auto-map functionality.
+The deployment updated specifications but left the intentionally suspended services suspended. I therefore verified their V2 configuration, resumed both services, and confirmed:
+- Web: 1/1 instance, all four containers READY.
+- Workers: 5/5 instances READY.
+- Expected image tag and zero restarts.
 
-## 3. Confirmed blocking condition
+---
 
-The admission pool has:
-- FREE: 0
-- HELD: 0
-- QUARANTINED: 4
+## 3. The `209.0` versus `209` hash issue
 
-All four quarantined records originate from November 6.
-Their state persisted across deployment and later tests.
+### Observed failure
 
-Only FREE slots can be claimed. Quarantined or expired HELD slots are not automatically reclaimed.
+The first durable-v2 job failed with:
 
-Consequently, fresh batches wait for admission until their deadline expires, before sending a model request.
+```text
+_FastInvariantError: prepared_hash_mismatch
+Fast Auto-map requires the frozen prepared proxy handoff
+```
 
-The exact outer error is:
-"Auto-map evidence_block_review failed; remaining targets require review."
-
-The actual blocking phase is:
-runtime_phase = admission_wait
-
-Do not interpret this as the model rejecting evidence.
-
-## 4. Original quarantined operations
-
-Pool epoch:
-9078a6fb-0c1e-45b3-9b34-ab0c8a97bf0a
-
-Caller:
-ANKURSINHA
-
-Slot 1:
-- Fence: 139
-- Runtime job: 3fae5ee241f041e29767a07e9f78d6f6
-- Thread: 8227014465
-- Updated: 2026-11-06 03:48:00.801 UTC
-
-Slot 2:
-- Fence: 149
-- Runtime job: 933713122f5b464ca7a61cb72387c580
-- Thread: 8227014545
-- Updated: 2026-11-06 03:57:07.447 UTC
-
-Slot 3:
-- Fence: 131
-- Runtime job: 48927852448141d5bdf124f9a4dee7a5
-- Thread: 8227014481
-- Updated: 2026-11-06 03:48:11.218 UTC
-
-Slot 4:
-- Fence: 101
-- Runtime job: 6b31827929304081bdde2beb5d8d5958
-- Thread: 8227014541
-- Updated: 2026-11-06 03:56:55.890 UTC
-
-All completion cells displayed blank.
-Each quarantine UPDATE succeeded and affected one row.
-Nearby original worker logs showed three HTTP read timeouts and one ScanStopped, around 132–135 seconds.
-
-The association between these errors and individual slots is temporal; exact request/thread joins were not fully proven. Remote terminal outcomes have not yet been verified.
-
-The owner confirms these were old test runs and wants the capacity released. Treat that as permission to prepare a narrowly scoped recovery/abandonment operation—not permission to fabricate terminal-completion proof or reset every permit.
-
-## 5. Fresh test evidence
-
-Latest unchanged-settings rerun:
-Mapping 4001, project 501
 Job:
-5f525dbf-1479-5d35-b1c8-2b4bb108db26
 
-Request:
-580d4de2-bba7-4f9c-b004-2c7c4693b982
+```text
+39d5074e-6aec-5f4e-9357-c11371cf367a
+```
 
-Window:
-2026-11-10 06:16:30.748–06:22:29.358 UTC
+It failed while reconstructing and validating pending batches.
 
-Result:
-- 10 batches.
-- All failed in admission_wait.
-- stop_reason = deadline_expired.
-- Zero thread/model POST attempts.
-- Mapping remained 0/37.
-- Four quarantined slots unchanged before/after.
-- No session-lease saturation in this fresh window.
+### Why numeric representation matters
 
-Earlier post-deployment runs:
-4001 job a52ebfcc-fd2a-54e0-ab28-f7ba622bae02
-3102 job fb4b752c-5952-5e5f-87d8-3aaecc23d0af
+The preparation hash uses JSON serialization. These values are numerically equal but serialize differently:
 
-Each had:
-- Nine batches.
-- Eight admission deadline expirations.
-- One admission_unavailable.
-- Zero model/thread POST attempts.
-- Zero mapping-validation time.
+```json
+{"duration_ms":209.0}
+```
 
-Worker instance 3 logged CONTROL session-lease saturation immediately before the two admission_unavailable failures:
-- Nov 9 19:24:50 UTC, wait 5005.2 ms.
-- Nov 9 19:32:12 UTC, wait 5000.1 ms.
+```json
+{"duration_ms":209}
+```
 
-Do not conflate this separate connection-pool issue with the four quarantined model-call permits.
+Consequently, their hashes differ.
 
-## 6. Relevant code
+The hash includes learning-context diagnostics. Some of those dictionaries contain untyped values, so model validation does not necessarily restore an integer to a float.
 
-Inspect these files at the current UAT revision:
+In Snowsight, I verified that:
 
-services/sttm-builder/app/core/
-- automap_admission.py
-- automap_runtime.py
-- automap_fast_transport.py
-- automap_scan_transport.py
-- automap_scan.py
-- automap_batch.py
-- auto_mapping_proxy.py
-- automap_evidence_blocks.py
-- snowflake.py
-- config.py
+```text
+PARSE_JSON({"x":209.0}) → stored INTEGER 209
+```
 
-Also:
-- infra/snowflake/env/parallel.uat.json
-- scripts/render_spcs_spec.py
-- scripts/prepare_parallel_automap_infra.py
-- existing admission/runtime/transport/deployment tests
+The failed job contained:
 
-Current design includes:
-- Four global durable permits.
-- Fast/proxy/worker concurrency settings of 12.
-- A separate reusable caller-session pool defaulting to two sessions per matching key/process in the admission path.
-- Approximately five-second session acquisition waits.
-- A 120-second permit lease with periodic renewal.
-- Explicit operator reconciliation, but no automatic quarantine recovery.
+```text
+project_context.duration_ms = 209        INTEGER
+correction_history.duration_ms = 489.3  DECIMAL
+```
 
-Verify these against actual configuration; do not confuse defaults with effective runtime values.
+An offline test using the actual restoration and pending-request functions reproduced the exact failure by changing only `12.0` to `12`.
 
-## 7. Required design: safe recovery
+**Important qualification:** this proves the defect mechanism. We did not retain enough original pre-storage evidence to prove that `209.0 → 209` was the sole change responsible for that particular live job.
 
-Prefer extending existing reconciliation mechanisms.
+### My fix
 
-Automatic recovery:
-- Inspect expired HELD and QUARANTINED operations using bounded work and backoff.
-- Verify authoritative remote terminal state using the original caller/account context.
-- Correlate thread, original request digest, runtime job, generation, shard, owner, epoch and fence.
-- Confirm the original dispatcher can no longer resume or submit work.
-- Persist audit evidence before or atomically with release.
-- Release through a conditional update; increment fences so stale workers cannot act.
-- Make duplicate and concurrent recovery attempts safe.
-- Keep unknown/unreadable outcomes quarantined.
-- Never resubmit the original model request during recovery.
-- Never free a slot solely because its lease expired or a service restarted.
+I did **not**:
+- Disable hash validation.
+- Recompute hashes on load to make corrupted records pass.
+- Convert arbitrary integers back into guessed floats.
 
-Explicit abandoned-test recovery:
-- Provide a separate administrator-only action when terminal proof is unavailable.
-- Label the outcome operator_abandoned, not completed.
-- Require specific slot identities, reason, acknowledgment of unknown remote outcome, and verified dispatcher retirement.
-- Preserve immutable prior ownership and recovery history.
-- Prevent stale local work from resuming; document that fencing alone cannot stop an already-running remote call.
-- Present the exact four-slot action for approval before execution.
-- If safe abandonment cannot be established, explain the blocker and propose an alternative.
+Instead, persistence now stores an additional versioned exact-JSON representation of the hash-bearing sections:
 
-Do not disguise a table-wide reset as recovery.
+```text
+request_envelope
+partial_responses
+response
+```
 
-## 8. Required design: additional slots
+The marker is:
 
-Recommend eight GLOBAL slots initially, configurable to twelve after testing. These are application recommendations, not verified account throughput limits.
+```text
+_automap_exact_json
+encoding: automap-exact-json-v1
+```
 
-Before changing capacity:
-- Inspect how inventory length, slot IDs and epochs are validated.
-- Current readers may require exactly capacity rows. Simply inserting extra rows can break old workers.
-- Design coordinated reader/config/inventory rollout and rollback.
-- Use a quiesced rollout if mixed-version safety cannot be guaranteed.
-- Add slots idempotently with unique IDs.
-- Never overwrite occupied rows or reseed existing fences.
-- Preserve unknown outstanding operations in capacity accounting.
-- Prevent unsafe shrinking below occupied capacity.
-- Do not automatically expand without a configured hard ceiling and cost/rate-limit controls.
-- Do not expand on every quarantine until the system has unbounded unknown remote work.
+The existing SQL-visible fields remain available for operational queries. On load, the decoder restores the exact JSON sections before model validation.
 
-Evaluate global permits, outer dispatch concurrency, caller-session capacity, warehouse load and provider rate limits together.
+It checks:
+- Encoding/version and expected structure.
+- Duplicate keys.
+- Non-finite numbers.
+- Consistency with the SQL-visible projection.
 
-Adding model slots must not silently assume the two-session database pool is sufficient.
+Mutable job status, ownership and lease fields are not overwritten from the exact-JSON supplement.
 
-## 9. Observability and user experience
+I also updated the **background restart path**, because fixing only browser-triggered loading would leave restart recovery vulnerable.
 
-Add or improve:
-- FREE/HELD/QUARANTINED counts and oldest quarantine age.
-- Admission wait time and reason.
-- Session-pool acquisition timing separately from permit waiting.
-- Actual thread/model POST counts separately from runtime attempts.
-- Last recovery result and unresolved recovery reason.
-- Safe underlying exception class/code/query correlation.
-- Clear UI: "Waiting for Auto-map execution capacity" rather than suggesting evidence was invalid.
-- Alerting when all slots are unavailable or quarantine persists.
+**Legacy records still use the original validation. Already-damaged old jobs are not silently repaired.**
 
-Do not expose tokens, prompts, raw customer SQL, or unauthorized users' diagnostics.
-Inspection endpoints must not unexpectedly resume jobs or execute writes.
+---
 
-## 10. Tests and acceptance
+## 4. The `'str' object has no attribute 'get'` issue
 
-Include:
-- Terminal success/error/cancel/timeout recovery.
-- Unknown outcomes retained.
-- Expired lease alone cannot release.
-- Concurrent recovery, duplicate execution and stale-fence rejection.
-- Retired versus active dispatcher.
-- Missing archives, authentication failures and lost commit acknowledgment.
-- Audited operator abandonment.
-- Expansion 4→8, repeat expansion, mixed configuration, rollback and unsafe shrink.
-- Session contention with nine or more batches.
-- Exact source context and existing mapping preservation.
+### Observed failure
 
-Then validate progressively:
-1. One controlled batch obtains admission and reaches the model.
-2. Terminal completion releases its permit safely.
-3. Full blank mapping4001.
-4. Existing mapping3102 with replacements unaccepted.
-5. Failure/recovery scenario proves the pool cannot remain silently blocked forever.
+The next fresh run failed all ten batches with:
 
-Do not call compilation, HTTP200, green CI or all targets "processed" mapping success.
-Report actual proposals, unresolved targets, validation results and business correctness separately.
+```text
+'str' object has no attribute 'get'
+```
 
-## 11. Change and deployment boundaries
+Job:
 
-For this first response:
-- Produce the investigation/design and ordered implementation plan.
-- Identify exact files, migrations, tests and operational steps.
-- State verified facts versus hypotheses.
-- Present the proposed four-slot recovery and 4→8 expansion separately.
-- Do not perform live changes or deployment yet.
+```text
+19269947-4863-5660-bc3b-5b0106e97392
+```
 
-Preserve unrelated dirty files.
-Do not change protected deployment scripts, broaden privileges, disable TLS, or reset epochs as a shortcut.
-Deploy only through the established GitHub UAT workflow after scoped review and approval.
+### Exact cause
+
+The real worker response contains:
+
+```python
+response.meta["auto_map_fast_path"] == "v1"
+```
+
+That field is a **selector string**.
+
+The durable retry code mistakenly treated it as a dictionary:
+
+```python
+(response.meta.get("auto_map_fast_path") or {}).get("fast_diagnostics")
+```
+
+The actual diagnostics are here:
+
+```python
+response.meta["auto_map_retrieval"]["auto_map_fast_path"]["fast_diagnostics"]
+```
+
+I reproduced the exception through actual worker-response construction, HTTP serialization, proxy parsing and completion logic. It occurred even with successful model output—not only malformed responses.
+
+### My fix
+
+I corrected both diagnostics reads:
+- The initial response.
+- The replacement response after a retry.
+
+A shared helper now reads the canonical nested structure:
+- Missing/null optional diagnostics are handled.
+- Malformed diagnostic objects produce an explicit contract error.
+- The `"v1"` selector is not treated as diagnostics.
+
+The old retry test used an artificial root-level dictionary, which concealed the problem. I replaced that assumption with real worker-response shapes in regression tests.
+
+---
+
+## 5. Additional retry defect caught during review
+
+Review found another problem exposed by the corrected retry path:
+
+1. An attempt produces a validated candidate.
+2. A subsequent retry stops before model execution.
+3. Latest-attempt metadata reports zero model calls.
+4. Parent acceptance interprets that as no worker result and discards the previously valid candidate.
+
+I reproduced and fixed this.
+
+The implementation now separates:
+- Latest-attempt diagnostics, used for retry control.
+- Accumulated attempt information.
+- Exact proof of retained validated results.
+
+Only the specific proven retained mapping can survive the zero-call replacement. All-zero-call attempts and invalid replacements remain unresolved. Reported model-call counts are **not relabeled as HTTP POST counts**.
+
+### Files in my latest push
+
+```text
+services/sttm-builder/app/core/auto_mapping_proxy.py
+services/sttm-builder/app/core/automap_restart.py
+services/sttm-builder/tests/test_automap_durable_json.py
+services/sttm-builder/tests/unit/core/test_automap_durable_runs_v2.py
+```
+
+No frontend, agent specification, workflow or environment files were changed in this four-file fix.
+
+### Validation
+
+- **201 focused tests passed.**
+- Broader checks: **776 passed**, with **5 failures and 7 setup errors** attributed to missing Node dependencies.
+- Final review found no remaining concrete blocker in these fixes.
+- Full live crash/restart recovery across every case was not established.
+
+---
+
+## 6. What happened after the latest push
+
+Latest test:
+
+```text
+Job:     8f90718b-4336-538e-857b-8ef486c118eb
+Request: 5e367007-b1c5-4114-9233-daeb0f478021
+```
+
+It ran approximately **18:25–18:34 UTC on November 10** and ended `partial_failure`.
+
+**Neither the explicit hash-mismatch error nor the string `.get` error appeared in the inspected fresh results.** That is encouraging, but it is not proof that all recovery scenarios are correct.
+
+Results:
+- 1 backend proposal.
+- 0 executable mappings.
+- All 37 targets still requiring input.
+- The UI automatically installed and autosaved 13 draft definitions.
+- No manual Apply/Save/Accept action was performed, and nothing was published.
+
+## 7. Current errors and unresolved behavior
+
+### A. Evidence-block review failures
+
+Seventeen targets ended with incomplete evidence-block outcomes.
+
+Examples include:
+- A returned quote was not an exact substring of the supplied evidence.
+- Wrong or unsupported review-agent identity.
+- Incorrect block identity.
+- Review output exceeding the accepted structure/size.
+
+These are failures in the evidence-reading protocol. They do **not** establish that FIR guidance is absent.
+
+### B. `thread_persist` failures
+
+Batches 5 and 7 failed after attempting thread creation but before model submission:
+
+```text
+runtime_phase=thread_persist
+failure_kind=unknown_failure
+thread_post_attempts=1
+model_post_attempts=0
+```
+
+The underlying SQL/session exception was not recovered from the available log tails.
+
+Therefore, I cannot yet truthfully attribute these to a specific lock, timeout, expired token, or persistence statement.
+
+### C. Invalid source references reach working SQL
+
+References such as:
+
+```text
+src:mapper_hh_master.LEGACYHHNAME
+```
+
+are evidence identifiers, not SQL aliases.
+
+They remain in rejected candidate rosters, get copied into draft rows, and are emitted verbatim by the working-SQL serializer.
+
+This is separate from the hash and retry fixes and **remains unfixed**.
+
+### D. Transformation rules were not generated
+
+No transformation-model calls were recorded for the latest run. The UAT agent exists:
+
+```text
+FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.AGT_TRANSFORMATION_RULE
+```
+
+The backend selects transformation work from primary mappings. Rejected source proposals can survive only in the separate candidate roster, which the frontend later uses for drafts.
+
+That explains:
+- STREET/OWNERNAME having NL instructions.
+- No executable preprocessing expression.
+- `<missing expression>` appearing in working SQL.
+
+The code path is `services/sttm-builder/app/core/sttm_builder.py:1664`.
+
+### E. FIR exists, but compatibility is unresolved
+
+The frozen job retained **102 distinct FIR patterns across all 37 targets**. All were marked guidance-only and not applicable as executable recipes.
+
+Identified gaps included:
+- Source type compatibility.
+- Source grain compatibility.
+- `ISRCPCLIENT` semantic role.
+- `NEXTREVIEWDATE` semantic role.
+- Missing `JIMSHH` derived-output dependency.
+
+So the correct diagnosis is **not “no learning available.”** Guidance exists, but the system cannot establish all required compatibility and dependencies.
+
+Some NL guidance was already sufficient to describe the intended STREET, OWNERNAME and RCP transformations. Missing executable SQL for those cannot be explained solely by missing instructions.
+
+### F. Drafts are presented as mappings
+
+The frontend can install concrete candidates even when their validation status is invalid.
+
+`MAPPED` currently means the row contains a definition—source text, an expression, a value or an NL rule—not that it is executable.
+
+Relevant path:
+
+```text
+frontend/src/features/sttm/store/sttm-builder-slice.ts:2853
+```
+
+This behavior predates my latest four-file fix. It accounts for the 13 automatically saved drafts.
+
+### G. The 100% metadata count is incorrect
+
+Persistence falls back to rule labels such as:
+
+```text
+Direct
+Select...
+```
+
+when constructing transformation text. The metadata count then treats any nonempty transformation text as mapped.
+
+I reproduced:
+
+```text
+13 actual draft rows
+24 blank rows with Select...
+→ metadata reports 37 mapped / 100%
+```
+
+The relevant paths are:
+
+```text
+services/sttm-builder/app/core/project_service.py:3180
+services/sttm-builder/app/core/project_service.py:3563
+```
+
+This counting defect remains unfixed.
+
+### H. Confidence is unknown or capped—not a correctness guarantee
+
+The inspected roster contained:
+- 15 invalid candidates.
+- 4 unvalidated candidates.
+- 1 valid candidate with review warnings.
+
+Missing confidence stays unknown. Validation errors can cap scores at 0.49, 0.69 or 0.79 depending on the category.
+
+Those numbers are policy-adjusted scores, **not calibrated probabilities that the SQL is correct**.
+
+---
+
+## 8. What is fixed versus what remains
+
+**Implemented and deployed:**
+- Durable-v2 inventory and operational enablement.
+- Exact-JSON preservation for newly persisted hash-bearing job sections.
+- Decoder coverage for background restart.
+- Correct worker diagnostics extraction.
+- Preservation of proven mappings across zero-call retries.
+
+**Still unresolved:**
+- Evidence-review protocol failures.
+- Underlying `thread_persist` exception.
+- Evidence IDs leaking into SQL references.
+- Primary-source-to-transformation handoff gaps.
+- Invalid drafts being presented as mapped definitions.
+- Incorrect metadata coverage.
+- FIR compatibility/dependency gaps.
+- Business decisions still missing for some targets.
+
+**Why these escaped:** the earlier tests covered ordinary Python JSON round trips rather than Snowflake’s numeric normalization, and the retry tests used a response shape different from the real worker contract. The remaining problems involve additional boundaries—evidence admission, candidate retention, transformation selection and UI status—that are not fixed merely by repairing persistence and retries.
+
+The latest deployment removed two concrete crashes, but **Auto-map still does not meet end-to-end acceptance**. No changes were made in preparing this summary.
+
+
+I’ll trace BILLINGSTREET from its published mapping and SQL through FIR extraction, retrieval, compatibility checks, and the transformation handoff. I’ll also compare OWNERNAME and NEXTREVIEW to distinguish shared code defects from genuinely missing dependencies.
+
+This stays read-only: no new Auto-map run, data repair, or code changes.
+The trace confirms that the published BILLINGSTREET SQL was preserved in FIR. Its exact rejection was **missing source-grain evidence**, not missing SQL or source types. I also found a producer/consumer mismatch: the normal published snapshot omits physical-table grain, while the reuse matcher requires it.
+
+NEXTREVIEW has a published direct-column precedent as well as a JIMSHH-based precedent. The direct one was also blocked only by missing grain, so the missing JIMSHH CTE does not explain the whole failure.
+**Yes—the published SQL and mappings are present in FIR. I traced the exact published versions, and the main problem is how our code represents, qualifies, and hands off that knowledge—not simply missing learning.**
+
+There are several independent gates. Fixing only one will not make these mappings reusable.
+
+## 1. BILLINGSTREET: the complete SQL was preserved
+
+I traced:
+
+```text
+Published mapping: STTM 2001
+Published version ID: 1601, version 5
+Project: 301
+FIR pattern: tmp_1e82f3062a339f9b5d3dbdaa
+```
+
+The published expression and FIR expression match:
+
+```sql
+accounts_80ydxi.ADDRESS1_LINE1
+|| COALESCE(CHR(10) || accounts_80ydxi.ADDRESS1_LINE2, '')
+|| COALESCE(CHR(10) || accounts_80ydxi.ADDRESS1_LINE3, '')
+```
+
+The frozen Auto-map request also contains:
+- All three selected address columns.
+- Their `VARCHAR` types.
+- Matching physical-table identities and aliases.
+
+**The exact recorded applicability failure was only:**
+
+```text
+compatible_source_grain
+```
+
+This corrects my earlier broader description: **for this particular STREET recipe, neither missing SQL nor missing source types was the recorded problem.**
+
+### Root cause: producer and consumer disagree
+
+The normal publication snapshot includes physical column names and types, but does **not** consistently include physical-table grain—the meaning of one row and relevant uniqueness assumptions.
+
+The FIR matcher then requires known, compatible grain **even when the source columns match exactly**.
+
+Consequently:
+
+```text
+Publication produces a valid FIR record with grain=null
+→ Matcher requires positive grain evidence
+→ Recipe becomes unresolved
+```
+
+Relevant code:
+- Snapshot construction: `frontend/src/features/sttm/context/workbench-context.ts:187`
+- FIR projection: `services/sttm-builder/app/core/project_service.py:4135`
+- Compatibility checks: `services/sttm-builder/app/core/target_mapping_patterns.py:2146`
+
+I reproduced this with the actual constructor and matcher:
+- Missing historical grain → unresolved.
+- Explicit matching contracts on both sides → exact precedent accepted.
+
+**We should fix the missing contract, not invent grain or bypass the check.** The published mapping also used a filtered `cte_hh_src` population that the current graph does not contain; matching column names alone does not prove equivalent population behavior.
+
+## 2. A separate cross-project gate also blocks reuse
+
+For STREET, OWNERNAME and the direct NEXTREVIEW recipe, the frozen job records:
+
+```text
+Source project: 301
+Current project: 501
+Linked projects: []
+Tier: T4
+guidance_only: true
+legacy_guidance: false
+```
+
+The publication IDs are present and valid. **These are not being downgraded because their published versions were missing.**
+
+The ranking code uses:
+- Same project → T1.
+- Explicitly linked project → T2.
+- Matching explicit CRM → T3.
+- Otherwise → T4 guidance.
+
+The relevant `source_system_profile.crm` field is absent. Both sides having `source_system_key="OTHER"` does not satisfy that CRM check.
+
+Therefore, **repairing grain alone would not remove the independent T4 restriction.**
+
+Code: `services/sttm-builder/app/core/automap_learning_pack.py:20`
+
+This is partly conservative policy and partly metadata/configuration completeness. We must establish the intended project linkage or CRM relationship—not automatically treat every historical project as trusted for execution.
+
+## 3. NEXTREVIEW: a usable-looking direct precedent was overlooked in the explanation
+
+There are different historical recipes:
+
+### Direct published recipe
+
+STTM 2001, published version 1601:
+
+```sql
+accounts.SI_NEXTREVIEWDATE AS FINSERV__NEXTREVIEW__C
+```
+
+For this recipe:
+- The source column exists in the frozen current selection.
+- Source type is known.
+- Physical identity matches.
+- The recorded applicability deficit is **grain**, plus the independent guidance-tier restriction.
+
+### JIMSHH-based published recipe
+
+STTM 3301, published version 1401:
+
+```sql
+JIMSHH.nextReviewDate AS FINSERV__NEXTREVIEW__C
+```
+
+Its published SQL constructs `nextReviewDate` from `si_nextreviewdate` inside JIMSHH. The current mapping graph has no JIMSHH derived node.
+
+That dependency gap is real for **that recipe**, but it does not explain the rejection of the separate direct recipe.
+
+There is also an accepted-draft recipe from STTM 701. It is **not a published-version artifact**, so it must not be presented as equivalent published evidence.
+
+### Additional root cause: logical lineage is not reconciled
+
+The matcher sees:
+
+```text
+JIMSHH.NEXTREVIEWDATE
+ACCOUNTS.SI_NEXTREVIEWDATE
+```
+
+as different semantic roles unless sufficient lineage/adaptation evidence connects them. Derived compatibility also relies on the required CTE identity.
+
+We reproduced the resulting exclusions:
+
+```text
+semantic_role:NEXTREVIEWDATE
+derived_output:JIMSHH
+compatible_source_types
+compatible_source_grain
+```
+
+Here, some compatibility errors follow from failure to match the dependency; they do not necessarily mean the physical column has the wrong type.
+
+**The safe fix must preserve CTE filters and joins.** Simply replacing `JIMSHH.NEXTREVIEWDATE` with the physical column could change the population.
+
+Also, the generated explanation incorrectly called **3301 a project**. It is an STTM ID; its project is 301.
+
+## 4. OWNERNAME: the actual published rule was NULL—not full-name concatenation
+
+This was an important finding.
+
+The exact published version contains:
+
+```sql
+NULL AS OWNERNAME
+```
+
+Its mapping row records:
+
+```text
+mapping_mode: constant
+constant_value: "NULL"
+```
+
+The FIR extractor explicitly treats SQL `NULL` as a literal, then records:
+
+```text
+mode: value
+has_project_specific_literal: true
+expression: null
+scope: project
+```
+
+It attaches:
+
+```text
+Do not reuse the project-specific literal.
+```
+
+The recipe does not preserve the constant as an executable value.
+
+Because the recipe belongs to project 301, the strict project-scoped lookup excludes it for project 501. A broader retrieval path reintroduces it as guidance, explaining why it can appear with an empty applicability-exclusion list while remaining unresolved.
+
+### Root cause
+
+There are two things to distinguish:
+- **Intentional policy:** do not blindly copy project-specific constants.
+- **Lossy representation:** the FIR recipe no longer clearly distinguishes intentional SQL NULL from an unavailable/redacted expression.
+
+Code: `services/sttm-builder/app/core/target_mapping_patterns.py:373`
+
+**I cannot justify copying NULL into the current mapping without confirming the intended business behavior.** Likewise, the full-name draft produced by Auto-map is not evidence that the traced published OWNERNAME rule required concatenation.
+
+## 5. Why published SQL alone does not repair these gaps
+
+The publication flow stores the full SQL and parsed model. But the FIR target-pattern projection primarily consumes **snapshot mapping rows and their attached metadata**.
+
+It does not generally reconstruct complete per-source contracts and lineage from the stored SQL.
+
+That creates this gap:
+
+```text
+Correct published SQL exists
+→ Mapping-row projection is incomplete
+→ FIR recipe lacks required compatibility metadata
+→ Retrieval retains it as guidance
+→ Primary source decision remains unresolved
+```
+
+The enrichment path adds explanatory text and applicability conditions, but does not reliably fill missing type/grain contracts.
+
+Some tests missed this because their positive fixtures manually supplied grain. They did not exercise the ordinary frontend snapshot that omits it.
+
+## 6. Why no transformation expression emerged afterward
+
+The earlier handoff finding still applies:
+
+```text
+Recipe remains guidance / source selection fails validation
+→ Primary mapping has no eligible selected sources
+→ Transformation specialist has nothing eligible to process
+→ Rejected candidate survives in a separate draft roster
+→ Frontend installs that draft
+→ Working SQL shows src: references or missing expressions
+```
+
+The specialist examines primary mappings, not every retained draft candidate:
+
+`services/sttm-builder/app/core/sttm_builder.py:1664`
+
+This explains why the UI can show an NL rule while no transformation-model call was recorded.
+
+One part remains unproven: the exact packet-building step behind the model’s claim that the STREET columns were absent from `selectable_sources`. **They were present in the frozen selected columns and semantics**, so the explanation does not establish global source absence.
+
+## What should be fixed
+
+1. **Preserve explicit per-source contracts and lineage through publication.** Reuse verified metadata; leave genuinely unknown grain unresolved.
+2. **Make project/CRM eligibility explicit and explainable.** Distinguish scope rejection from missing compatibility.
+3. **Reconcile proven logical-to-physical lineage**, preserving CTE population semantics.
+4. **Represent SQL NULL distinctly from redacted project literals.**
+5. **Repair the source-to-transformation handoff** for safely bound candidates awaiting an expression.
+6. **Stop presenting invalid drafts as completed mappings**, and fix the placeholder-based coverage count.
+
+**Conclusion:** the knowledge was largely captured, but layered metadata, eligibility and handoff problems prevented its safe reuse. Some restrictions are legitimate; the code currently does not explain them well enough and sometimes loses information needed to satisfy them.
+
+No code, mappings, FIR records, configuration, or agents were changed, and no new Auto-map run was started.
+
+**Evidence sources:** `FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_STTM`, `TBL_STTM_VERSIONS`, `TBL_FIR_TARGET_MAPPING_PATTERNS`, and `TBL_AUTO_MAP_JOBS`; frozen job `8f90718b-4336-538e-857b-8ef486c118eb`; deployed source `e924e3e`.
+
