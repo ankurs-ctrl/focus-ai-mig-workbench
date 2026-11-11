@@ -1,46 +1,40 @@
-## 1. Missing source columns and row counts
+I’ll check the newest run for mapping **4001** and trace its recorded failure. I won’t start another Auto-map run or change the mapping.
+The new run failed with **`AdmissionContended` while saving agent-thread state**. It ran for about **6 minutes 42 seconds** and produced no new mappings.
 
-**I found a separate code gap for row counts—not just the failed column request.**
+For three affected calls, the failure occurred before any model request was sent. I’m tracing the admission check to distinguish a state-update conflict from exhausted execution capacity.
+**The latest run failed while saving execution-control state—not because of the missing semantics we found for mapping 4405.**
 
-### Why the target shows columns
+### What happened
 
-The target has its own small metadata request; all **287 sources** are fetched in a separate large batch. The target can therefore succeed independently. Also, a previously populated count is enough to display “37 cols.”
+- **Job:** `b3f5c0dc-3440-547f-8e46-9cda5ae14db8`
+- **Time:** 18:29:02–18:35:44 UTC — **6m 42s**
+- **Result:** Partial failure; batches **1, 3, 4, 6** failed/incomplete. **No new mappings; all 37 targets need input.**
 
-The source request ended with **HTTP 499**, meaning the client disconnected before receiving its response. We have not proved whether this was a timeout or cancellation.
+For three failed calls, the sequence was:
 
-### Why row counts remain blank
+1. Acquired an execution slot.
+2. Successfully created an agent thread — **HTTP 200**.
+3. Failed while recording the thread/request against that slot: **`AdmissionContended`**.
+4. Stopped **before sending the model request for those calls**.
 
-When reopening a saved mapping, the frontend initializes table nodes with **blank row counts**. It then fetches columns and relationships, **but does not fetch row counts again**.
+Other calls did reach the model; this was not a whole-job zero-call failure.
 
-See `frontend/src/features/sttm/store/sttm-builder-slice.ts:6932` and `frontend/src/features/sttm/context/sttm-builder-context.tsx:901`.
+### Why it stopped instead of recovering
 
-### Recommended fixes
+The code exposes a recovery gap:
 
-1. **Restore counts independently:** fetch lightweight catalog row counts and column counts when opening a mapping. Avoid running `COUNT(*)` against every source.
-2. **Load columns in smaller batches:** start with approximately 25 tables per request and limited concurrency, then tune using measured timings.
-3. **Keep partial successes:** one failed table should not discard metadata for the entire batch.
-4. **Use per-table errors and retry:** clear errors after successful retries. Currently a shared error flag can mark every unloaded source “Columns unavailable.”
-5. **Add request timings and query IDs:** distinguish slow Snowflake queries, client timeouts, and navigation cancellations.
+- SQL lock/statement timeouts can become `AdmissionContended`.
+- Initial slot acquisition retries contention, but these later persistence operations **do not**.
+- Another error wrapper turns the failure into **`unknown_failure`**, preventing the existing contention-retry handling from recognizing it.
 
-These are recommendations; **I haven’t implemented them**. Generating missing semantic YAML will not repair these metadata-loading issues.
+Relevant paths: `automap_admission.py:289`, `automap_background_transport.py:145`, and `automap_fast_transport.py:47`, under `services/sttm-builder/app/core/`.
 
-## 2. Bootstrap changes I made
+**The exact SQL timeout or blocking transaction remains unverified:** the wrapper discarded the original SQL error code and query ID.
 
-Your changes already introduced the project lock table. **I connected its creation and validation to the existing CI bootstrap.**
+### Recommended fix
 
-- Added `project-bootstrap-lock.sql` immediately after the base table DDL in `scripts/bootstrap_sttm_metadata_infra.py:31`.
-- Qualified the table using the configured metadata namespace.
-- Used **create-if-absent** to initialize one row:
-  - `LOCK_KEY = 'project-bootstrap'`
-  - `FENCE = 0`
-- Added immediate validation requiring exactly one correctly keyed row with a nonnegative integer fence: `scripts/bootstrap_sttm_metadata_infra.py:590`.
-- Preserved existing valid fence values. Invalid inventory stops bootstrap—**no reset, deletion, or automatic repair**.
-- Added tests and corrected installation instructions. **No new grants or workflow changes** were added.
+Preserve the native SQL diagnostics and correctly classify these pre-submission failures. Then add bounded retries of the **same persistence operation**, only when rollback is confirmed—never blindly replay model calls or retry uncertain commits.
 
-The resulting UAT object is:
+**Increasing slots or resetting quarantines is not supported by this evidence.** I have not changed anything or rerun Auto-map.
 
-```text
-FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_PROJECT_BOOTSTRAP_LOCK
-```
-
-It coordinates concurrent project-creation requests to prevent duplicate initialization. **It does not load columns, generate semantics, or make queries parallel.** Its bootstrap step completed successfully in deployment `43069549191`.
+Evidence came from `FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AUTO_MAP_JOBS`, `TBL_AUTOMAP_CONTEXT_ARCHIVE_UAT`, and `TBL_AUTOMAP_CALL_ADMISSION_UAT_V2_EVENTS` in that same schema.
