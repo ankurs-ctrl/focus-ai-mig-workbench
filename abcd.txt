@@ -1,1 +1,200 @@
-.
+I’ll pull the per-batch error details for that exact job, including the message limits, affected targets, and any retained transformation diagnostics. I’ll keep confirmed errors separate from causes the logs don’t establish.
+## Run investigated
+
+- **Mapping:** `2001`
+- **Job:** `0464398b-c5f6-5454-aca6-0845df0d7cfe`
+- **Request:** `d01f9699-ba73-4ef0-9b13-7b88ed72e071`
+- **Time:** November 12, **13:46:30–13:50:46 UTC**
+- **Duration:** **4m16s**
+- **Outcome:** `partial_failure`
+
+**Count clarification:** there were **37 targets total; 35 need input**. The result retained **five replacement proposals**, but accepted **zero new mappings**.
+
+## 1. Four batches exceeded the complete-message limit
+
+Error code:
+
+```text
+auto_map_fast_message_budget_exceeded
+```
+
+The recorded hard limits were **180,000 characters and 180,000 bytes**.
+
+| Batch¹ | Reported final characters | Over character limit |
+|---|---:|---:|
+| 1 | 181,403 | 1,403 |
+| 3 | 188,885 | 8,885 |
+| 4 | 181,157 | 1,157 |
+| 5 | 184,395 | 4,395 |
+
+¹ Batch indices are zero-based.
+
+The exact batch 3 message was:
+
+> Exact batch evidence exceeds the complete-message budget; no rule was truncated: Complete fast context for 4 target(s) exceeds the unchanged message budget (188885 characters); required constraints and exact evidence were retained.
+
+The other three messages use the same wording with their respective sizes.
+
+### Targets affected
+
+**Batch 1**
+```text
+OGSTATECODE
+HOUSEHOLD_TYPE__C
+FINSERV__CLIENTCATEGORY__C
+LEGACYPORTFOLIOSYSTEMHHID
+```
+
+**Batch 3**
+```text
+SOURCE_OF_BUSINESS
+BFFS_LEGACYSTARTDATE__C
+FINSERV__NEXTREVIEW__C
+MAIL_MERGE_FIRST_AND_LAST__C
+```
+
+**Batch 4**
+```text
+MASTER_PAYOUT_DATE__C
+DELIVERY_CONSENT__C
+REFERRAL__C
+SOURCEFORREFERRAL
+```
+
+**Batch 5**
+```text
+LEGACY_ID__C
+FINSERV__REVIEWFREQUENCY__C
+FINSERV__LASTREVIEW__C
+IS_RCP_CLIENT__C
+```
+
+**Impact:** these four batches never reached the source model. All 16 targets retained this reason:
+
+> Preparation did not reach source mapping; no mapping was accepted.
+
+### What the size diagnostics show
+
+Earlier packing probes containing **18 sources** fitted at approximately **157,000–158,000 characters**. Later probes with additional evidence—**29–45 sources**—exceeded the limit.
+
+Some earlier planned-payload measurements were smaller than the final failure measurements. Those represent **different assembly stages**, so an earlier “fits” result did not guarantee that the complete message would fit.
+
+**Recommended correction:** enforce the budget after complete message assembly and split the target batch when required evidence cannot fit. Do not silently truncate mandatory evidence.
+
+## 2. Two transformation stages failed before model submission
+
+| Batch | Target | Error | Recorded transformation duration |
+|---|---|---|---:|
+| 6 | `WAA_CONSENT__C` | `ValueError` | 162.6 ms |
+| 7 | `BILLINGSTREET` | `ValueError` | 184.1 ms |
+
+Both recorded:
+- One planned transformation target.
+- **Zero scheduled rule calls.**
+- **Zero transformation-model submissions.**
+- Zero validated rules.
+- One retained source binding and three candidate entries.
+
+Exact target explanation:
+
+> A valid transformation expression is still required for this target. Transformation execution stopped (ValueError); no uncertain model call was replayed.
+
+Associated warning:
+
+```text
+AUTO_MAP_TRANSFORMATION_STAGE_SKIPPED
+```
+
+> Some transformation expressions could not be completed; validated results were retained.
+
+Worker logs confirm:
+
+```text
+Complex transformation stage failed
+request_id=d01f9699-ba73-4ef0-9b13-7b88ed72e071
+targets=1
+error_type=ValueError
+```
+
+**What remains unknown:** the underlying exception message, stack trace, and throwing function were not retained in the inspected records. Therefore, I cannot honestly attribute these two failures to message size, OAuth, or admission contention.
+
+**Recommended correction:** preserve the full safe exception diagnostics at this boundary, then reproduce the preparation failure with the captured inputs. These records do not indicate a model-generated transformation error—the model was never called.
+
+## 3. Additional reasons proposals could not be accepted
+
+These are validation/input problems, separate from the six failed stages above.
+
+### Invalid source-reference format
+
+Exact reason:
+
+```text
+Source reference is not one qualified SQL column
+```
+
+Affected targets:
+
+```text
+ADDR1
+ADDR2
+BILLINGCITY
+BILLINGPOSTALCODE
+MAIL_MERGE_FIRST_ONLY__C
+OGCOUNTRYCODE
+BFFS_CLIENTSTARTDATE__C
+BILLINGCOUNTRY
+```
+
+Candidates existed, but their source references did not satisfy the validator’s qualified-column requirement. The retained reason alone does not establish the precise malformed-reference pattern.
+
+### Missing historical derived-source dependencies
+
+Affected targets:
+
+```text
+NAME
+OWNERID
+DOSEPARATE__FINSERV__SOURCESYSTEMID__C
+```
+
+Their proposed mappings depended on historical derived-source definitions/dependencies that were not available in the required form.
+
+### Unresolved project Values
+
+- `TRANSACTION_FIRM__C`: `$FIRM_NAME` binding unresolved.
+- `PARENTID`: `$PARENT_FIRM_ID` binding unresolved.
+- `FINSERV__STATUS__C`: Value name, `$FINSERV__STATUS` placeholder, and approved binding did not agree.
+- `LEGACY_FIRM_INFO__C`: required historical firm/branch input missing.
+
+There were also warnings about missing `precedent_decision` and incomplete semantic metadata. Those warnings do **not**, by themselves, prove the same missing-table-semantics issue previously found in mapping 4405.
+
+## 4. What actually reached the model
+
+The exact-request archives confirm:
+
+- **11 actual source-model POSTs**
+- **11 corresponding response receipts**
+- Recorded model-run HTTP status **200**
+- **Zero transformation-model submissions** for the two failed transformation stages
+
+So this was **not a complete connectivity outage**. Some source calls succeeded, while other batches were blocked during preparation or failed validation.
+
+The result retained **34 candidate entries across 21 targets**. These are proposals—not accepted mappings.
+
+## Recommended fix order
+
+1. **Complete-message-aware batch splitting** for the four oversized batches.
+2. **Capture and diagnose the transformation `ValueError`**, without guessing its cause.
+3. **Correct source-reference validation/handoff** for the eight affected targets.
+4. **Resolve the specific derived dependencies and project Value bindings.**
+
+I made **no code, configuration, mapping, or job changes**.
+
+Evidence came from:
+- `FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AUTO_MAP_JOBS`
+- `FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AUTOMAP_CONTEXT_ARCHIVE_UAT`
+
+Diagnostic query IDs:
+- Errors: `01c85cef-0009-c0d0-0001-ea5e2fb88fe2`
+- Target outcomes: `01c85cf1-0009-c0d2-0001-ea5e2fb8d94e`
+- Actual POST receipts: `01c85cf1-0009-c0d2-0001-ea5e2fb8dc0e`
