@@ -10,3 +10,36 @@ For Smit’s publication, this failed because the application’s restricted-cal
 **Required correction:** Adjust publication validation so metadata-only publishing does not require target-write permission. Validate execution permissions separately when the migration is actually executed.
 
 **No target rows were inserted by the failed validation.**
+
+
+
+
+**Yes—Deep Agent can reuse the application’s existing OAuth login for the user’s work. That support is already partly implemented.** It does not need a second login or a personal token in `client.env`.
+
+The distinction is between two connections:
+
+| Connection | Purpose | Authentication |
+|---|---|---|
+| Worker housekeeping | Find queued runs, maintain leases and checkpoints | Needs a working service-owned connection |
+| User’s Deep Agent run | Read permitted data, call models and create drafts | Reuses the initiating user’s application OAuth session |
+
+The current worker fails opening the **first connection**, before reaching its existing user-OAuth logic.
+
+### What we need
+
+1. **Fix worker startup authentication.**  
+   Use a supported SPCS service identity for narrowly scoped internal operations—not an empty caller token or a shared user login.
+
+2. **Complete and verify session delegation.**  
+   Each run must reference the initiating user’s stored OAuth session. The worker already has code to load that session, verify its owner and refresh its token:  
+   `services/sttm-builder/app/auth/custom_oauth.py:728–740`.
+
+3. **Give the worker access to the same OAuth infrastructure.**  
+   It needs the configured session store, token-decryption configuration and OAuth refresh configuration through secure deployment settings. No credentials should be copied into run payloads or logs.
+
+4. **Handle expiry and revocation safely.**  
+   Coordinate token refreshes across processes. If the session is no longer usable, pause the run for reauthentication—never fall back to another user or elevated service permissions.
+
+5. **Apply the Deep migrations and deploy the corrected image/configuration.**
+
+**So the answer is: reuse the same OAuth for execution, but fix the worker’s separate startup connection first.** Merely adding the flags cannot make that distinction work in the current image.
