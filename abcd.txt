@@ -1,19 +1,69 @@
-I’ll compare the working Snowpark connection with the failing model REST client, focusing on SPCS-specific authentication and routing. I won’t replay either failed mapping run.
-I found a concrete routing defect: the regular application uses the configured `SNOWFLAKE_REST_HOST` for OAuth REST calls, but Deep Agent ignores it and uses the Snowpark connection’s host instead. This affects both the supervisor model and its specialist clients.
+I’ll reconstruct the timeline from the saved job and batch diagnostics, plus browser timestamps if they’re still available. I’ll separate measured durations from gaps the app didn’t record, and show parallel work without adding it twice. I won’t rerun Auto-map.
+The deeper archives contain the missing breakdown: several calls spent **5–6½ minutes waiting for execution capacity**, then only **17–22 seconds in the model-request/polling phase**. That makes capacity waiting a confirmed major delay, rather than just a possible explanation.
 
-UAT’s configured REST host is `mhsuejt-ffp-hdp-snow-account-prod.snowflakecomputing.com`. The failed-run logs don’t record the host Deep actually used, so I’m distinguishing the confirmed code defect from the still-unverified cause of the live rejection.
-**I found a routing defect in Deep Agent: it ignores the application’s configured OAuth REST host.**
 
-The regular application sends OAuth REST requests through `settings.rest_snowflake_host`. Deep Agent instead uses the **Snowpark connection’s host** for its supervisor model and specialist clients.
+**Long calls: capacity waiting versus model-request phase**
 
-In SPCS, these paths are not interchangeable: the SQL connector performs an SPCS-aware login, while Deep’s REST client sends the delegated OAuth token directly.
+| Call | Phase | Seconds |
+| :--- | :--- | ---: |
+| ADDR2 / country | Capacity wait | 390.12 |
+| ADDR2 / country | Model request + polling | 20.99 |
+| Owner / portfolio ID | Capacity wait | 373.85 |
+| Owner / portfolio ID | Model request + polling | 18.05 |
+| City / street / ID | Capacity wait | 314.65 |
+| City / street / ID | Model request + polling | 17.98 |
+| Category / mail merge | Capacity wait | 316.96 |
+| Category / mail merge | Model request + polling | 22.03 |
+| Postal / household type | Capacity wait | 317.45 |
+| Postal / household type | Model request + polling | 17.18 |
 
-**Evidence**
-- UAT has the correct public REST host configured.
-- Deep bypasses that setting in `services/sttm-builder/app/agent_worker_main.py:487`, `:495`, and the model construction.
-- The regular application uses it in `services/sttm-builder/app/api/deps.py:322`.
-- OAuth headers and `enableCustomCredentials` are already present.
+**Yes—the deeper call archives show that several long calls spent over five minutes waiting for capacity, then about 20 seconds in the model-request phase.**
 
-**Targeted correction:** make all Deep OAuth REST clients use the same host-selection logic as the regular application, retaining the user’s token and role.
+This is mapping **901**, job `0453a25b-1e98-5aef-b147-44229ec29c65`.
 
-**Limit:** this code defect is confirmed, but the failed request’s actual destination was not logged. A controlled SPCS check is still needed to prove it explains `395090` and that the correction resolves it. I haven’t changed code or replayed your runs.
+## Recorded timeline
+
+All times below are UTC on November 13.
+
+| Step | Time / duration | What the evidence shows |
+|---|---|---|
+| Click → backend submission | **Unavailable** | Your browser’s click/request timings were not retained in the accessible records. |
+| Backend accepted job | **13:00:10.289** | Start of the measured **12m 1.8s** job. |
+| Initial prepared-context processing | **1.84s** | Cached workspace evidence was reused. |
+| Acceptance → first recovered call-start timestamp | **2m 17s** | First recovered call starts at **13:02:27.456**. This interval includes setup/dispatch; records do not fully divide it into individual steps. |
+| Initial calls and follow-up work | Approximately **13:02:27–13:05:41** | Calls overlapped. Successful initial model-request phases took approximately **20–54s**; some other calls failed during storage/control operations. |
+| Long capacity waits | Approximately **13:04:22–13:11:16** | Five calls individually waited **5m15s–6m30s** before proceeding. |
+| Remaining model calls | Approximately **13:10:53–13:12:03** | Delayed calls proceeded and returned; the last recorded model phase took **16.6s**. |
+| Last batch result recorded | **13:12:07.742** | Final partial response saved. |
+| Job finalized | **13:12:12.105** | **4.36s** after the last partial. Final state: `partial_failure`. |
+| Finalization → results displayed | **Unavailable** | Browser polling/render delay cannot be recovered from these records. |
+
+## Where the long calls spent their time
+
+These calls ran concurrently; **do not add their durations together**.
+
+| Target group / call | Capacity wait | Model request + polling¹ | Recorded call duration² |
+|---|---:|---:|---:|
+| ADDR2 / country code | **6m 30s** | **21.0s** | 6m 57s |
+| Owner / portfolio ID / source of business | **6m 14s** | **18.0s** | 6m 41s |
+| City / street / legacy ID | **5m 15s** | **18.0s** | 5m 40s |
+| Client category / mail-merge fields | **5m 17s** | **22.0s** | 5m 44s |
+| Postal code / household type / consent | **5m 17s** | **17.2s** | 5m 40s |
+
+¹ Includes submission, polling and terminal-result persistence—not pure inference time.  
+² Includes additional request storage and thread setup; archived timing may exclude its own final archive write.
+
+## What caused the delay?
+
+**The major confirmed delay was obtaining execution capacity, not several minutes of model processing per call.**
+
+There were also:
+- Request/archive persistence failures.
+- Admission failures and uncertain rollback/cleanup outcomes.
+- A confirmed SQL timeout: a control statement was cancelled after its **one-second limit**, including **714 ms blocked**.
+
+The records establish prolonged capacity waits, but **do not yet prove whether every wait was caused by occupied slots, database contention, or delayed recovery**.
+
+The job ultimately returned **5 replacement proposals, 0 newly mapped columns, and 37 targets requiring input/review**.
+
+Sources: `FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AUTO_MAP_JOBS`, `TBL_AUTOMAP_CONTEXT_ARCHIVE_UAT`, and `TBL_AUTOMAP_CALL_ADMISSION_UAT_V2_EVENTS` in the same namespace. No run was replayed.
