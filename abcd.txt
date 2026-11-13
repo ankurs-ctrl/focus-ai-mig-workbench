@@ -1,72 +1,12 @@
-# Deep Agent enablement
-MIGRATION_AGENT_ENABLED=true
-MIGRATION_AGENT_TRUE_RESUME_V1=true
-MIGRATION_AGENT_HOST_TERMINALIZATION_V1=true
-MIGRATION_AGENT_TOOL_GOVERNANCE_V1=true
-ASSISTANT_UNIFIED_HISTORY_V1=true
-ASSISTANT_INTENT_ROUTING_V1=true
+### Issue: Publishing a mapping incorrectly requires target-table INSERT permission
 
-# Models — must be available to the client's Cortex role
-MIGRATION_AGENT_MODEL_LIGHT=claude-haiku-4-5
-MIGRATION_AGENT_MODEL_MEDIUM=claude-sonnet-4-5
-MIGRATION_AGENT_MODEL_HIGH=claude-sonnet-4-5
-MIGRATION_AGENT_MAX_COMPLETION_TOKENS=16384
+**Cause:** Before saving a published mapping to metadata, the application validates its generated `INSERT` statement using `EXPLAIN`. Although this does not insert any data, Snowflake still checks INSERT permissions on the target table.
 
-# Conservative initial Deep Agent concurrency
-MIGRATION_AGENT_MAX_CONCURRENCY=1
-MIGRATION_AGENT_WAKE_PORT=0
+For Smit’s publication, this failed because the application’s restricted-caller configuration lacks `CALLER INSERT` on:
+`FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.TARGET_TABLES.BIZ_CONTACTS`.
 
-# Required shared capacity controls for SPCS
-MIGRATION_AGENT_CAPACITY_SCOPES='["account:{account}","tenant:{account}:{tenant}","role:{account}:{role}","project:{account}:{tenant}:{project}"]'
-MIGRATION_AGENT_CAPACITY_LIMITS='{"account:{account}":1,"tenant:{account}:{tenant}":1,"role:{account}:{role}":1,"project:{account}:{tenant}:{project}":1}'
+**Impact:** Publication is blocked even though it should only store mapping definitions and SQL in metadata. The UI misleadingly reports a SQL compilation problem instead of the underlying permission failure.
 
+**Required correction:** Adjust publication validation so metadata-only publishing does not require target-write permission. Validate execution permissions separately when the migration is actually executed.
 
-Only if the specialist agents are outside the configured metadata namespace, add:
-MIGRATION_AGENT_SOURCE_MAPPING_AGENT=<DATABASE>.<SCHEMA>.AGT_SOURCE_MAPPING
-MIGRATION_AGENT_TRANSFORMATION_RULE_AGENT=<DATABASE>.<SCHEMA>.AGT_TRANSFORMATION_RULE
-
-
-Yes. Add these to `client.env`. This configuration passes the merged **SPCS worker startup validator**:
-
-```dotenv
-# Deep Agent enablement
-MIGRATION_AGENT_ENABLED=true
-MIGRATION_AGENT_TRUE_RESUME_V1=true
-MIGRATION_AGENT_HOST_TERMINALIZATION_V1=true
-MIGRATION_AGENT_TOOL_GOVERNANCE_V1=true
-ASSISTANT_UNIFIED_HISTORY_V1=true
-ASSISTANT_INTENT_ROUTING_V1=true
-
-# Models — must be available to the client's Cortex role
-MIGRATION_AGENT_MODEL_LIGHT=claude-haiku-4-5
-MIGRATION_AGENT_MODEL_MEDIUM=claude-sonnet-4-5
-MIGRATION_AGENT_MODEL_HIGH=claude-sonnet-4-5
-MIGRATION_AGENT_MAX_COMPLETION_TOKENS=16384
-
-# Conservative initial Deep Agent concurrency
-MIGRATION_AGENT_MAX_CONCURRENCY=1
-MIGRATION_AGENT_WAKE_PORT=0
-
-# Required shared capacity controls for SPCS
-MIGRATION_AGENT_CAPACITY_SCOPES='["account:{account}","tenant:{account}:{tenant}","role:{account}:{role}","project:{account}:{tenant}:{project}"]'
-MIGRATION_AGENT_CAPACITY_LIMITS='{"account:{account}":1,"tenant:{account}:{tenant}":1,"role:{account}:{role}":1,"project:{account}:{tenant}:{project}":1}'
-```
-
-Keep each JSON value on **one line**. These limits allow one Deep Agent capacity lease across the account; they do not increase Auto-map capacity. Medium and High can use the same model with different effort policies. Confirm model availability against the client’s [Snowflake region and permissions](https://docs.snowflake.com/en/user-guide/snowflake-cortex/model-availability).
-
-Only if the specialist agents are outside the configured metadata namespace, add:
-
-```dotenv
-MIGRATION_AGENT_SOURCE_MAPPING_AGENT=<DATABASE>.<SCHEMA>.AGT_SOURCE_MAPPING
-MIGRATION_AGENT_TRANSFORMATION_RULE_AGENT=<DATABASE>.<SCHEMA>.AGT_TRANSFORMATION_RULE
-```
-
-**There is a deployment gap in the v2 ZIP:** its SPCS templates/scripts do not yet forward these Deep Agent variables. Adding them to `client.env` alone will not enable Deep Agent. They must reach the backend container’s environment.
-
-Also required:
-
-- Apply the Deep Agent migrations and install the included dependency lock.
-- Start the container with `python -m app.service_main`; it starts the enabled worker alongside the API.
-- Preserve existing Snowflake/OAuth settings and ensure delegated user authentication supports detached execution.
-
-No new credentials are required solely for these flags.
+**No target rows were inserted by the failed validation.**
