@@ -1,69 +1,331 @@
-I’ll reconstruct the timeline from the saved job and batch diagnostics, plus browser timestamps if they’re still available. I’ll separate measured durations from gaps the app didn’t record, and show parallel work without adding it twice. I won’t rerun Auto-map.
-The deeper archives contain the missing breakdown: several calls spent **5–6½ minutes waiting for execution capacity**, then only **17–22 seconds in the model-request/polling phase**. That makes capacity waiting a confirmed major delay, rather than just a possible explanation.
+I’ll trace both runs from the submitted context through preparation, worker dispatch, model calls, and result handling. I’ll focus on the preparation delays, why the second run passed preflight but never reached a model, and why the first retained the old definitions. This will stay read-only.
+The two runs failed in different ways. In the first, models returned candidates, but the UI retained the existing definitions and its completion notice did not count the new-style candidates. In the second, every batch was rejected before model submission.
 
+The strongest finding so far is a preparation mismatch: preflight sized evidence in blocks, but the worker used a different policy and tried to fit the fuller evidence into one message. The second request also carried much richer source metadata and a large saved precedent, despite its blank mapping rows.
+## Summary
 
-**Long calls: capacity waiting versus model-request phase**
+**The two runs encountered different problems. Neither was waiting for you to answer a question.**
 
-| Call | Phase | Seconds |
-| :--- | :--- | ---: |
-| ADDR2 / country | Capacity wait | 390.12 |
-| ADDR2 / country | Model request + polling | 20.99 |
-| Owner / portfolio ID | Capacity wait | 373.85 |
-| Owner / portfolio ID | Model request + polling | 18.05 |
-| City / street / ID | Capacity wait | 314.65 |
-| City / street / ID | Model request + polling | 17.98 |
-| Category / mail merge | Capacity wait | 316.96 |
-| Category / mail merge | Model request + polling | 22.03 |
-| Postal / household type | Capacity wait | 317.45 |
-| Postal / household type | Model request + polling | 17.18 |
+- **First run:** source-mapping models ran and returned candidates. Existing definitions remained unchanged, the completion message incorrectly counted zero proposals, and seven fields could not complete their transformation stage.
+- **Second run:** the mapping rows were empty, but the surrounding context was substantially larger. Preflight approved an evidence-block representation that differed from the worker’s actual representation. **Every batch exceeded the worker’s message budget before any model call.**
 
-**Yes—the deeper call archives show that several long calls spent over five minutes waiting for capacity, then about 20 seconds in the model-request phase.**
+Both used the deployed v8 code. This investigation was read-only.
 
-This is mapping **901**, job `0453a25b-1e98-5aef-b147-44229ec29c65`.
+## 1. Comparing the runs
 
-## Recorded timeline
-
-All times below are UTC on November 13.
-
-| Step | Time / duration | What the evidence shows |
+| | First run | Second run |
 |---|---|---|
-| Click → backend submission | **Unavailable** | Your browser’s click/request timings were not retained in the accessible records. |
-| Backend accepted job | **13:00:10.289** | Start of the measured **12m 1.8s** job. |
-| Initial prepared-context processing | **1.84s** | Cached workspace evidence was reused. |
-| Acceptance → first recovered call-start timestamp | **2m 17s** | First recovered call starts at **13:02:27.456**. This interval includes setup/dispatch; records do not fully divide it into individual steps. |
-| Initial calls and follow-up work | Approximately **13:02:27–13:05:41** | Calls overlapped. Successful initial model-request phases took approximately **20–54s**; some other calls failed during storage/control operations. |
-| Long capacity waits | Approximately **13:04:22–13:11:16** | Five calls individually waited **5m15s–6m30s** before proceeding. |
-| Remaining model calls | Approximately **13:10:53–13:12:03** | Delayed calls proceeded and returned; the last recorded model phase took **16.6s**. |
-| Last batch result recorded | **13:12:07.742** | Final partial response saved. |
-| Job finalized | **13:12:12.105** | **4.36s** after the last partial. Final state: `partial_failure`. |
-| Finalization → results displayed | **Unavailable** | Browser polling/render delay cannot be recovered from these records. |
+| Project | 301 | 302 |
+| Job | `4591371c…` | `561ef18f…` |
+| Submitted mapping rows | 37 populated | 37 empty |
+| Target fields | 37 | 37 |
+| Batches | 10 | 17 |
+| Backend elapsed time | **4m 53.2s** | **9m 20.7s** |
+| Parent preparation | **76.7s** | **263.1s** |
+| Recorded source-model calls | **15** | **0** |
+| Transformation-model calls | **0** | **0** |
+| Returned candidate records | **47 across 37 fields** | **0** |
+| Final result | Needs review; execution blocked | No mappings; execution blocked |
 
-## Where the long calls spent their time
+“Completed” describes the **job’s processing lifecycle**. It does not mean the resulting mapping is complete or executable.
 
-These calls ran concurrently; **do not add their durations together**.
+---
 
-| Target group / call | Capacity wait | Model request + polling¹ | Recorded call duration² |
-|---|---:|---:|---:|
-| ADDR2 / country code | **6m 30s** | **21.0s** | 6m 57s |
-| Owner / portfolio ID / source of business | **6m 14s** | **18.0s** | 6m 41s |
-| City / street / legacy ID | **5m 15s** | **18.0s** | 5m 40s |
-| Client category / mail-merge fields | **5m 17s** | **22.0s** | 5m 44s |
-| Postal code / household type / consent | **5m 17s** | **17.2s** | 5m 40s |
+## 2. First run: what happened
 
-¹ Includes submission, polling and terminal-result persistence—not pure inference time.  
-² Includes additional request storage and thread setup; archived timing may exclude its own final archive write.
+### A. It started with existing definitions
 
-## What caused the delay?
+The submitted workspace contained:
 
-**The major confirmed delay was obtaining execution capacity, not several minutes of model processing per call.**
+- 37 rows marked `MAPPED`.
+- 28 rows with source columns.
+- Seven with expressions.
+- Nine with constants.
 
-There were also:
-- Request/archive persistence failures.
-- Admission failures and uncertain rollback/cleanup outcomes.
-- A confirmed SQL timeout: a control statement was cancelled after its **one-second limit**, including **714 ms blocked**.
+Those categories overlap.
 
-The records establish prolonged capacity waits, but **do not yet prove whether every wait was caused by occupied slots, database contention, or delayed recovery**.
+This was therefore a reevaluation of an existing mapping—not generation into 37 blank rows.
 
-The job ultimately returned **5 replacement proposals, 0 newly mapped columns, and 37 targets requiring input/review**.
+### B. Preparation and execution took almost five minutes
 
-Sources: `FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AUTO_MAP_JOBS`, `TBL_AUTOMAP_CONTEXT_ARCHIVE_UAT`, and `TBL_AUTOMAP_CALL_ADMISSION_UAT_V2_EVENTS` in the same namespace. No run was replayed.
+| Interval | Duration |
+|---|---:|
+| Backend acceptance → first recorded call setup | **147.0s** |
+| First call setup → final batch completion | **141.5s** |
+| Final batch → saved final result | **4.6s** |
+| **Total** | **293.2s** |
+
+The first interval includes the **76.7-second preparation step**. It is not 147 seconds of model inference.
+
+Inside the recorded calls:
+
+| Phase | Per-call range |
+|---|---:|
+| Evidence/request storage and readback | 3.1–16.8s |
+| Operation ownership claim | 1.9–4.5s |
+| Thread creation and persistence | 1.0–3.1s |
+| Model request, polling, and result persistence | **14.6–27.2s** |
+
+**No operation-claim contention was recorded.** The earlier multi-minute shared-capacity waits were not the issue in this run.
+
+The slowest batch took **150.8 seconds** and made three source-model calls. Multiple calls do not automatically mean retries; they can include continuation or repair. The batch and call durations overlap and must not be summed as wall time.
+
+### C. Models returned results—but candidates are not applied definitions
+
+The final response contains:
+
+- **47 candidate records**
+- Candidates for **all 37 targets**
+- **Eight targets with multiple candidates**
+- A backend summary of **29 proposed mappings**
+- **22 fields requiring action**
+
+These numbers measure different things. A candidate record is not necessarily a distinct alternative, a validated mapping, or an applied change.
+
+### D. Why the old definitions stayed
+
+The frontend deliberately protects existing definitions under conditions including:
+
+- Manually saved or edited rows.
+- Confirmed/edited review state.
+- An existing definition that is not marked as an unreviewed AI draft.
+
+In that path, it stores returned candidates separately while leaving the current definition unchanged.
+
+Your completion notice confirms that the frontend found **all 37 definition signatures unchanged**. However, the saved backend workspace does not contain every transient frontend protection flag. Therefore, I cannot establish for each individual row whether it stayed unchanged because it was protected, because the chosen candidate matched it, or because another application guard intervened.
+
+Relevant logic:  
+`frontend/src/features/sttm/store/sttm-builder-slice.ts:2869–2888`
+
+### E. Why the notice said zero proposals
+
+This is a **confirmed counting defect**:
+
+1. The sheet workflow stores returned candidates in `mapping.aiCandidates`.
+2. It removes that row’s entries from the older `pendingAiMappingReviews` list.
+3. The completion notice still counts proposals from **that older list**, not `aiCandidates`.
+
+Consequently, it can display:
+
+> 0 replacement proposals available
+
+even when the saved response contains candidate alternatives.
+
+References:
+- Candidate storage/legacy-list removal: `frontend/src/features/sttm/store/sttm-builder-slice.ts:2877–2880`
+- Completion counters: `frontend/src/features/sttm/store/sttm-builder-slice.ts:1593–1609`
+
+I verified the candidates in the backend response—not their presence in your browser’s final row state.
+
+### F. The first run also had a real transformation problem
+
+Seven targets were marked **`budget_deferred`**:
+
+- `HOUSEHOLD_TYPE__C`
+- `FINSERV__CLIENTCATEGORY__C`
+- `FINSERV__REVIEWFREQUENCY__C`
+- `IS_RCP_CLIENT__C`
+- `LEGACY_ID__C`
+- `WAA_CONSENT__C`
+- `BILLINGSTREET`
+
+Their recorded reason was:
+
+> “Exact transformation evidence exceeds the per-call allowance; narrow this target's context and retry.”
+
+**No transformation-model requests were submitted.** Source proposals were retained, but required transformation expressions were not completed.
+
+So the first run was not merely a misleading notification: **source generation worked, while some transformation work remained blocked.**
+
+---
+
+## 3. Second run: why blank rows still produced a larger request
+
+Your statement that the mapping rows were clean is supported by the saved request:
+
+- 37 rows marked `UNMAPPED`.
+- No source columns, expressions, or constants.
+
+But clearing mapping rows did **not** clear all surrounding context.
+
+### Material differences
+
+The following are serialized stored-context character counts—not model tokens:
+
+| Context component | First run | Second run |
+|---|---:|---:|
+| Total request context | 655,400 | **1,188,729** |
+| Semantic context | 179,292 | **381,656** |
+| Learning context | 1,850 | **104,943** |
+| Published mapping-precedent array | Empty | **102,617** |
+| `ACCOUNTS` semantic-model content | 186 | **305,306** |
+| Attributes inside that `ACCOUNTS` model | 0 | **600** |
+
+The second request had much richer `ACCOUNTS` metadata and one substantial mapping precedent.
+
+Conversely:
+
+- Both requests had the same six physical sources.
+- Both had seven graph nodes and five edges.
+- Both had the same 1,832-character CTE definition.
+- The small project-context object was slightly **smaller** in the second run.
+
+Therefore, **additional source tables or a larger CTE did not explain the increase**.
+
+These stored sizes identify additional processing material. They do not prove that every stored character was repeated in each final model message; the application filters and packs that material.
+
+### Why the backend still marked all targets as having a baseline
+
+The second workspace retained **5,275 characters of SQL** in both `mapping_sql` and `raw_mapping_sql`.
+
+The backend’s baseline predicate treats either nonempty SQL field as sufficient to mark every target `had_baseline=true`, even when the individual rows are blank.
+
+That explains the backend baseline flags. **It did not itself cause the zero-model-call failure**, and the UI correctly reported zero existing row definitions retained.
+
+Reference:  
+`services/sttm-builder/app/core/auto_mapping_proxy.py:281`
+
+---
+
+## 4. Why preflight passed but all second-run workers rejected the messages
+
+This is the strongest root-cause finding.
+
+### A. Preflight and worker do not receive the same planning policy
+
+The preflight builds an agent envelope that omits request metadata.
+
+The worker builds a similar envelope but explicitly restores:
+
+```text
+automap_generation_policy = draft-v3
+automap_rules_policy = rules-v2
+```
+
+The context planner uses those policy fields to choose its evidence representation:
+
+- **Preflight without the policy:** can use evidence blocks.
+- **Worker with `draft-v3`:** requires inline evidence for this initial planning path.
+
+Thus, they are not validating the same effective message construction.
+
+References:
+- Preflight construction: `services/sttm-builder/app/core/sttm_builder.py:5819`
+- Worker policy restoration: `services/sttm-builder/app/core/automap_batch.py:437`
+- Policy-dependent block handling: `services/sttm-builder/app/core/automap_fast_context.py:519–542`
+
+### B. The saved diagnostics match that discrepancy
+
+For the second run:
+
+- All **17 preflight batches** said `ready`.
+- All had `input_sizing_ready=true`.
+- All had `runtime_ready=false`.
+- Preflight planned **43 pending evidence blocks** in total.
+- Preflight messages were **97,341–138,351 characters**.
+
+But workers recorded:
+
+- **Zero evidence blocks/review calls**
+- **Zero completed evidence reads**
+- Admission **`not_started`**
+- **Zero model calls**
+- Rejected messages of **184,551–198,631 characters**
+
+The application’s configured limit was **180,000 characters and 180,000 bytes**.
+
+For example, a two-target batch sized at **107,103 characters in preflight** was rejected at **192,566 characters in the worker**.
+
+**This was an application-side framing rejection—not Snowflake rejecting a model request. No request reached the model.**
+
+### C. Why the first run got through
+
+The same policy discrepancy exists in the code used by both runs. However, the first run’s actual worker messages fitted within the limit: approximately **168,362–178,924 characters**.
+
+That explains how the first could make model calls while the second failed under richer context.
+
+### D. One separate defect was not responsible here
+
+The code also has a path that can label an overflow sentinel “ready.” However, neither run’s saved preflight contains that sentinel.
+
+For these runs, the evidence supports **different preflight/worker representations**, not that separate sentinel defect.
+
+---
+
+## 5. Why preparation took so long
+
+There are two preparation timers with different scopes.
+
+| Preparation scope | First | Second |
+|---|---:|---:|
+| Inner request/context preparation | **8.2s** | **5.6s** |
+| Work outside that inner timer, but inside parent preparation | **68.4s** | **257.5s** |
+| **Parent preparation total** | **76.7s** | **263.1s** |
+
+The inner request-preparation work was actually faster in the second run.
+
+The large increase lies in the surrounding region that includes:
+
+- Persisting the enriched request.
+- Building and checking batches.
+- Repeated context indexing, serialization, hashing, and message sizing.
+- Additional batch subdivision and bookkeeping.
+
+Both requests reused `prepared_workspace`; their recorded semantic-refresh and precedent/FIR-retrieval timers were zero. **There is no evidence that fresh semantic/FIR retrieval consumed those extra minutes.**
+
+### Why smaller batches did not solve the problem
+
+Splitting targets does not necessarily shrink the shared context proportionally. Shared source evidence, CTE information, contracts, and global context remain in the plan.
+
+The worker can repeatedly try:
+
+- Different candidate limits.
+- Repacked messages.
+- Smaller target subsets.
+- Multiple lossless serialization representations.
+
+All of that can happen **before a model call**.
+
+The second run ended with 17 batches rather than 10. The code supports further parent-side subdivision, but the saved final partition does not retain enough split history to attribute every additional batch to an exact failed projection.
+
+### The timing instrumentation also hides failed preparation work
+
+The worker records its preparation duration only after an initial message-sizing step succeeds. When sizing throws the budget exception, that timer is not finalized.
+
+This explains why second-run batches can show:
+
+- **26–205 seconds elapsed**
+- Preparation timer **zero**
+- Model timer **zero**
+
+Those zero preparation values are **missing accounting for failed preparation**, not evidence that no preparation occurred.
+
+Reference:  
+`services/sttm-builder/app/core/automap_batch.py:603–609`
+
+**What remains unmeasured:** the precise division of the 257.5 seconds between local computation, serialization, database persistence, and waiting. The stored timers do not support assigning all of it to one cause.
+
+---
+
+## 6. What needs correcting
+
+In priority order:
+
+1. **Make preflight and worker use identical policy and message construction.** Validate the actual representation that will be dispatched.
+2. **Stop dispatching work that cannot fit.** Surface context-budget rejection as an actionable failure rather than a generic completed/no-suggestion result.
+3. **Record failed preparation time.** Add timings around batch preflight, request persistence, worker context construction, and sizing.
+4. **Correct the completion counters.** Count current sheet candidates and distinguish returned candidates, distinct alternatives, applied definitions, and retained definitions.
+5. **Separate blank-row status from retained mapping SQL.** The UI and backend currently use different notions of an existing baseline.
+6. **Address transformation-context sizing too.** The first run demonstrated a separate budget barrier for seven transformation targets.
+
+**Raising the message limit alone would not fix the preflight mismatch, misleading statuses, or proposal counters.**
+
+### Evidence sources
+
+Persisted requests, diagnostics, outcomes, and batch metrics:  
+`FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AUTO_MAP_JOBS`
+
+First-run per-call phase timings and response receipts:  
+`FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AUTOMAP_CONTEXT_ARCHIVE_UAT`
+
+No mappings, configuration, code, or jobs were changed during this investigation.
