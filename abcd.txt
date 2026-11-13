@@ -1,53 +1,19 @@
-# Metadata publication and Deep Agent OAuth (v4)
+I’ll compare the working Snowpark connection with the failing model REST client, focusing on SPCS-specific authentication and routing. I won’t replay either failed mapping run.
+I found a concrete routing defect: the regular application uses the configured `SNOWFLAKE_REST_HOST` for OAuth REST calls, but Deep Agent ignores it and uses the Snowpark connection’s host instead. This affects both the supervisor model and its specialist clients.
 
-## What changed
+UAT’s configured REST host is `mhsuejt-ffp-hdp-snow-account-prod.snowflakecomputing.com`. The failed-run logs don’t record the host Deep actually used, so I’m distinguishing the confirmed code defect from the still-unverified cause of the live rejection.
+**I found a routing defect in Deep Agent: it ignores the application’s configured OAuth REST host.**
 
-Publishing remains an authenticated human metadata operation. It checks current Value bindings, source scope, exact compiled SQL/target identity, population and preview consistency, then EXPLAINs the exact read-only SELECT. It stores the authored INSERT and resolved SQL as definitions in metadata. It never EXPLAINs or executes target INSERT/UPDATE/DELETE. Source SQL failures still block invalid definitions. Source/metadata permission failures now have a specific read-access error with allowlisted diagnostic IDs.
+The regular application sends OAuth REST requests through `settings.rest_snowflake_host`. Deep Agent instead uses the **Snowpark connection’s host** for its supervisor model and specialist clients.
 
-The receipt explicitly says validation_kind=read_only_definition and execution_permissions_validated=false. Physical target DML permissions and DML-specific type/coercion checks belong to migration execution. Publishing a definition is not permission to execute it. Existing publishing-persona checks and metadata-write authorization remain unchanged. Do not add target CALLER INSERT just to publish a mapping.
+In SPCS, these paths are not interchangeable: the SQL connector performs an SPCS-aware login, while Deep’s REST client sends the delegated OAuth token directly.
 
-Deep Agent now has an explicit service-owned Snowpark client for queue acquisition, lease/heartbeat, checkpoint/trace and capacity operations. It reads the mounted SPCS service token. It does not pass an empty user token through the caller path, choose a user's credentials for housekeeping, or change the general caller-client fallback rules. Source/data/model/draft tools retain the initiating user's delegated OAuth client and role.
+**Evidence**
+- UAT has the correct public REST host configured.
+- Deep bypasses that setting in `services/sttm-builder/app/agent_worker_main.py:487`, `:495`, and the model construction.
+- The regular application uses it in `services/sttm-builder/app/api/deps.py:322`.
+- OAuth headers and `enableCustomCredentials` are already present.
 
-Every detached user run references the application's existing encrypted OAuth session store. Owner and role are checked before delegation and again after refresh. The worker inherits the API's secure OAuth client/session-key settings when started through app.service_main in the same container. No second login, separate OAuth integration, personal password or PAT is needed in client.env for SPCS worker startup.
+**Targeted correction:** make all Deep OAuth REST clients use the same host-selection logic as the regular application, retaining the user’s token and role.
 
-Expired-token refresh uses one transaction on the existing OAuth session row, a real activity-timestamp update for serialization, a re-read after the lock and atomic encrypted-token persistence before acknowledgement. Another API/worker process reuses a completed rotation. A rejected grant is marked inactive once. A transport-uncertain refresh response is not blindly retried. Lock waits are bounded; storage/provider failures do not authorize a different identity or model replay. This adds no table or column.
-
-Deep model/tool budget boundaries check revocation/identity/token changes at most once every five seconds per run. A revoked/expired/rotated caller session pauses at the existing human-input checkpoint. Completed drafts, usage and the checkpoint stay intact. Signing in to the same app as the same user/role and choosing Resume run rebinds the fresh session reference. The authentication answer is never forwarded as business input or approval. An existing started checkpoint resumes instead of being treated as a new workflow. In-flight operations finish at their normal boundaries; this is not instantaneous cancellation of an already submitted request.
-
-## Deployment instructions
-
-1. Apply files/ from the cumulative overlay to your repository root. Preserve all client environment files and credentials.
-2. If Deep Agent infrastructure has not already been installed, apply the existing ordered migrations in `docs/deep-agent-integration/DEPLOYMENT.md` against the existing metadata namespace. Those are feature prerequisites, not a new migration introduced by this fix. Run the normal metadata bootstrap for the other cumulative features as documented in INSTALL.md.
-3. Keep the application's current `AUTH_MODE=custom_oauth`, `SNOWFLAKE_OAUTH_SESSIONS_TABLE`, OAuth endpoints/client secret mapping and shared `AUTH_SESSION_SECRET` / `AUTH_SESSION_ENCRYPTION_KEY` secret mapping. API and worker must use the same store and keys. Keep these as secure deployment secrets. Do not put them in a run request or copy another user's credentials into configuration.
-4. Keep your existing Deep settings in client.env. The included PowerShell and shell deployment paths now pass that file to the renderer with `--runtime-env-file`; only known non-secret Deep settings are read through that argument. Backend service templates now forward those settings and explicitly use `mountSessionToken: true`. The renderer preserves numeric zero and JSON list/dictionary configuration. Environment variables outside that allowlist are not copied from the file by this new mechanism.
-5. Rebuild and deploy the corrected backend image and matching cumulative frontend/Auto-map workers. The image command remains `python -m app.service_main`: it starts the API and, when enabled, the supervised Deep worker. The worker inherits the same secure environment. If you deliberately operate a separately supervised Deep worker, give it the same OAuth secret mappings/store and choose one deployment arrangement; do not accidentally start an extra worker tree.
-6. The service owner needs only the existing operational metadata/stage/procedure privileges required by the Deep migrations and OAuth session store. User execution retains its own source/model/draft permissions. No new role, broad grant or business-target write grant is part of this release.
-
-The existing enablement settings are:
-
-```text
-MIGRATION_AGENT_ENABLED=true
-MIGRATION_AGENT_TRUE_RESUME_V1=true
-MIGRATION_AGENT_HOST_TERMINALIZATION_V1=true
-MIGRATION_AGENT_TOOL_GOVERNANCE_V1=true
-ASSISTANT_UNIFIED_HISTORY_V1=true
-ASSISTANT_INTENT_ROUTING_V1=true
-```
-
-Keep `MIGRATION_AGENT_MODEL_LIGHT`, `MIGRATION_AGENT_MODEL_MEDIUM` and `MIGRATION_AGENT_MODEL_HIGH` set to your approved available models. Keep the already approved `MIGRATION_AGENT_CAPACITY_SCOPES`, `MIGRATION_AGENT_CAPACITY_LIMITS`, concurrency and budgets. This fix does not increase them. A nonlocal deployment still requires independent account, tenant, role and project capacity contracts. Invalid/incomplete enabled configuration fails the supervisor's existing validation rather than accepting work without a usable consumer.
-
-There are **no new OAuth variables, credentials, production tables or agent instructions for v4**. Previously deployed session/grant failure is not repaired by resetting sessions or replaying client jobs. Resume a paused run only through the authenticated application action, or start a new authorized run after the corrected deployment.
-
-## Verification and limits
-
-The full backend run passed 5,751 tests, skipped 32, and exposed one overly narrow admission-state assertion. That assertion now verifies HELD or QUARANTINED ownership until completion; the admission/publication/worker-authentication rerun passed all 157 tests. Deployment/render checks passed 291 tests (4 client-only checks skipped), final OAuth/worker checks passed 31, all 482 frontend checks passed, and shell/PowerShell deployment syntax checks passed. There is no remaining failed assertion from this release check, and no claim of a second complete-suite rerun after the test-only assertion correction.
-
-- Full publication regressions exercise the actual ProjectService -> MappingSqlService -> metadata capture path for both uploaded/generated INSERT and SELECT artifacts. A session stub that forbids all target DML still publishes to metadata. Invalid sources, stale Values, wrong targets/population and source compile failures remain rejected.
-- Native Snowflake validation issued SELECT EXPLAIN only. One definition was persisted in an isolated metadata table; the scratch target stayed at zero rows. No role or grant changed and no client mapping was touched.
-- Two independent native connections used one synthetic refresh-provider exchange and both received the rotated token. Native query IDs are in PUBLICATION-OAUTH-RESULTS.json. The synthetic timestamps were explicitly serialized with timezone before this accepted concurrency check; this does not claim an actual customer OAuth-provider exchange.
-- Offline checks cover explicit SPCS service-token selection, no caller/PAT fallback, owner/role rejection, revoked sessions, expired/rejected grants, refresh coalescing, paused run preservation, same-user rebinding and checkpoint continuation without a synthetic business answer. Actual caller source/model permissions remain required.
-- Both shell deployers passed syntax checks and all three PowerShell deployers parsed. Rendering tests verify non-secret flag forwarding, JSON/zero settings, defaults disabled and unchanged protected-deployer content apart from the explicitly approved renderer argument.
-
-The mounted SPCS-token path is tested offline; this session did not deploy a new SPCS image or perform a real client OAuth exchange. Client service-owner metadata grants, the installed Deep migrations, secret-key equality and model availability remain deployment checks. A native test that would create a temporary read-only role/grants was rejected by automatic approval review; it was not performed or bypassed. Denied-target INSERT behavior is covered by the regression fixture instead. The accepted native check used existing permissions only.
-
-Snowflake documents the [service-user/caller identity separation](https://docs.snowflake.com/en/developer-guide/snowpark-container-services/spcs-execute-sql), [session-token mounting](https://docs.snowflake.com/en/developer-guide/snowpark-container-services/specification-reference) and [transaction locking](https://docs.snowflake.com/en/sql-reference/transactions). This implementation retains that separation.
+**Limit:** this code defect is confirmed, but the failed request’s actual destination was not logged. A controlled SPCS check is still needed to prove it explains `395090` and that the correction resolves it. I haven’t changed code or replayed your runs.
