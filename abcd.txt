@@ -1,127 +1,94 @@
-I’ll trace the two transformation failures against the deployed commit and try to reproduce the preparation error offline. I won’t rerun Auto-map or change the mapping.
-The archived source responses contain a concrete mismatch: both selected mappings use references such as `src:accounts_80ydxi.ADDRESS1_LINE1`, but the transformation packet expects SQL column references without `src:`. The underlying columns exist in the archived graph.
+I’ll separate the failures into **page loading and preparation before Auto-map** and **what happened after the click**. I’ll compare browser requests, Snowflake errors, and the deployed revision-check code. I won’t click Auto-map again or change anything.
+I found the exact backend exception for your later click. It is a second failure, separate from the earlier browser revision error:
 
-I’ll replay those exact references through the deployed parser to confirm the exception.
-## Found and reproduced the failure
+> `_FastInvariantError: Fast Auto-map requires the frozen prepared proxy handoff`  
+> Invariant: `execution_context_missing`
 
-**The transformation code received evidence citation IDs where it expected SQL column references.** Using the archived references and deployed commit `8c4072c`, I reproduced:
+The job was accepted, then failed while building its batches because the request lacked the required execution context. I’m checking where that context was expected to be restored.
+**There are two separate Auto-map failures on mapping `4301`. I found the exact backend cause of your later click and reproduced it offline. Neither failure is caused by the model’s context limit.**
 
+## 1. Before Auto-map: the page was still preparing its inputs
+
+The page automatically loaded project Values, recommendations and semantic context. These requests returned **HTTP 200**, but some continued while Auto-map was starting:
+
+- Background context preparation: **09:24:53–09:25:27 UTC**
+- Semantic refresh: **09:25:11–09:25:20 UTC**
+- Recommendation evaluation continued until **09:25:35 UTC**
+
+HTTP 200 confirms the requests returned—not that every semantic asset or recommendation was valid.
+
+The browser also logged **React error #418** and CSP warnings. I have **not established that those caused Auto-map to fail**. Some CSP warnings were explicitly report-only.
+
+## 2. First click: the browser rejected a changed input revision
+
+Exact message:
+
+> Shared mapping inputs changed while checking Auto-map results.
+
+**No Auto-map job was submitted in that attempt.**
+
+The code checks the current mapping, reads project Values, then checks the mapping again. The second check failed.
+
+Two background operations can cause that without a manual edit:
+- Installing prepared context changes semantic/learning IDs or hashes.
+- Loading Values updates a cached validation signature.
+
+Both are included in the “shared inputs” comparison. **The code confirms these race conditions are possible, but the captured evidence doesn’t identify which field changed in that attempt.**
+
+Reference: `frontend/src/features/sttm/store/sttm-builder-slice.ts:3649–3658`.
+
+## 3. Your later click: the job was accepted, then failed in the backend
+
+- **Job:** `285ca41f-36fd-54ce-8556-5eaaeee3c6af`
+- **User:** `ANKURSINHA`
+- **Created:** November 13, **09:30:38 UTC**
+- **Failed:** **09:30:55 UTC**
+
+The UI displayed:
+> The Auto-map Agent job could not be completed.
+
+The backend logged the actual exception:
 ```text
-ValueError: Expected one exact column reference
+invariant=execution_context_missing
+
+_FastInvariantError:
+Fast Auto-map requires the frozen prepared proxy handoff
 ```
 
-This explains why both stages stopped **before submitting anything to the transformation model**.
+### Confirmed cause
+The backend reused previously prepared workspace information. That reuse path restored learning information but returned **before attaching the execution context required for Auto-map batch processing**.
 
-## 1. What the two targets contained
+Evidence:
+- The saved job says `cache_source: prepared_workspace`.
+- Its `execution_context` is explicitly `null`.
+- The traceback fails while building batches, **before model dispatch**.
+- An offline call through the same preparation function reproduced the missing execution context.
 
-**Batch 6 — `WAA_CONSENT__C`**
+References:
+- `services/sttm-builder/app/core/sttm_builder.py:2118–2121`
+- `services/sttm-builder/app/core/automap_prepared_evidence.py:53–68`
+
+## 4. Additional background errors—not the proven cause of this job
+
+Service logs also repeatedly show:
 ```text
-src:accounts_80ydxi.FP_CONSENTAPPROACH_FORMATTEDVALUE
+Snowflake OAuth token refresh failed
+(status=400, upstream_code=invalid_grant)
+
+Auto-map caller recovery authentication unavailable
+error_type=OAuthTokenExchangeError
 ```
 
-**Batch 7 — `BILLINGSTREET`**
-```text
-src:accounts_80ydxi.ADDRESS1_LINE1
-src:accounts_80ydxi.ADDRESS1_LINE2
-src:accounts_80ydxi.ADDRESS1_LINE3
-```
+These need investigation, but the log entries do not identify whose expired session they concern. I cannot attribute them to SMITSHAH or your failed job.
 
-Those strings were present in the **latest archived source-model responses and the final primary mappings**, not just alternate candidates.
+## What should be fixed
 
-The transformation packet expected references such as:
+1. **Cached preparation must attach and validate execution context before creating batches.** This is the confirmed backend defect.
+2. **The revision check must distinguish background metadata loading from genuine mapping changes**, while continuing to block stale results.
+3. **Persist and display the specific failure code**, rather than only “job could not be completed.”
+4. Investigate the OAuth recovery failures separately.
 
-```sql
-accounts_80ydxi."ADDRESS1_LINE1"
-```
+The evidence came from `FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AUTO_MAP_JOBS` and logs for `FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.AI_WORKBENCH_OKTA_WEBAPP_UAT_V4`.
 
-The archived graph confirms that the alias and all four columns exist on:
-
-```text
-FFP_HDP_CRM_MIG_DB_UAT.SCH_DYNAMICS_FORTPITT_03_18_2026.ACCOUNTS
-```
-
-**This is not a missing-column problem.**
-
-## 2. Why the references weren’t converted correctly
-
-There are three connected code gaps.
-
-### A. Citation generation and normalization disagree
-
-The citation helper generates an unquoted identifier:
-
-```text
-accounts_80ydxi."ADDRESS1_LINE1"
-             ↓
-src:accounts_80ydxi.ADDRESS1_LINE1
-```
-
-But the source normalizer recognizes the catalog record ID or `src:` followed by the **exact quoted catalog reference**. It does not resolve this unquoted citation spelling, so the `src:` reference survives.
-
-Relevant files:
-- `services/sttm-builder/app/core/automap_citations.py:20`
-- `services/sttm-builder/app/core/automap_source_format.py:20`
-
-### B. Rule dependencies can carry the same invalid references
-
-`rules-v2` copies `rule_intent.required_columns` into the transformation dependencies without resolving those citations first.
-
-Consequently, even if selected source references are corrected, unresolved intent references can introduce the problem again.
-
-Location: `services/sttm-builder/app/core/automap_batch.py:825`.
-
-### C. The earlier check skips physical-table drivers
-
-The preliminary source-binding check returns early when the driving table is physical. This mapping’s driver is `ACCOUNTS`, so the malformed references survive until transformation packet construction.
-
-Location: `services/sttm-builder/app/core/sttm_builder.py:1464`.
-
-## 3. Where it crashes
-
-The execution path is:
-
-```text
-Build transformation request
-→ Project transformation packet
-→ Parse source/dependency references
-→ Encounter src:accounts_80ydxi....
-→ Not recognized as one SQL column
-→ Raise ValueError
-```
-
-The precise rejection is in:
-
-`services/sttm-builder/app/core/automap_retrieval.py:101`
-
-```python
-if not isinstance(tree, exp.Column):
-    raise ValueError("Expected one exact column reference")
-```
-
-That happens before `runtime.run`, which matches the live diagnostics:
-
-- One planned transformation target per batch.
-- **Zero scheduled rule calls.**
-- **Zero transformation-model submissions.**
-- Mapping marked `execution_failed`.
-
-## 4. Verification and certainty
-
-**42 offline checks passed** against the deployed code, covering normalization, rule dependencies, and the actual transformation handoff.
-
-- Both archived malformed-reference cases reproduced the exception.
-- Both corresponding unprefixed controls passed packet construction.
-- No model or Snowflake execution was required.
-
-The original live stack trace was discarded by logging. Therefore, this is a **reproduction using the verified incident references**, not a recovered historical stack trace.
-
-## 5. What should be fixed
-
-1. **Resolve citations consistently** to one authorized catalog `source_ref`, preserving quoting and table-instance identity.
-2. Apply that resolution to source attributes, dependencies, **and `rule_intent.required_columns`**.
-3. Validate bindings for physical drivers as well as derived sources.
-4. Return a target-specific validation error and preserve the exception message instead of logging only `ValueError`.
-
-**Do not blindly strip `src:`**—the reference must first resolve uniquely against the allowed source catalog.
-
-This explains the two transformation failures. The four oversized-message batches remain a **separate issue**. No code or mapping changes have been made.
+**No code/configuration changes, additional Auto-map runs, or publishing were performed during this investigation.**
+*Summarized conversation*
