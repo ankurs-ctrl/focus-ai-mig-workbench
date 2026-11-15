@@ -1,331 +1,102 @@
-I’ll trace both runs from the submitted context through preparation, worker dispatch, model calls, and result handling. I’ll focus on the preparation delays, why the second run passed preflight but never reached a model, and why the first retained the old definitions. This will stay read-only.
-The two runs failed in different ways. In the first, models returned candidates, but the UI retained the existing definitions and its completion notice did not count the new-style candidates. In the second, every batch was rejected before model submission.
+I’ll trace the four failed tool calls to their underlying Snowflake errors and check the session history around the authentication pause. That should distinguish the actual failure from the generic sign-in message. I’ll keep this read-only.
+I found the underlying tool failure: all four calls ran `SHOW TERSE TABLES IN ACCOUNT` and hit Snowflake’s **60-second timeout**. Even the searches containing your schema name still scanned the whole account—the tool filters by schema only after that scan returns.
 
-The strongest finding so far is a preparation mismatch: preflight sized evidence in blocks, but the worker used a different policy and tried to fit the fuller evidence into one message. The second request also carried much richer source metadata and a large saved precedent, despite its blank mapping rows.
-## Summary
+The agent changed search terms between attempts, but each attempt executed the same SQL. I’m now checking whether a token rotation during those delays caused the sign-in pause.
+**I traced the actual Snowflake queries and the historical authentication session. There are two primary failures, plus misleading error/progress reporting.**
 
-**The two runs encountered different problems. Neither was waiting for you to answer a question.**
+## 1. Discovery ignores your schema scope and scans the whole account
 
-- **First run:** source-mapping models ran and returned candidates. Existing definitions remained unchanged, the completion message incorrectly counted zero proposals, and seven fields could not complete their transformation stage.
-- **Second run:** the mapping rows were empty, but the surrounding context was substantially larger. Preflight approved an evidence-block representation that differed from the worker’s actual representation. **Every batch exceeded the worker’s message budget before any model call.**
+The agent received your source schema and target table. Its first discovery call included terms such as:
 
-Both used the deployed v8 code. This investigation was read-only.
+- `SCH_DYNAMICS_FORTPITT_03_18_2026.ACCOUNT`
+- `SCH_DYNAMICS_FORTPITT_03_18_2026.CONTACT`
+- `TARGET_TABLES.HOUSEHOLD`
 
-## 1. Comparing the runs
+However, both discovery tools execute:
 
-| | First run | Second run |
-|---|---|---|
-| Project | 301 | 302 |
-| Job | `4591371c…` | `561ef18f…` |
-| Submitted mapping rows | 37 populated | 37 empty |
-| Target fields | 37 | 37 |
-| Batches | 10 | 17 |
-| Backend elapsed time | **4m 53.2s** | **9m 20.7s** |
-| Parent preparation | **76.7s** | **263.1s** |
-| Recorded source-model calls | **15** | **0** |
-| Transformation-model calls | **0** | **0** |
-| Returned candidate records | **47 across 37 fields** | **0** |
-| Final result | Needs review; execution blocked | No mappings; execution blocked |
-
-“Completed” describes the **job’s processing lifecycle**. It does not mean the resulting mapping is complete or executable.
-
----
-
-## 2. First run: what happened
-
-### A. It started with existing definitions
-
-The submitted workspace contained:
-
-- 37 rows marked `MAPPED`.
-- 28 rows with source columns.
-- Seven with expressions.
-- Nine with constants.
-
-Those categories overlap.
-
-This was therefore a reevaluation of an existing mapping—not generation into 37 blank rows.
-
-### B. Preparation and execution took almost five minutes
-
-| Interval | Duration |
-|---|---:|
-| Backend acceptance → first recorded call setup | **147.0s** |
-| First call setup → final batch completion | **141.5s** |
-| Final batch → saved final result | **4.6s** |
-| **Total** | **293.2s** |
-
-The first interval includes the **76.7-second preparation step**. It is not 147 seconds of model inference.
-
-Inside the recorded calls:
-
-| Phase | Per-call range |
-|---|---:|
-| Evidence/request storage and readback | 3.1–16.8s |
-| Operation ownership claim | 1.9–4.5s |
-| Thread creation and persistence | 1.0–3.1s |
-| Model request, polling, and result persistence | **14.6–27.2s** |
-
-**No operation-claim contention was recorded.** The earlier multi-minute shared-capacity waits were not the issue in this run.
-
-The slowest batch took **150.8 seconds** and made three source-model calls. Multiple calls do not automatically mean retries; they can include continuation or repair. The batch and call durations overlap and must not be summed as wall time.
-
-### C. Models returned results—but candidates are not applied definitions
-
-The final response contains:
-
-- **47 candidate records**
-- Candidates for **all 37 targets**
-- **Eight targets with multiple candidates**
-- A backend summary of **29 proposed mappings**
-- **22 fields requiring action**
-
-These numbers measure different things. A candidate record is not necessarily a distinct alternative, a validated mapping, or an applied change.
-
-### D. Why the old definitions stayed
-
-The frontend deliberately protects existing definitions under conditions including:
-
-- Manually saved or edited rows.
-- Confirmed/edited review state.
-- An existing definition that is not marked as an unreviewed AI draft.
-
-In that path, it stores returned candidates separately while leaving the current definition unchanged.
-
-Your completion notice confirms that the frontend found **all 37 definition signatures unchanged**. However, the saved backend workspace does not contain every transient frontend protection flag. Therefore, I cannot establish for each individual row whether it stayed unchanged because it was protected, because the chosen candidate matched it, or because another application guard intervened.
-
-Relevant logic:  
-`frontend/src/features/sttm/store/sttm-builder-slice.ts:2869–2888`
-
-### E. Why the notice said zero proposals
-
-This is a **confirmed counting defect**:
-
-1. The sheet workflow stores returned candidates in `mapping.aiCandidates`.
-2. It removes that row’s entries from the older `pendingAiMappingReviews` list.
-3. The completion notice still counts proposals from **that older list**, not `aiCandidates`.
-
-Consequently, it can display:
-
-> 0 replacement proposals available
-
-even when the saved response contains candidate alternatives.
-
-References:
-- Candidate storage/legacy-list removal: `frontend/src/features/sttm/store/sttm-builder-slice.ts:2877–2880`
-- Completion counters: `frontend/src/features/sttm/store/sttm-builder-slice.ts:1593–1609`
-
-I verified the candidates in the backend response—not their presence in your browser’s final row state.
-
-### F. The first run also had a real transformation problem
-
-Seven targets were marked **`budget_deferred`**:
-
-- `HOUSEHOLD_TYPE__C`
-- `FINSERV__CLIENTCATEGORY__C`
-- `FINSERV__REVIEWFREQUENCY__C`
-- `IS_RCP_CLIENT__C`
-- `LEGACY_ID__C`
-- `WAA_CONSENT__C`
-- `BILLINGSTREET`
-
-Their recorded reason was:
-
-> “Exact transformation evidence exceeds the per-call allowance; narrow this target's context and retry.”
-
-**No transformation-model requests were submitted.** Source proposals were retained, but required transformation expressions were not completed.
-
-So the first run was not merely a misleading notification: **source generation worked, while some transformation work remained blocked.**
-
----
-
-## 3. Second run: why blank rows still produced a larger request
-
-Your statement that the mapping rows were clean is supported by the saved request:
-
-- 37 rows marked `UNMAPPED`.
-- No source columns, expressions, or constants.
-
-But clearing mapping rows did **not** clear all surrounding context.
-
-### Material differences
-
-The following are serialized stored-context character counts—not model tokens:
-
-| Context component | First run | Second run |
-|---|---:|---:|
-| Total request context | 655,400 | **1,188,729** |
-| Semantic context | 179,292 | **381,656** |
-| Learning context | 1,850 | **104,943** |
-| Published mapping-precedent array | Empty | **102,617** |
-| `ACCOUNTS` semantic-model content | 186 | **305,306** |
-| Attributes inside that `ACCOUNTS` model | 0 | **600** |
-
-The second request had much richer `ACCOUNTS` metadata and one substantial mapping precedent.
-
-Conversely:
-
-- Both requests had the same six physical sources.
-- Both had seven graph nodes and five edges.
-- Both had the same 1,832-character CTE definition.
-- The small project-context object was slightly **smaller** in the second run.
-
-Therefore, **additional source tables or a larger CTE did not explain the increase**.
-
-These stored sizes identify additional processing material. They do not prove that every stored character was repeated in each final model message; the application filters and packs that material.
-
-### Why the backend still marked all targets as having a baseline
-
-The second workspace retained **5,275 characters of SQL** in both `mapping_sql` and `raw_mapping_sql`.
-
-The backend’s baseline predicate treats either nonempty SQL field as sufficient to mark every target `had_baseline=true`, even when the individual rows are blank.
-
-That explains the backend baseline flags. **It did not itself cause the zero-model-call failure**, and the UI correctly reported zero existing row definitions retained.
-
-Reference:  
-`services/sttm-builder/app/core/auto_mapping_proxy.py:281`
-
----
-
-## 4. Why preflight passed but all second-run workers rejected the messages
-
-This is the strongest root-cause finding.
-
-### A. Preflight and worker do not receive the same planning policy
-
-The preflight builds an agent envelope that omits request metadata.
-
-The worker builds a similar envelope but explicitly restores:
-
-```text
-automap_generation_policy = draft-v3
-automap_rules_policy = rules-v2
+```sql
+SHOW TERSE TABLES IN ACCOUNT
 ```
 
-The context planner uses those policy fields to choose its evidence representation:
+**The schema names and result limits are applied in Python only after that account-wide query finishes.** They do not restrict the Snowflake query.
 
-- **Preflight without the policy:** can use evidence blocks.
-- **Worker with `draft-v3`:** requires inline evidence for this initial planning path.
+All four discovery attempts failed with the same native error:
 
-Thus, they are not validating the same effective message construction.
+> **630: Statement reached its statement or warehouse timeout of 60 seconds and was canceled.**
 
-References:
-- Preflight construction: `services/sttm-builder/app/core/sttm_builder.py:5819`
-- Worker policy restoration: `services/sttm-builder/app/core/automap_batch.py:437`
-- Policy-dependent block handling: `services/sttm-builder/app/core/automap_fast_context.py:519–542`
+Together, those queries consumed **242.5 seconds—just over four minutes**. They had **zero transaction-blocked time** and very little compilation time. The delay was in executing the account-wide metadata listing, not model inference or a row-lock wait.
 
-### B. The saved diagnostics match that discrepancy
+The live service config confirms:
+- Control-query timeout: **60 seconds**
+- Deep SQL-preview timeout: **120 seconds**
 
-For the second run:
+Discovery uses the former. Increasing the preview timeout would not fix it.
 
-- All **17 preflight batches** said `ready`.
-- All had `input_sizing_ready=true`.
-- All had `runtime_ready=false`.
-- Preflight planned **43 pending evidence blocks** in total.
-- Preflight messages were **97,341–138,351 characters**.
+**Code:** `services/sttm-builder/app/agent_tools/workbench.py:4345–4416`
 
-But workers recorded:
+## 2. The agent repeated the same failing operation under different searches
 
-- **Zero evidence blocks/review calls**
-- **Zero completed evidence reads**
-- Admission **`not_started`**
-- **Zero model calls**
-- Rejected messages of **184,551–198,631 characters**
+The recorded tool inputs show this sequence:
 
-The application’s configured limit was **180,000 characters and 180,000 bytes**.
+1. Schema-qualified source/target searches.
+2. Broader `household`, `account`, `contact`, `family` searches.
+3. Source-schema-only search.
+4. Schema-qualified searches again.
 
-For example, a two-target batch sized at **107,103 characters in preflight** was rejected at **192,566 characters in the worker**.
+Each executed the **same account-wide SQL**.
 
-**This was an application-side framing rejection—not Snowflake rejecting a model request. No request reached the model.**
+The tools return a generic failure carrying Snowpark’s wrapper code **`1304`**, rather than preserving the useful native **`630` timeout and query ID**. Failed searches are not cached, and no shared failure guard stops another identical account scan.
 
-### C. Why the first run got through
+These were separate agent tool calls, with intervening model turns—not one SQL call automatically retrying four times.
 
-The same policy discrepancy exists in the code used by both runs. However, the first run’s actual worker messages fitted within the limit: approximately **168,362–178,924 characters**.
+**Code:** `services/sttm-builder/app/agent_tools/capability_registry.py:878–995`
 
-That explains how the first could make model calls while the second failed under richer context.
+## 3. A normal token refresh then triggered the sign-in prompt
 
-### D. One separate defect was not responsible here
+I compared the run’s exact delegated session using Snowflake Time Travel, without exposing token values.
 
-The code also has a path that can label an overflow sentinel “ready.” However, neither run’s saved preflight contains that sentinel.
+| Session fact | At worker startup | At authentication pause |
+|---|---|---|
+| Active | Yes | Yes |
+| User and role | Same | Same |
+| Last refreshed, UTC | 09:17:11 | **09:25:17** |
+| Access-token expiry, UTC | 09:27:10 | **09:35:16** |
 
-For these runs, the evidence supports **different preflight/worker representations**, not that separate sentinel defect.
+The pause occurred at **09:25:53 UTC**.
 
----
+**Neither the original token nor the refreshed token had reached its recorded expiry. The session was active and its identity had not changed.** The stored encrypted token had changed during refresh.
 
-## 5. Why preparation took so long
+The worker’s guard captures its starting token. When the current session token differs, it raises the same exception used for expired or revoked sessions:
 
-There are two preparation timers with different scopes.
+```text
+DelegatedSessionRequired → authentication_required → “Sign in again”
+```
 
-| Preparation scope | First | Second |
-|---|---:|---:|
-| Inner request/context preparation | **8.2s** | **5.6s** |
-| Work outside that inner timer, but inside parent preparation | **68.4s** | **257.5s** |
-| **Parent preparation total** | **76.7s** | **263.1s** |
+This is strong historical evidence for the **rotation-triggered pause**, rather than logout or expiry. The worker’s captured plaintext token is not retained, so an exact retrospective byte comparison is unavailable.
 
-The inner request-preparation work was actually faster in the second run.
+The safe client rebuild is currently exposed as a **manual authentication question**, instead of automatically renewing credentials at a checkpoint.
 
-The large increase lies in the surrounding region that includes:
+**Code:** `services/sttm-builder/app/auth/custom_oauth.py:817–842`
 
-- Persisting the enriched request.
-- Building and checking batches.
-- Repeated context indexing, serialization, hashing, and message sizing.
-- Additional batch subdivision and bookkeeping.
+## 4. The progress message overstated what had succeeded
 
-Both requests reused `prepared_workspace`; their recorded semantic-refresh and precedent/FIR-retrieval timers were zero. **There is no evidence that fresh semantic/FIR retrieval consumed those extra minutes.**
+The trace contains successful:
+- Workbench-context inspection.
+- Project listing.
 
-### Why smaller batches did not solve the problem
+But **all four source/target discovery calls failed**. There is no successful draft-creation tool event in this run.
 
-Splitting targets does not necessarily shrink the shared context proportionally. Shared source evidence, CTE information, contracts, and global context remain in the plan.
+Therefore, the screenshot’s claim that it had identified the source structure and target requirements is **not supported by the successful tool results**. That narration made a stalled discovery process appear to be progressing.
 
-The worker can repeatedly try:
+## What needs fixing
 
-- Different candidate limits.
-- Repacked messages.
-- Smaller target subsets.
-- Multiple lossless serialization representations.
+1. **Scope discovery in Snowflake before collecting results.** Pass database/schema explicitly; use exact-object lookup where names are supplied.
+2. **Stop repeating identical timed-out discovery scans.** Preserve native error codes/query IDs so the agent can change strategy meaningfully.
+3. **Handle normal token rotation automatically at a safe checkpoint.** Rebuild caller clients while retaining revocation and identity checks.
+4. **Tie progress messages to successful tool evidence.** Do not announce completed discovery after failed discovery calls.
 
-All of that can happen **before a model call**.
+**Signing in again alone will not solve this:** the resumed worker can encounter the same account-wide discovery timeout, then another token rotation.
 
-The second run ended with 17 batches rather than 10. The code supports further parent-side subdivision, but the saved final partition does not retain enough split history to attribute every additional batch to an exact failed projection.
+No code, sessions, grants, or runs were changed.
 
-### The timing instrumentation also hides failed preparation work
-
-The worker records its preparation duration only after an initial message-sizing step succeeds. When sizing throws the budget exception, that timer is not finalized.
-
-This explains why second-run batches can show:
-
-- **26–205 seconds elapsed**
-- Preparation timer **zero**
-- Model timer **zero**
-
-Those zero preparation values are **missing accounting for failed preparation**, not evidence that no preparation occurred.
-
-Reference:  
-`services/sttm-builder/app/core/automap_batch.py:603–609`
-
-**What remains unmeasured:** the precise division of the 257.5 seconds between local computation, serialization, database persistence, and waiting. The stored timers do not support assigning all of it to one cause.
-
----
-
-## 6. What needs correcting
-
-In priority order:
-
-1. **Make preflight and worker use identical policy and message construction.** Validate the actual representation that will be dispatched.
-2. **Stop dispatching work that cannot fit.** Surface context-budget rejection as an actionable failure rather than a generic completed/no-suggestion result.
-3. **Record failed preparation time.** Add timings around batch preflight, request persistence, worker context construction, and sizing.
-4. **Correct the completion counters.** Count current sheet candidates and distinguish returned candidates, distinct alternatives, applied definitions, and retained definitions.
-5. **Separate blank-row status from retained mapping SQL.** The UI and backend currently use different notions of an existing baseline.
-6. **Address transformation-context sizing too.** The first run demonstrated a separate budget barrier for seven transformation targets.
-
-**Raising the message limit alone would not fix the preflight mismatch, misleading statuses, or proposal counters.**
-
-### Evidence sources
-
-Persisted requests, diagnostics, outcomes, and batch metrics:  
-`FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AUTO_MAP_JOBS`
-
-First-run per-call phase timings and response receipts:  
-`FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AUTOMAP_CONTEXT_ARCHIVE_UAT`
-
-No mappings, configuration, code, or jobs were changed during this investigation.
+**Evidence:** `FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.SCH_STTM_METADATA.TBL_AGENT_RUN_EVENTS`, `TBL_AGENT_RUNS`, and `TBL_WORKBENCH_OAUTH_SESSIONS`; query history from `FFP_HDP_DLAB_MIG_WORKBENCH_DB_UAT.INFORMATION_SCHEMA.QUERY_HISTORY_BY_USER`. Example failed query: `01c86cb0-0009-e11d-0001-ea5e30695fa6`.
