@@ -1,155 +1,36 @@
-## Deep Agent: service-session expiry and recovery fixes
+## Required fixes
 
-**The permanent fix belongs in the backend’s connection lifecycle and recovery handling.** Deep currently retains expired service-owned Snowflake connections and continues accepting new runs with those same connections.
+**Keep the current workflow:** Auto-map automatically provides useful starting mappings; users review and edit afterward. No additional review gates or approval options.
 
-The following describes the verified failure and the recommended implementation. **These changes have not yet been implemented or deployed.**
+### Auto-map
 
-### 1. What failed
+1. **Fix source-binding resolution.**  
+   Convert evidence identifiers such as `src:ACCOUNTS.ADDRESS1_COUNTRY` into the correct selected-column binding before saving sources, dependencies, and expressions. Preserve the useful suggestion while eliminating the compilation error.
 
-For run `run_e50a0e224e8549c6926ec8f89b0486e6`, Deep failed while restoring its durable checkpoint, before making any model call:
+2. **Restore readable SQL aliases.**  
+   Replace unnecessarily hashed draft aliases such as `accounts_80ydxi` with readable, collision-safe aliases. Keep displayed, copied, and compiled SQL consistent. The earlier backend fix remains, but v18 removed draft-preview formatting.
 
-```text
-Snowpark wrapper: 1304
-Underlying Snowflake error: 390114
-Authentication token has expired.
-```
+3. **Diagnose and repair incomplete batch execution.**  
+   Two batches never produced terminal model responses. Capture the original exception and background-operation outcome, then implement appropriate bounded recovery without duplicating work. Their root cause is still unconfirmed.
 
-The traceback identifies a checkpoint database read. Separate errors show that the worker’s heartbeat connection also expired.
+4. **Improve generated SQL robustness.**  
+   Check bindings, dependencies, types, and null handling—not business approval. For example, verify whether `BILLINGSTREET` should preserve later address lines when the first line is null. Keep useful generated expressions available for editing.
 
-Your application OAuth session was active at the failure time, with an access token valid for another nine minutes. Therefore, asking you to sign in again does not address the failed connections.
+5. **Reduce execution overhead and avoidable follow-up calls.**  
+   Investigate:
+   - **76.5 seconds before the first model phase**—instrument initialization, dispatch, preparation, and persistence separately.
+   - Repeated source reevaluation and format-repair calls—the longest batch needed three source calls followed by transformation.
+   - **16.2 seconds after the last model phase**—inspect aggregation and persistence.
 
-In the inspected Snowflake connector version, `390114` identifies **connector master-token expiry**. This is distinct from the application user’s OAuth access-token expiry.
+   **Prepared evidence already worked:** all ten batches reused it. The fix is not to rebuild evidence caching, but to reduce the remaining execution overhead.
 
-### 2. Why the existing recovery does not work
+### Deep Agent
 
-Deep creates separate service-owned connections for run persistence, heartbeats, and checkpoint storage when the worker starts. Those connections are retained across runs.
+6. **Recover expired service-owned connections.**  
+   Detect checkpoint and heartbeat session expiry, recreate connections using the current mounted service token, and ensure repositories/checkpoint savers use the replacement sessions. Preserve checkpoints and lease protections; do not blindly replay writes or tell users to sign in when their OAuth session is valid.
 
-Relevant code:
+### Verification
 
-- `services/sttm-builder/app/agent_worker_main.py:317–335` — creates the retained connections.
-- `services/sttm-builder/app/agent_worker_main.py:379–386` — passes the retained checkpoint session into the checkpoint saver.
-- `services/sttm-builder/app/core/snowflake.py:627–642` — reads the current mounted service token when constructing a new service connection.
-- `services/sttm-builder/app/core/snowflake.py:728–729` — returns the existing session without rebuilding it.
+Confirm that mappings compile, survive save/reopen, retain readable aliases, and recover safely from connection or batch failures. Measure end-to-end timing again.
 
-The recovery gap has two parts:
-
-**Checkpoint errors become ordinary failed runs.** The worker saves the failure and returns normally instead of notifying the outer connection-recovery logic.
-
-**Heartbeat errors are logged and caught inside the heartbeat thread.** They do not cause the owning worker to replace its expired heartbeat connection.
-
-The outer expiry detector already recognizes `390114`, including wrapped exceptions. However, it only runs when an exception escapes `run_once()`. In this incident, the relevant errors were handled internally.
-
-This explains why five recent failures were associated with the same recorded worker instance.
-
-### 3. Required fix: distinguish service expiry from user authentication
-
-Introduce consistent error classification that preserves the underlying Snowflake error and identifies **which connection failed**.
-
-The backend must distinguish:
-
-- **Service-owned connection expiry:** recover the backend connection.
-- **Caller credentials rotated:** rebuild the delegated caller connection using the refreshed application credentials.
-- **Caller session genuinely expired or revoked:** require user authentication.
-- **Permission or configuration failure:** report the actual failure rather than repeatedly reconnecting.
-
-Do not classify every `1304` as an authentication problem. It is a general Snowpark wrapper.
-
-There is also a secondary classification defect: `failure_code()` returns the outer `error_code` before checking the native transient SQL code.
-
-Relevant code: `services/sttm-builder/app/agent_runs/recovery.py:13–36`.
-
-Correcting that classification is necessary, but **changing the recorded error code alone will not repair the expired connections**.
-
-### 4. Required fix: give service connections an explicit recovery lifecycle
-
-The worker needs an owner responsible for creating, invalidating, replacing, and closing its service-owned connections.
-
-When expiry is detected:
-
-1. Mark the affected connection unusable.
-2. Stop scheduling further work against it.
-3. Recreate the connection using the **current** `/snowflake/session/token`.
-4. Rebind the repository or checkpoint saver that held the old session.
-5. Close the discarded connection safely.
-6. Continue only after connection recovery and lease validation succeed.
-
-Simply creating a new `SnowflakeClient` is insufficient if the checkpoint saver or repository still references the old raw Snowpark session.
-
-Connection replacement must also be coordinated with the heartbeat thread. Do not close or replace a session while another thread is using it.
-
-A worker-wide connection reset at a safe boundary is one possible implementation. Carefully managed replacement of individual connections is another. Either approach must prevent subsequent runs from inheriting a known-expired session.
-
-### 5. Required fix: propagate expiry through checkpoint and heartbeat handling
-
-**Checkpoint path**
-
-Handle service-session expiry before the generic “mark run failed” branch. Notify the worker’s recovery coordinator instead of silently returning to normal polling with the expired connection.
-
-Relevant code: `services/sttm-builder/app/agent_runs/worker.py:811–960`.
-
-**Heartbeat path**
-
-Communicate heartbeat authentication failure to the main execution path through a thread-safe signal. Logging it alone is insufficient.
-
-Relevant code: `services/sttm-builder/app/agent_runs/worker.py:187–215`.
-
-Before continuing after heartbeat recovery, verify that the worker still owns a valid lease. If ownership has expired or moved to another worker, the old worker must stop writing.
-
-**Outer worker loop**
-
-Ensure the recovery mechanism receives service-expiry failures even when they originate inside per-run handling or a background heartbeat thread.
-
-Relevant code: `services/sttm-builder/app/agent_worker_main.py:691–704`.
-
-### 6. Required fix: recover without duplicating work
-
-Reconnection must not become an unrestricted “retry everything” mechanism.
-
-- A failed checkpoint **read** can generally receive a bounded retry after reconnection.
-- A checkpoint write or stored-procedure call may have an uncertain outcome. Check durable state before retrying.
-- Do not automatically repeat mapping writes, publication operations, or model calls merely because connection recovery occurred.
-- Preserve checkpoint identifiers, run identity, lease generation, and existing write-fencing protections.
-- If lease ownership cannot be established, stop and allow the existing recovery process to take over.
-
-Use bounded retries and backoff. If recovery repeatedly fails, stop consuming new runs with unhealthy connections and surface an infrastructure failure.
-
-### 7. Improve the user-facing error and operational logs
-
-For service-session expiry, use messaging such as:
-
-> “Deep lost its internal Snowflake connection. Recovery is in progress. Any previously saved drafts and checkpoints are retained.”
-
-Only display “sign in again” when the **caller’s application session** actually requires authentication.
-
-Log enough information to diagnose recovery:
-
-- Run ID and worker instance.
-- Connection purpose: checkpoint, heartbeat, or run repository.
-- Native Snowflake code and outer wrapper.
-- Recovery attempt and result.
-- Whether lease ownership was revalidated.
-
-Do not log tokens, client secrets, delegation references, or credential-bearing connection settings.
-
-### 8. Verification required before deployment
-
-Add focused tests covering:
-
-- Wrapped `1304 → 390114` recognition.
-- Checkpoint expiry followed by successful reconnection.
-- Heartbeat expiry reaching the main worker.
-- Replacement of stale session references in repositories and checkpoint savers.
-- A subsequent run using healthy connections.
-- Genuine caller expiry still requiring sign-in.
-- Caller-token rotation retaining its existing behavior.
-- Lost leases preventing further writes.
-- Ambiguous write outcomes not causing duplicate operations.
-- Retry exhaustion producing a controlled failure rather than an endless loop.
-
-Then validate in UAT with deliberately simulated expiry and an idle-then-run scenario. A successful run immediately after deployment is not enough to verify this lifecycle defect.
-
-### Temporary mitigation and scope
-
-A controlled backend restart should recreate the affected connections, but it is **temporary mitigation**, not the permanent fix. The backend hosts both the API and Deep worker, so a restart must account for active work.
-
-This incident does not justify changing OAuth client secrets, cookie settings, native agent instructions, models, or database grants. The required work is **service-connection recovery, safe run continuation, error classification, and targeted verification**.
+**No fixes have been implemented or deployed yet.**
