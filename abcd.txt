@@ -1,16 +1,318 @@
-Send COCO this:
+# Deep Agent review: findings and required improvements
 
-> Please check the deployed Workbench in **DEV and UAT** and prepare a short reply I can send Kesav and Nar about the access issue discussed on our call.
->
-> They need to know:
->
-> - Where the app runs: account/cloud, service name and compute pool.
-> - The application hostname and port.
-> - What **EGRESS rules and External Access Integration** we already configured.
-> - What **INGRESS allowance** is needed: the compute-pool name, an IP/CIDR range or a PrivateLink identifier. Verify which applies—don’t guess container IPs.
-> - Which OAuth integration, user/role and endpoint the backend uses for token exchange.
-> - What differs between DEV and working UAT that could explain why enabling DEV’s account network policy blocks application login.
->
-> Specifically check whether the effective policy allows the Workbench through a `TYPE=COMPUTE_POOL`, `MODE=INGRESS` rule and whether that applies to the failing request.
->
-> **Return a brief, ready-to-send message with the actual identifiers and the precise action required from the admins.** Use the repo and deployed configuration; clearly mark anything unverified. Read-only investigation—no changes and no secrets in the response.
+**The latest run failed because source discovery did not resolve the intended Kovitz source estate, evidence preparation repeatedly performed a whole-account table scan that timed out, and recovery continued planning without resolving that prerequisite.**
+
+This is primarily a **tool-contract, workflow-control, and execution-efficiency problem**. Better scenario guidance will help, but a larger prompt or model alone will not fix it.
+
+## 1. Actual outcome of the run
+
+Request: prepare a Household mapping plan in **Test 1**, using appropriate **Kovitz** sources, precedents, joins, CTEs, and filters.
+
+| Observation | Result |
+|---|---|
+| Run | `run_148d140d52df4fe5a6ae83e262e74443` |
+| Creation → final response | **20 minutes 9 seconds** |
+| Terminal status | `NEEDS_REVIEW` |
+| Supervisor model calls | **23** |
+| Visible completed / failed tool events | **13 / 2** |
+| Recorded domain operations | **38**, including internal operations |
+| Recorded Snowflake-query counter | **152** |
+| Specialist calls | **0** |
+| Caller-credential rotations | **2**, both resumed |
+| New mapping draft | **None** |
+
+The final response was:
+
+> “Governed evidence preparation failed repeatedly (630). No project or mapping draft was created; the run can be retried after the evidence service is repaired.”
+
+**This was a technical failure, not a business-review requirement.** Although Plan mode correctly prevents premature implementation, the agent also failed to deliver the requested usable plan.
+
+---
+
+## 2. Confirmed failures in this run
+
+### A. Discovery repeatedly searched the wrong scope
+
+The agent searched for household/account/client-related objects inside the **Workbench database**, without first resolving the Kovitz source database/schema.
+
+Its results included:
+- Workbench metadata tables.
+- FIR recovery objects.
+- Target tables such as `HOUSEHOLD`.
+- No verified Kovitz source estate.
+
+An unqualified catalog search can fall back to the configured Workbench database. Rephrasing the search therefore did not necessarily change its scope.
+
+**Required improvement:** resolve the project, source estate, and target separately before business-table discovery. Unknown source scope must remain explicitly unknown—not silently become the metadata database.
+
+Reference: `services/sttm-builder/app/agent_tools/catalog_discovery.py:66–151`.
+
+### B. Discovered objects were treated as source inputs
+
+The host can populate omitted precedent-source arguments from accumulated catalog candidates. In this run, internal metadata and target objects appeared in those source arguments.
+
+That means the problem was not necessarily that the model consciously chose those tables—the host injected defaults before recording the tool input.
+
+**Required improvement:**
+- Separate discovered candidates from selected sources and targets.
+- Keep application metadata out of default business-source selection.
+- Preserve the difference between omitted arguments and explicitly empty lists.
+- Use full object identities rather than excluding objects by table name alone.
+
+Reference: `services/sttm-builder/app/agent_tools/capability_registry.py:665–688`.
+
+### C. Evidence preparation scanned the entire account
+
+Both recorded database failures executed:
+
+```sql
+SHOW TERSE TABLES IN ACCOUNT
+```
+
+| Attempt | Query duration | Result |
+|---|---:|---|
+| First | **60.362 seconds** | Native `630`: 60-second statement/warehouse timeout |
+| Second | **60.957 seconds** | Same timeout |
+
+Both reported:
+- **Zero overload-queue time**
+- **Zero transaction-blocked time**
+
+The statement is inside the evidence-preparation implementation. It builds an account-wide visible-table set and filters it afterward.
+
+**The supervisor’s instruction to avoid broad account scans does not prevent a tool from performing one internally.**
+
+**Required improvement:** verify the exact proposed and historical source references through bounded database/schema lookups. Reuse current verified contracts where appropriate, and check authorization before reading.
+
+Reference: `services/sttm-builder/app/agent_tools/workbench.py:3170–3182`.
+
+Increasing the timeout alone would leave the unnecessary scan and retry behavior intact.
+
+### D. Recovery repeated the bottleneck
+
+After preparation failed, the agent:
+- Re-inspected the target.
+- Continued planning without new tool evidence.
+- Entered stalled-plan recovery.
+- Called preparation again with an empty source list.
+- Reached the same account-wide scan.
+
+Changing precedent arguments did not remove the failing prerequisite.
+
+**Required improvement:** recovery must identify the failed operation and choose a different, bounded strategy. Do not repeat unchanged expensive work merely because another planning turn or credential resume occurred.
+
+### E. The run entered a stalled-planning sequence
+
+There were **four plan-continuation events overall**, including **three consecutive continuation cycles without an intervening tool call**, followed by `plan.stalled_recovery`.
+
+It was not an endless process—the host eventually stopped it—but the no-progress boundary acted too late.
+
+**Required improvement:** detect missing progress before several additional model turns are consumed.
+
+---
+
+## 3. Missing or inadequate tools
+
+### A. No first-class source-scope resolver
+
+Database/schema inventory capabilities exist elsewhere in the application, but the supervisor does not have a clear bounded operation for:
+
+> “Resolve the authorized source schema associated with this firm/project.”
+
+Instead, it must approximate that operation through table searches and naming heuristics.
+
+**Needed:** a typed scope-resolution tool returning exact identities, provenance, ambiguity, checked scopes, and remaining coverage.
+
+### B. Project identity lookup and precedent ranking are conflated
+
+Finding the project named “Test 1” is different from ranking projects with similar source tables or published mappings.
+
+The current precedent ranking can prioritize structural overlap over project-name relevance. Project listing also lacks a focused query/pagination contract.
+
+**Needed:** separate project lookup from structural precedent search.
+
+References: `services/sttm-builder/app/core/project_service.py:1356,4859`.
+
+### C. Existing mapping source graphs are difficult to retrieve directly
+
+Project context does not guarantee structured source lineage. The saved-definition reader primarily exposes SQL and withholds oversized SQL without a paging interface.
+
+A richer historical graph reader exists, but its eligibility depends on prepared-plan state. This creates a circular dependency when historical source structure is needed to prepare that plan.
+
+**Needed:** an authorized read-only mapping-graph tool exposing:
+- Sources and target.
+- Driving table and grain.
+- Joins, filters, and CTEs.
+- Saved SQL/version.
+- Historical versus current provenance.
+
+It should not require full migration preparation first.
+
+References: `services/sttm-builder/app/agent_tools/workbench.py:4777,4946`.
+
+### D. “Batch” discovery is not genuinely batched SQL
+
+The catalog-batch tool can execute separate term/scope queries sequentially under a lock.
+
+**Needed:** consolidate compatible searches into bounded SQL operations, return explicit coverage, and ensure cache keys include requested limits and authorization context. A smaller cached result must not masquerade as complete larger coverage.
+
+---
+
+## 4. Prompt and workflow inconsistencies
+
+The existing prompt already contains useful rules. The problem is that some rules conflict with tool behavior or host policy.
+
+### A. Prompt limits differ from enforced limits
+
+The prompt says to stop after two broad discovery batches, while host defaults can permit five.
+
+**Fix:** define limits once in policy and generate the prompt guidance from those values.
+
+### B. Small requests can inherit unnecessary planning
+
+The prompt encourages small workflows, but also requires todo planning when more than one tool is needed.
+
+**Fix:** distinguish a simple two-read answer from a multi-stage migration. “Explain this SQL” should not need migration planning.
+
+### C. Recovery instructions can conflict with forced tools
+
+Some recovery messages tell the model to investigate missing sources while middleware forces plan validation as its next tool.
+
+**Fix:** select the next operation from the missing prerequisite:
+- Unknown scope → resolve scope.
+- Missing graph → read mapping graph.
+- Missing contract → inspect contract.
+- Sufficient evidence → validate plan.
+- Invalid binding → repair binding.
+
+Reference: `services/sttm-builder/app/agent_runtime/deepagents_runtime.py:2545–2562`.
+
+### D. Tool descriptions do not consistently match execution
+
+Examples found in source:
+- A “metadata-only” profiling operation executes `COUNT(*)`.
+- Catalog guidance describes ranking/one-scan behavior that the implementation does not consistently provide.
+- Driving-source ordering has important semantics that are not clearly exposed in the tool description.
+
+**Fix:** maintain one authoritative definition for tool schemas, descriptions, capability guidance, costs, and tests.
+
+---
+
+## 5. Progress and budget controls need stronger semantics
+
+### A. Activity is counted as progress
+
+Successful tool calls can count as progress even when they return empty, cached, or unchanged results. Automatic budget extension can treat additional model/tool spending as progress.
+
+**Fix:** measure actual advancement:
+- Source scope resolved.
+- Applicable evidence obtained.
+- A named gap closed.
+- Plan validation improved.
+- A draft operation completed.
+
+Narration, todo changes, and repeated results should not renew the progress allowance.
+
+Reference: `services/sttm-builder/app/agent_runs/worker.py:36–46`.
+
+### B. Some progress controls reset after credential rotation
+
+Checkpoint messages and important execution state are retained, but several discovery caches, stall counters, and diagnostic counters are runtime-local.
+
+**Fix:** preserve negative-search coverage, no-progress state, repair history, and cumulative counters across runtime reconstruction.
+
+### C. Repair limits can reset when the error code changes
+
+Some correction tracking counts consecutive occurrences of the same error code. Alternating errors can reset that count.
+
+**Fix:** track bounded repair attempts against the same plan revision and unresolved objective, while recognizing genuine improvement.
+
+---
+
+## 6. Performance issues requiring measurement and optimization
+
+The run’s **23 completed model spans totaled approximately 224.7 seconds**. These spans include some persistence work and are not pure inference measurements.
+
+The two failed preparation tools totaled **177.2 seconds**; their **121.3 seconds of failed SQL are contained within that figure**, not additional.
+
+These values do not explain the entire 20-minute wall time. The source reveals several additional cost paths:
+
+- Due OAuth checks create fresh service connections.
+- Mandatory model-attempt persistence waits behind knowledge/control writes.
+- Checkpoint, event, and heartbeat operations can update the same run record.
+- Credential rotation requires cleanup, reconnection, knowledge restoration, and checkpoint restoration.
+- Repeated model turns carry a growing context.
+
+**Required instrumentation:** separate authentication, provider execution, trace queueing, checkpoint I/O, SQL duration, recovery, and UI delivery. Preserve original execution timestamps rather than relying only on database event timestamps.
+
+Then optimize connection reuse, real SQL batching, and optional knowledge-write scheduling—without removing revocation checks, attempt receipts, or lease protections.
+
+---
+
+## 7. Additional source-level risks—not proven causes of this incident
+
+These findings require focused tests before being described as reproduced defects.
+
+### A. Mandatory persistence-barrier race
+
+A final failed trace batch may drain the queue before `flush()` checks the failure again, potentially allowing the waiting call to return successfully.
+
+**Required:** a failure-aware completion barrier, including a final failure check before provider dispatch.
+
+Reference: `services/sttm-builder/app/agent_runs/trace_writer.py:79–112`.
+
+### B. Cleanup is not uniformly bounded
+
+A timed thread join can be followed by a blocking connection close waiting on a lock held by active I/O. Some heartbeat shutdown paths also use an unbounded join.
+
+**Required:** end-to-end deadlines and safe isolation of still-running operations. Never reuse or close a session concurrently with its active request.
+
+### C. Authorization checks differ between helper paths
+
+Single/batch inspection, historical source recovery, source scouting, profiling, and counterpart discovery do not consistently apply the same pre-read run-scope checks.
+
+**This is not a demonstrated Snowflake privilege bypass.** Caller privileges still apply, but application-scope enforcement should be uniform.
+
+**Required:** one shared authorization check before reads. Historical evidence may suggest an object; it must not authorize it.
+
+---
+
+## 8. Final-response and status problems
+
+The response says “the evidence service is repaired,” but the verified failure was a timed-out statement inside an application tool. It does not establish a separate service outage.
+
+`NEEDS_REVIEW` also obscures the distinction between:
+- A valid plan awaiting requested approval.
+- A business ambiguity.
+- A technical preparation failure.
+
+**Required:** return a precise technical outcome, preserve verified project/target facts, identify the unresolved source scope, and state exactly what was saved.
+
+There was also a discrepancy between the physical completion timestamp and the event timeline. Timestamp serialization should be tested; the reported 20m9s uses creation-to-final-response events.
+
+---
+
+## 9. What should not change
+
+- **Do not add another business-review gate.** Users already review and edit generated drafts.
+- Preserve automatic application of useful, technically coherent suggestions.
+- Preserve explicitly requested Plan mode and separate publication authorization.
+- Do not solve scope problems by broadening access.
+- Do not assume a larger warehouse, timeout, context window, or model fixes the workflow.
+- Do not hard-code Kovitz-specific names into general instructions.
+
+The two credential rotations resumed successfully. This run did **not** establish recurrence of the previous service-session expiry failure, and it did **not** exhaust the reported context window.
+
+## Recommended priority
+
+1. Replace whole-account verification and correct source-scope resolution.
+2. Separate selected sources/targets from discovered candidates.
+3. Add prerequisite-aware recovery and durable no-progress detection.
+4. Reproduce and fix the persistence/cleanup risks; unify authorization checks.
+5. Align prompts and tool contracts, adding representative workflow scenarios.
+6. Instrument and optimize measured non-provider overhead.
+7. Test the actual runtime with timeout, rotation, ambiguous-schema, small-request, and partial-draft scenarios.
+
+The detailed findings and code references are saved in [DEEP_AGENT_ARCHITECTURE_REVIEW_20261123.md](docs/DEEP_AGENT_ARCHITECTURE_REVIEW_20261123.md).
+
+**No application fixes, deployment changes, or additional model runs were performed during this review.**
