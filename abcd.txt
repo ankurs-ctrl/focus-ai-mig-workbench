@@ -1,36 +1,54 @@
-## Required fixes
+# V19 recovery release — deployment and verification
 
-**Keep the current workflow:** Auto-map automatically provides useful starting mappings; users review and edit afterward. No additional review gates or approval options.
+This cumulative overlay starts from V18 (`709de8b`) and retains its Auto-map, Deep Agent, SQL upload/publication, administration, assistant UX and PR #63 integration. It also includes the later local Auto-map fixes that were absent from V18. Abhishek's newer `57c140a` and `61d8f54` changes are deliberately excluded. They remain in the original development checkout; this overlay must not be represented as a merge of those commits.
 
-### Auto-map
+## Apply and deploy
 
-1. **Fix source-binding resolution.**  
-   Convert evidence identifiers such as `src:ACCOUNTS.ADDRESS1_COUNTRY` into the correct selected-column binding before saving sources, dependencies, and expressions. Preserve the useful suggestion while eliminating the compilation error.
+1. Back up the application checkout. Copy `files/` from the ZIP into its repository root. Preserve all existing environment files, secrets and authentication configuration. The three `infra/snowflake/env/parallel*.json` files are public, reviewed deployment profiles; they contain no credentials.
+2. Build with the included Python dependency lock and frontend dependency lock. Run the existing metadata bootstrap against the existing metadata namespace using the deployment's normal authentication. It includes the project bootstrap lock, Deep metadata/migrations, evidence tool/context table and ownership-only Auto-map operations table. Existing valid fences, operational owners and uncertain calls are retained. No slot reset or replacement is required.
+3. Bootstrap now synchronizes the three mapping agents' instructions. For source mapping and transformation it installs the named read-only `ReadAutoMapEvidence` tool. Existing agent identities, grants, models, budgets and unrelated tools are preserved. Default LIVE and LAST versions are supported and verified after update. A named pinned default or unpublished LIVE edits stops synchronization so the existing version-promotion process can preserve those changes. Do not bypass that check by replacing the agent.
+4. Run `python scripts/verify_mapping_agent_specs.py`. Deploy matching frontend, API, Auto-map workers and Deep workers from this overlay to every replica. The deployment scripts compute the two existing instruction-hash settings from the delivered specifications; the dedicated Auto-map worker now receives them too. Install the evidence procedure/tool before advertising its hash capability.
+5. Keep existing caller OAuth/session store, decryption and refresh configuration available to the Deep worker through the established secure deployment. Worker housekeeping continues to use its service identity; user data/model work continues to use the initiating user's delegated identity. No second user login, copied token, new environment variable or broader source/target grant is introduced.
 
-2. **Restore readable SQL aliases.**  
-   Replace unnecessarily hashed draft aliases such as `accounts_80ydxi` with readable, collision-safe aliases. Keep displayed, copied, and compiled SQL consistent. The earlier backend fix remains, but v18 removed draft-preview formatting.
+Existing ownership-only Auto-map mode is retained (`AUTOMAP_SHARED_CAPACITY_LIMIT=false` in the durable UAT profile). Legacy admission objects and outstanding operations are preserved for recovery. This release does not increase execution capacity, context ceilings or production timeouts, and does not generate semantic assets.
 
-3. **Diagnose and repair incomplete batch execution.**  
-   Two batches never produced terminal model responses. Capture the original exception and background-operation outcome, then implement appropriate bounded recovery without duplicating work. Their root cause is still unconfirmed.
+For local review use `./start-ai-workbench-dev.sh`. The additive `--env-file /absolute/path/to/existing/config` option reads an existing configuration without modifying or copying it. Frontend remains on port 3000 and backend on port 8000.
 
-4. **Improve generated SQL robustness.**  
-   Check bindings, dependencies, types, and null handling—not business approval. For example, verify whether `BILLINGSTREET` should preserve later address lines when the first line is null. Keep useful generated expressions available for editing.
+## Corrections in this overlay
 
-5. **Reduce execution overhead and avoidable follow-up calls.**  
-   Investigate:
-   - **76.5 seconds before the first model phase**—instrument initialization, dispatch, preparation, and persistence separately.
-   - Repeated source reevaluation and format-repair calls—the longest batch needed three source calls followed by transformation.
-   - **16.2 seconds after the last model phase**—inspect aggregation and persistence.
+- Citation handles such as `src:ACCOUNTS.ADDRESS1_COUNTRY` resolve uniquely against authorized selected outputs, including dependencies and declared SQL references. Ambiguous instances remain explicit rather than binding to the wrong table.
+- Working SQL previews again use readable, collision-safe aliases, including the Copy action. Compiled and preview SQL were checked against Snowflake; internal binding identities are preserved for save/reopen.
+- Auto-map completion and SQL messages use “mappings” and “results”. Evidence coverage notes do not create a new business approval step. Unsupported positive historical citations do not suppress otherwise checked current SQL or earn historical confidence. Actual correction overrides remain authorized.
+- Cached/cold preparation retains the server-owned execution handoff; physical and CTE bindings use exact authorized output references.
+- Independent worker caller sessions prevent one shared Snowpark session from serializing concurrent batches. In-process worker requests no longer repeatedly start/stop application lifespan services.
+- Frozen request receipts survive the worker boundary without repeating the full snapshot in its acknowledgement. Population checks avoid treating unrelated saved SELECT projections as every target's dependencies.
+- A verified native terminal-result receipt is reused instead of archiving the same result a second time. Terminal persistence uses the already reserved finalization window; uncertain model submissions are not replayed.
+- The specialist receives the original user requirements, exact current bindings and relevant frozen evidence. Its returned recipe gets its own exact dependency verification rather than inheriting only the source agent's receipts. Unsupported source-agent citations do not become authority for a repaired specialist result.
+- Completed custom expressions retain their stage identity, survive candidate ranking and can replace stale source-stage options. A specialist-repaired classification no longer remains invalid because its source agent previously emitted the label `derived`.
+- Progress counts unique requested target outcomes separately from supported proposals and legacy confidence/review thresholds. Backend counts do not claim that the browser applied a proposal; row application/Undo/edit protection remain frontend responsibilities.
+- Parent packet readiness and dispatch status are committed together, avoiding a redundant full-state write. Parent evidence handoff, packing and persistence timings are recorded separately, including failed measured phases. SQL MERGE fencing uses scalar parameters from the same immutable record rather than repeatedly folding a multi-megabyte JSON payload in its predicates.
+- Actual prepared-cache request time is reported separately from historical cache-build time. Successful as well as failed model calls retain bounded phase timings and actual POST/response counts.
+- Recovery logs distinguish provider inspection from terminal-result persistence and retain bounded HTTP/native error codes. Deadline exhaustion does not restart the same worker operation. Original failure diagnostics survive permitted worker retries; uncertain provider calls are reconciled rather than submitted again.
+- Deep repository, heartbeat, checkpoint and trace connections retain managed facades. A native internal-session expiry replaces the service connection and retries only a known safe read, with ownership revalidation. Ambiguous writes/commits and uncertain model work require reconciliation; they never trigger blind replay or another user's credentials.
 
-   **Prepared evidence already worked:** all ten batches reused it. The fix is not to rebuild evidence caching, but to reduce the remaining execution overhead.
+## Test evidence and limits
 
-### Deep Agent
+Read `V19-RESULTS.json` for measured outcomes, timings and remaining acceptance limits. Offline regressions, native Snowflake acceptance and browser/SPCS acceptance are distinct. A passing unit suite does not establish client SPCS performance or mounted service-token rotation.
 
-6. **Recover expired service-owned connections.**  
-   Detect checkpoint and heartbeat session expiry, recreate connections using the current mounted service token, and ensure repositories/checkpoint savers use the replacement sessions. Preserve checkpoints and lease protections; do not blindly replay writes or tell users to sign in when their OAuth session is valid.
+No failed client job is replayed and no client mapping, project or source/target row is changed by these checks. Existing older result files describe their original deliveries; they must not be used to claim the latest Auto-map performance gate passed.
 
-### Verification
+The isolated Loan Income checks use the existing UAT deployment’s parallel-worker/control-session profile locally, with ownership-only operation tracking. They are not evidence of a new client SPCS deployment. The native FIR search service was unavailable/not authorized in this DEV account; available semantic/catalog and published precedent evidence were retained. Missing-YAML behavior is tested separately.
 
-Confirm that mappings compile, survive save/reopen, retain readable aliases, and recover safely from connection or batch failures. Measure end-to-end timing again.
+The address NULL regression executes six Snowflake VALUES cases: missing first line preserves later lines, blank lines are omitted, and all-missing input returns SQL NULL. This is an expression robustness check, not a replay of the client’s unavailable historical model response.
 
-**No fixes have been implemented or deployed yet.**
+## Local results available
+
+The application remains available on `http://localhost:3000`, with API on port 8000. Open `/sttm/builder/7901/mapping` for the new isolated acceptance mapping. All 33 composed results were saved and reopened with their exact bindings, expressions, numeric confidence and selected candidate identity. They compile together and return the checked preview values. Original mapping 7601 was not changed.
+
+The final single 33-target job (`f80829f7-ce12-512d-831a-3c1214a1bf22`) returned 33 supported mappings with positive numeric confidence in **182.1 seconds** from the warm request through observed completion. It used 10 source submissions and 6 specialist submissions, with zero source repair calls. All 33 results from that job compiled together, returned the expected three preview rows, and survived save/reopen in mapping 7901. Frontend reducer replay applied all 33 to blank rows, replaced all 33 existing rows with Undo, and replaced 12/applied 21 in the partial case.
+
+The earlier Direct/custom validation contradiction is corrected before source repair scheduling. A custom expression mislabeled Direct reaches the specialist rather than consuming more source calls. Exact completed-rule receipts also restore their current custom classification during repeat delivery, while retaining current compiler, binding and Value checks.
+
+The final warm evidence request took 1.25 seconds. Parent evidence handoff was 0.64 seconds, packet packing 14.46 seconds, prepared-envelope persistence 3.26 seconds and ready-packet persistence 4.59 seconds. The first model phase still exceeded the 20-second startup target. The single final 33-target sample passed the overall 200-second target; three 40-target runs and live client SPCS acceptance are not claimed. Earlier slower/partial samples remain in the evidence instead of being discarded.
+
+Full final backend suite: **5,366 passed, 31 skipped**. Frontend: **562 passed**. TypeScript, bootstrap release parity and agent-spec manifest checks passed. See the JSON evidence for source/specialist counts, overlap, timings and acceptance limits.
