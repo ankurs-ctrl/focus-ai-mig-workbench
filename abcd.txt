@@ -1,54 +1,191 @@
-# V19 recovery release — deployment and verification
+COCO HANDOFF — CUMULATIVE DEVELOP RELEASE — 23 NOVEMBER 2026
 
-This cumulative overlay starts from V18 (`709de8b`) and retains its Auto-map, Deep Agent, SQL upload/publication, administration, assistant UX and PR #63 integration. It also includes the later local Auto-map fixes that were absent from V18. Abhishek's newer `57c140a` and `61d8f54` changes are deliberately excluded. They remain in the original development checkout; this overlay must not be represented as a merge of those commits.
+Purpose
+Apply the latest cumulative develop application source carefully, preserve client-specific configuration and team changes, deploy matching components, and verify the result. Do not apply older ZIPs afterward.
 
-## Apply and deploy
+1. RELEASE IDENTITY AND PACKAGE SCOPE
 
-1. Back up the application checkout. Copy `files/` from the ZIP into its repository root. Preserve all existing environment files, secrets and authentication configuration. The three `infra/snowflake/env/parallel*.json` files are public, reviewed deployment profiles; they contain no credentials.
-2. Build with the included Python dependency lock and frontend dependency lock. Run the existing metadata bootstrap against the existing metadata namespace using the deployment's normal authentication. It includes the project bootstrap lock, Deep metadata/migrations, evidence tool/context table and ownership-only Auto-map operations table. Existing valid fences, operational owners and uncertain calls are retained. No slot reset or replacement is required.
-3. Bootstrap now synchronizes the three mapping agents' instructions. For source mapping and transformation it installs the named read-only `ReadAutoMapEvidence` tool. Existing agent identities, grants, models, budgets and unrelated tools are preserved. Default LIVE and LAST versions are supported and verified after update. A named pinned default or unpublished LIVE edits stops synchronization so the existing version-promotion process can preserve those changes. Do not bypass that check by replacing the agent.
-4. Run `python scripts/verify_mapping_agent_specs.py`. Deploy matching frontend, API, Auto-map workers and Deep workers from this overlay to every replica. The deployment scripts compute the two existing instruction-hash settings from the delivered specifications; the dedicated Auto-map worker now receives them too. Install the evidence procedure/tool before advertising its hash capability.
-5. Keep existing caller OAuth/session store, decryption and refresh configuration available to the Deep worker through the established secure deployment. Worker housekeeping continues to use its service identity; user data/model work continues to use the initiating user's delegated identity. No second user login, copied token, new environment variable or broader source/target grant is introduced.
+ZIP: workbench-develop-team-20261123-v19-r2.zip
+SHA-256: 866f3d256b0984eeaacdd9b467fe7fe94bf15affc111b6a705012e0600083095
+Source commit: 27c27a39a7dc0f0529cf06e445bfaf5bda0eaef2
+Repository: bbi-mig-ai-workbench, CodeCommit, us-east-1
+Target branch already updated: develop. This delivery did not update UAT.
 
-Existing ownership-only Auto-map mode is retained (`AUTOMAP_SHARED_CAPACITY_LIMIT=false` in the durable UAT profile). Legacy admission objects and outstanding operations are preserved for recovery. This release does not increase execution capacity, context ceilings or production timeouts, and does not generate semantic assets.
+The ZIP contains 1,695 source files from this combined develop revision. It includes our Auto-map/Deep fixes and the merged team changes, not just the last session's changed application files. Historical deliveries are preserved in this source tree; their old performance/configuration statements are not the current acceptance result.
 
-For local review use `./start-ai-workbench-dev.sh`. The additive `--env-file /absolute/path/to/existing/config` option reads an existing configuration without modifying or copying it. Frontend remains on port 3000 and backend on port 8000.
+User-requested exceptions: environment files, credentials, installed dependencies, build/cache/runtime artifacts and old ZIPs are excluded. Only our five changed files under the ROOT scripts/ directory are included:
+- scripts/bootstrap_sttm_metadata_infra.py
+- scripts/build_cumulative_overlay.py
+- scripts/deploy_spcs_client_direct.sh
+- scripts/deploy_spcs_client_snow.ps1
+- scripts/start_sttm_backend_local.sh
 
-## Corrections in this overlay
+Unchanged root scripts are intentionally omitted. Preserve them in the existing checkout; this package is not a standalone fresh clone without those scripts. frontend/scripts/ contains application regression scripts and is not the root deployment-scripts folder. Public Zscaler CA certificates required by Docker builds are included; private keys are not.
 
-- Citation handles such as `src:ACCOUNTS.ADDRESS1_COUNTRY` resolve uniquely against authorized selected outputs, including dependencies and declared SQL references. Ambiguous instances remain explicit rather than binding to the wrong table.
-- Working SQL previews again use readable, collision-safe aliases, including the Copy action. Compiled and preview SQL were checked against Snowflake; internal binding identities are preserved for save/reopen.
-- Auto-map completion and SQL messages use “mappings” and “results”. Evidence coverage notes do not create a new business approval step. Unsupported positive historical citations do not suppress otherwise checked current SQL or earn historical confidence. Actual correction overrides remain authorized.
-- Cached/cold preparation retains the server-owned execution handoff; physical and CTE bindings use exact authorized output references.
-- Independent worker caller sessions prevent one shared Snowpark session from serializing concurrent batches. In-process worker requests no longer repeatedly start/stop application lifespan services.
-- Frozen request receipts survive the worker boundary without repeating the full snapshot in its acknowledgement. Population checks avoid treating unrelated saved SELECT projections as every target's dependencies.
-- A verified native terminal-result receipt is reused instead of archiving the same result a second time. Terminal persistence uses the already reserved finalization window; uncertain model submissions are not replayed.
-- The specialist receives the original user requirements, exact current bindings and relevant frozen evidence. Its returned recipe gets its own exact dependency verification rather than inheriting only the source agent's receipts. Unsupported source-agent citations do not become authority for a repaired specialist result.
-- Completed custom expressions retain their stage identity, survive candidate ranking and can replace stale source-stage options. A specialist-repaired classification no longer remains invalid because its source agent previously emitted the label `derived`.
-- Progress counts unique requested target outcomes separately from supported proposals and legacy confidence/review thresholds. Backend counts do not claim that the browser applied a proposal; row application/Undo/edit protection remain frontend responsibilities.
-- Parent packet readiness and dispatch status are committed together, avoiding a redundant full-state write. Parent evidence handoff, packing and persistence timings are recorded separately, including failed measured phases. SQL MERGE fencing uses scalar parameters from the same immutable record rather than repeatedly folding a multi-megabyte JSON payload in its predicates.
-- Actual prepared-cache request time is reported separately from historical cache-build time. Successful as well as failed model calls retain bounded phase timings and actual POST/response counts.
-- Recovery logs distinguish provider inspection from terminal-result persistence and retain bounded HTTP/native error codes. Deadline exhaustion does not restart the same worker operation. Original failure diagnostics survive permitted worker retries; uncertain provider calls are reconciled rather than submitted again.
-- Deep repository, heartbeat, checkpoint and trace connections retain managed facades. A native internal-session expiry replaces the service connection and retries only a known safe read, with ownership revalidation. Ambiguous writes/commits and uncertain model work require reconciliation; they never trigger blind replay or another user's credentials.
+START-HERE.txt is an outer package instruction file. MANIFEST.json records the exact commit, included file sizes/hashes/modes, excluded paths, five root scripts, resolved conflicts and removed legacy source paths. files/ is the content to overlay onto the repository root, not an enclosing application directory to deploy.
 
-## Test evidence and limits
+2. TEAM CHANGES INCLUDED
 
-Read `V19-RESULTS.json` for measured outcomes, timings and remaining acceptance limits. Offline regressions, native Snowflake acceptance and browser/SPCS acceptance are distinct. A passing unit suite does not establish client SPCS performance or mounted service-token rotation.
+Abhishek:
+- Project custom-rule library: save, list and reuse project preprocessing SQL rules (57c140a).
+- Edit saved preprocessing SQL in the SQL editor and apply alias-aware column checks (61d8f54).
+- Create/search/reuse Firm Values directly from mappings; reject duplicate active value text and retain updated row bindings (ece4392).
+- Existing AND/OR join-condition support across UI, SQL contracts and relationship learning is also in the cumulative tree (3701da8).
 
-No failed client job is replayed and no client mapping, project or source/target row is changed by these checks. Existing older result files describe their original deliveries; they must not be used to claim the latest Auto-map performance gate passed.
+Kalyani:
+- Manually written CTE SQL reflects back into the visual builder; empty filter groups are omitted rather than generating broken conjunctions (aa313cf / feature commit 7c4aa1a).
+- Earlier project-wise mapping numbering is retained (ffdaf2d).
 
-The isolated Loan Income checks use the existing UAT deployment’s parallel-worker/control-session profile locally, with ownership-only operation tracking. They are not evidence of a new client SPCS deployment. The native FIR search service was unavailable/not authorized in this DEV account; available semantic/catalog and published precedent evidence were retained. Missing-YAML behavior is tested separately.
+Ajith:
+- Selection workspace tabs: Select Tables, SQL, Data Preview and Table Relationships; corresponding preview/layout/tour changes (94427cf, 24f6b94).
+- Side-panel history: Today/Yesterday/Older grouping, Rename/Delete actions and saved logical-conversation continuity (7c16569).
+- Earlier manual mapping confidence of 100%, separate Unmapped confidence group, checkbox/drag-and-drop table selection and Firm Value loading behavior remain included.
 
-The address NULL regression executes six Snowflake VALUES cases: missing first line preserves later lines, blank lines are omitted, and all-missing input returns SQL NULL. This is an expression robustness check, not a replay of the client’s unavailable historical model response.
+The latest table-selection and chat-history branches were explicitly merged; they were not both on develop when first fetched. Conflicts in tour-targets.ts, ai-chat-layout-context.tsx and ai-chat-session-utils.ts were resolved preserving both teams' behavior. Current custom-rule tour selectors, user/project scope, native server-backed Quick/Deep history, renamed titles/pins and fresh physical threads with saved logical conversation identity remain intact. Rename/Delete route through the saved conversation's own scope, not whichever project happens to be open.
 
-## Local results available
+3. OUR AUTO-MAP CHANGES — CUMULATIVE BEHAVIOR
 
-The application remains available on `http://localhost:3000`, with API on port 8000. Open `/sttm/builder/7901/mapping` for the new isolated acceptance mapping. All 33 composed results were saved and reopened with their exact bindings, expressions, numeric confidence and selected candidate identity. They compile together and return the checked preview values. Original mapping 7601 was not changed.
+- No checked rows: request fresh proposals for all targets, including already-mapped rows. Checked rows: request exactly that set.
+- Supported replacements apply to requested rows; previous definitions remain available for Undo. Edits made during a running job retain per-row protection. Identical supported proposals count as unchanged reevaluations.
+- Reuse selection-page prepared semantic/FIR evidence. Cached/cold and restored workspaces complete the server-owned execution context/frozen handoff; background counts/recommendations/unchanged Values do not masquerade as authored edits.
+- Read pipeline-published semantic assets. Missing/all-missing YAML is a coverage gap, not an automatic refusal when current bindings/history support a result. Do not regenerate semantic assets for this release.
+- Frozen, target-specific source packets retain authorization, revision, generation, hashes, exact identities and evidence coverage. Workers verify the dispatch packet instead of freely reconstructing a different message.
+- Final source/transformation messages are budgeted against both the existing 180,000-character and UTF-8-byte limits. Optional evidence is deferred atomically; complete expressions/CTEs are not cut. Oversized groups can subdivide without discarding fitting siblings.
+- Citation IDs such as src:ACCOUNTS.ADDRESS1_COUNTRY resolve only to uniquely authorized selected outputs, including required_columns/dependencies and CTE boundaries. Ambiguous references are not guessed.
+- Direct columns/constants/direct approved Values skip the transformation specialist. Custom SQL/NL intent, CASE, concatenation, conversions and column-plus-Value or Value-only expressions route through the specialist even when the source label was incorrectly Direct/unresolved.
+- Specialists receive original requirements, current bindings/Values and relevant frozen historical expressions. Missing CTE/join/business Values retain supported intent plus evidence-backed dependency information; historical firm literals are not silently substituted.
+- Backend estimated confidence is deterministic; numeric model confidence remains separately attributable. Scores, selected candidates and custom rules survive persistence/reopen.
+- Working/copied/compiled SQL uses readable collision-safe aliases. Internal source identities still exist for correctness; they are not intended as business-facing alias labels.
+- Readable model-authored suggestions remain separate from compiler/transport/packing diagnostics. Useful supported low-confidence results are not withheld for a new business approval gate. Publishing stays separate.
+- Stable current-generation target totals and application counts distinguish newly applied, replaced, unchanged, held for edits and unsupported outcomes. Specialist counts do not replace overall totals.
+- Ownership-only Auto-map dispatch retains fencing/recovery without the old shared application slot ceiling. Parallel scheduling is still bounded by the existing worker/provider configuration; it is not unlimited concurrency.
+- Independent worker sessions, combined thread/request handoff, terminal-receipt reuse and reduced redundant persistence reduce execution overhead. Safe native diagnostics and phase timings survive failures. Uncertain calls/commits are reconciled, never blindly replayed.
 
-The final single 33-target job (`f80829f7-ce12-512d-831a-3c1214a1bf22`) returned 33 supported mappings with positive numeric confidence in **182.1 seconds** from the warm request through observed completion. It used 10 source submissions and 6 specialist submissions, with zero source repair calls. All 33 results from that job compiled together, returned the expected three preview rows, and survived save/reopen in mapping 7901. Frontend reducer replay applied all 33 to blank rows, replaced all 33 existing rows with Undo, and replaced 12/applied 21 in the partial case.
+4. DEEP AGENT, ASSISTANT, SQL AND OTHER RETAINED FIXES
 
-The earlier Direct/custom validation contradiction is corrected before source repair scheduling. A custom expression mislabeled Direct reaches the specialist rather than consuming more source calls. Exact completed-rule receipts also restore their current custom classification during repeat delivery, while retaining current compiler, binding and Value checks.
+- Quick/Deep selector, common project/default conversation presentation, plan/results rendering, scroll intent and Jump to latest behavior remain part of the cumulative code.
+- Scoped/exact discovery, contract batching, semantic/FIR access, saved mapping/SQL follow-ups, short independent actions and governed specialist tools remain available. A full migration is not required for every small question/action.
+- Business questions use evidence-backed implementable choices plus Other; technical diagnostics are not converted into arbitrary free-text business questions.
+- Deep supervisor remains the orchestration owner. It has backend capabilities/specialists and does not recursively delegate the entire workflow to AGT_STTM_BUILDER. The normal AGT_STTM_BUILDER remains deployed for its own application workflows.
+- All Deep delegated OAuth REST clients use the configured public SNOWFLAKE_REST_HOST path consistently rather than assuming a Snowpark connection host is interchangeable.
+- Service housekeeping uses the mounted SPCS service identity. User data/model/actions use the initiating user's existing application OAuth session/role. No second personal login, copied user token or elevated service fallback is introduced.
+- Service-owned repository/heartbeat/checkpoint/trace connection facades recreate expired connections for safe reads with ownership checks. Ambiguous writes/commits and uncertain model calls are not blindly replayed.
+- Current caller-session rotation/revocation handling preserves identity, checkpoints, budgets and completed work. A service-session expiry is distinct from an actually expired/revoked user login.
+- Metadata-only publication validates SELECT behavior and stores definitions/SQL in metadata; it must not require target INSERT merely to publish. Actual migration execution permissions remain separate.
+- SQL upload, preview/publication consistency, readable SQL display, admin archive/delete/restore, project-bootstrap locking, source metadata loading and join recommendation navigation from earlier cumulative releases remain in the source tree. Latest SPCS/browser verification of every retained feature is not claimed.
 
-The final warm evidence request took 1.25 seconds. Parent evidence handoff was 0.64 seconds, packet packing 14.46 seconds, prepared-envelope persistence 3.26 seconds and ready-packet persistence 4.59 seconds. The first model phase still exceeded the 20-second startup target. The single final 33-target sample passed the overall 200-second target; three 40-target runs and live client SPCS acceptance are not claimed. Earlier slower/partial samples remain in the evidence instead of being discarded.
+5. SAFE EXTRACTION, COMPARISON AND SOURCE-CONTROL STEPS
 
-Full final backend suite: **5,366 passed, 31 skipped**. Frontend: **562 passed**. TypeScript, bootstrap release parity and agent-spec manifest checks passed. See the JSON evidence for source/specialist counts, overlap, timings and acceptance limits.
+A. Read MANIFEST.json and START-HERE.txt before modifying a checkout. Verify ZIP SHA-256 above. Extract into a temporary staging directory first. Validate archive member paths (no absolute paths, traversal or unexpected symlinks) and compare each files/<path> to the manifest SHA-256. Preserve file executable modes.
+B. Inspect git status and back up/commit legitimate local changes without adding environment files or credentials. Fetch current target branches and compare them with source commit 27c27a3. If the same CodeCommit develop is already at/descends from this commit, do not create a duplicate import commit. If it has newer work, preserve/merge that work rather than overwriting it with this older snapshot.
+C. Overlay files/ CONTENTS into the existing repository root, preserving relative paths. Do not deploy the outer files/ directory as a separate application. Do not copy START-HERE/MANIFEST into runtime configuration.
+D. Do not use a destructive mirror or delete unlisted paths. Unlisted scripts and local/client environments are deliberately absent. Review removed_since_previous_zip separately: legacy ai-agent-grouped-history.tsx was removed in the team integration; no business data deletion is involved.
+E. The five included root scripts are updates; retain all omitted root scripts, including bootstrap_sttm_metadata_infra.ps1, render_spcs_spec.py, verify_mapping_agent_specs.py and normal CI helper scripts. If the client checkout lacks a required omitted helper, recover its matching version from CodeCommit commit 27c27a3, not from an old ZIP or an invented replacement.
+F. Review the actual diff for unrelated client-specific endpoints, workflow adaptations or config. Stage only intended source changes. Exclude secrets and generated runtime output. Push to the requested repository/branch through its normal process; never force-push or silently merge/reset UAT. CodeCommit develop already contains this release; this handoff does not itself authorize publishing client mappings or rerunning failed jobs.
+
+6. ENVIRONMENT AND CONFIGURATION REQUIREMENTS
+
+There is NO newly introduced environment variable, OAuth credential, second login, account/warehouse replacement, context-limit increase or capacity increase required by this follow-up. Do not overwrite client.env, .env.local, secret references, keys or account-specific namespaces with local test settings or sample profiles.
+
+Existing configuration still must be present and forwarded. For an already enabled Deep installation, preserve its values. If the installation never enabled these existing flags, enable them through the established client configuration mechanism:
+MIGRATION_AGENT_ENABLED=true
+MIGRATION_AGENT_TRUE_RESUME_V1=true
+MIGRATION_AGENT_HOST_TERMINALIZATION_V1=true
+MIGRATION_AGENT_TOOL_GOVERNANCE_V1=true
+ASSISTANT_UNIFIED_HISTORY_V1=true
+ASSISTANT_INTENT_ROUTING_V1=true
+
+Preserve approved MIGRATION_AGENT_MODEL_LIGHT/MEDIUM/HIGH, capacity scopes/limits and budgets; do not invent model names or new limits. Optional specialist FQN overrides must refer to the actual installed agents if a client uses different schemas.
+
+API and Deep worker must share the existing AUTH_MODE=custom_oauth configuration, SNOWFLAKE_OAUTH_SESSIONS_TABLE, OAuth refresh/client settings and secure AUTH_SESSION_SECRET/AUTH_SESSION_ENCRYPTION_KEY mappings. Preserve SNOWFLAKE_REST_HOST as the client's valid public OAuth REST endpoint. Do not place secrets or tokens in job payloads, logs or this handoff.
+
+Where the Snowflake semantic pipeline owns published assets, use the existing PRESERVE_SEMANTIC_REGISTRY=true setting in the PowerShell bootstrap wrapper (or --preserve-semantic-registry when invoking the Python bootstrap). Preserve the client's actual semantic database/schema/object configuration, including SEM_NATIVE_VIEWS where configured; do not replace it with defaults from another account.
+
+Keep the client's approved Auto-map profile. The ownership-only durable mode uses AUTOMAP_SHARED_CAPACITY_LIMIT=false. Verify existing pipeline/fast-path/durable/retrieval enablement and project eligibility are consistent between API and workers; simply adding replicas does not repair missing configuration. Do not reset legacy slots/quarantines or remove outstanding uncertain operations. The included parallel*.json profiles are non-secret deployment configuration but contain environment-specific scope; do not blindly copy their namespace/account values into another deployment.
+
+The existing AGENT_SPEC_SOURCE_MAPPING_SHA256 and AGENT_SPEC_TRANSFORMATION_RULE_SHA256 settings describe installed capabilities. Updated shell/PowerShell deploy scripts calculate them from delivered YAML instead of trusting stale overrides. Install the matching evidence procedure/agent tools before deploying runtime settings that advertise them. The dedicated Auto-map worker now receives both hashes too.
+
+7. BOOTSTRAP AND AGENT DEPLOYMENT ORDER
+
+Use the established deployment role, authentication and configured metadata namespace. Do not recreate the metadata database/schema from scratch or reset existing owners/fences/counters.
+
+First install the locked Python/frontend dependencies using the normal image/tool build. Then run the existing metadata bootstrap. Example PowerShell invocation, with the client's real existing file:
+./scripts/bootstrap_sttm_metadata_infra.ps1 -EnvFile <absolute-existing-client.env>
+
+The unchanged wrapper delegates to the updated Python script. Offline check (using the deployment Python environment with dependencies):
+python scripts/bootstrap_sttm_metadata_infra.py --check-release-parity
+python scripts/verify_mapping_agent_specs.py
+
+The full bootstrap includes project-bootstrap lock initialization/validation, existing Auto-map durable/evidence objects and TBL_AUTOMAP_TOOL_CONTEXT / SP_AUTOMAP_READ_EVIDENCE. It now also installs the EXISTING Deep chain automatically (not newly invented feature tables):
+20260830_migration_agent_control_plane.sql
+20260901_assistant_conversation_reliability.sql
+20260921_deep_capacity.sql
+20260921_deep_migration_knowledge.sql
+20260922_deep_command_outbox.sql
+20260922_deep_learning_subjects.sql
+20260922_deep_lease_fencing.sql
+20260923_deep_capacity_provisioning.sql
+20260923_deep_fenced_events.sql
+20260924_deep_checkpoint_batch.sql
+20260927_assistant_conversation_pins.sql
+20260929_deep_run_knowledge.sql
+
+The run-knowledge migration is already in the base bootstrap list; the other Deep dependencies are sequenced after FIR schema creation. Bootstrap qualifies known metadata objects including procedure bodies and stages, preserves existing procedure/view grants, checks five procedures/two stages/runtime columns and guards repeated conditional column additions proven already present. Existing values/defaults are not reset.
+
+Normal agent YAMLs and their manifest are in infra/snowflake/agents/. Bootstrap synchronizes AGT_STTM_BUILDER, AGT_SOURCE_MAPPING and AGT_TRANSFORMATION_RULE instructions, and source/transformation ReadAutoMapEvidence tools while preserving current models/budgets/grants/unrelated tools. A pinned named default or conflicting unpublished LIVE edits must be reconciled through the existing version-promotion process; do not bypass that by replacing the agent.
+
+Deep supervisor/tool instructions are Python runtime code, notably services/sttm-builder/app/agent_runtime/deepagents_runtime.py and the supporting tool modules. They require the rebuilt Deep worker image; there is no separate Deep YAML that substitutes for rebuilding it.
+
+Use existing operational role/grant mechanisms. No source/target INSERT grant is needed for metadata-only publication. Do not broaden user source/model access to fix a housekeeping connection problem.
+
+8. CI/CD AND MATCHING RUNTIME DEPLOYMENT
+
+No new GitHub workflow file was introduced by the V19 follow-up/team integration relative to its develop base. The repository UAT workflow already invokes scripts/bootstrap_sttm_metadata_infra.ps1 before deployment, so the updated Python bootstrap runs through that step. A custom client pipeline must retain an equivalent bootstrap step; rebuilding only Docker images does not install SQL objects or agent instructions.
+
+Changes requiring CI/runtime attention:
+- Include the five updated root scripts and current service templates.
+- Keep existing omitted render/bootstrap helper scripts available.
+- Run bootstrap/agent checks before advertising agent-spec capability hashes.
+- Build from committed source and included locks; public CA PEM files are needed by Docker builds.
+- Render with the client's actual settings/secrets. The existing deployment paths forward allowlisted non-secret Deep runtime settings via --runtime-env-file.
+- Rebuild/deploy frontend, API, Auto-map workers AND Deep workers together to every replica, using an immutable identifiable image tag.
+- The standard backend entrypoint app.service_main supervises API and the enabled Deep worker. If the client intentionally has a separate supervised Deep worker, deploy that arrangement without accidentally starting a duplicate worker tree.
+- SPCS must mount the service session token; API/worker must share the established OAuth session/secret configuration. Preserve external-access integrations and approved grants.
+- Keep current warehouse/context/timeouts and approved concurrency; no capacity increase is part of this release.
+
+Existing PowerShell deployment example (client's actual paths/settings):
+./scripts/deploy_spcs_client_snow.ps1 -EnvFile <absolute-existing-client.env> -ImageTag <immutable-release-tag>
+
+The shell alternative accepts --client-env, --local-env and --image-tag; use the client's normal authentication/deployment path, not both alternatives or local test credentials. Do not use SkipBuild/--skip-build with stale images when installing source changes.
+
+Local launcher remains ./start-ai-workbench-dev.sh, frontend 3000/backend 8000. Its optional --env-file reads an existing configuration without copying/modifying it.
+
+9. POST-DEPLOY VERIFICATION
+
+Verify deployment image/tag/commit and running workers on all intended replicas, not just API health. Check bootstrap objects and installed native-agent instructions/hashes. Confirm Deep jobs are consumed rather than indefinitely waiting for a worker.
+
+In isolated test mappings exercise:
+- No-checkbox regeneration of mapped targets; checked-only scope; blank and partial mappings; correct applied/replaced/unchanged counts and Undo.
+- Numeric confidence; direct/constant/Value; CASE/concatenation/conversion; mixed Firm Value expressions; real specialist submissions.
+- Missing YAML, CTE outputs, relevant FIR/published SQL; preserve completed siblings when inputs or infrastructure are unavailable.
+- Readable SQL aliases in UI/Copy; composed SELECT compilation and requested preview; metadata publication without requiring target INSERT; save/reopen continuity.
+- New selection tabs/data preview/relationships; manually edited CTE SQL reflected visually; custom-rule library edit/reuse; Firm Value create/search/reuse; join connectors.
+- Quick/Deep history, rename/delete/date groups, project separation, saved logical continuation, plan/results formatting, scroll-to-top and Jump to latest.
+- Deep short actions/questions, planning then requested implementation, and caller/service authentication boundaries.
+
+Use one isolated test generation and trace its actual model POSTs; do not blindly replay uncertain production jobs. Record wall-clock preparation separately from model execution and overlapping batches, including first POST and frontend application time. Do not publish business mappings automatically.
+
+10. EVIDENCE AND HONEST LIMITS
+
+Earlier merged V19 backend checks: 5,390 passing distinct tests after a socket-enabled rerun; 31 skipped. The restricted suite had two UDP-bind permission failures; all three wakeup-file tests passed with local socket access. Focused Deep/semantic bootstrap checks also passed.
+Latest combined team frontend: 567 passed, zero failures; TypeScript passed. Agent-spec manifest, offline bootstrap parity and shell syntax passed.
+
+Native DEV Auto-map acceptance BEFORE the latest frontend team integrations: 33/33 supported results with positive estimated confidence; nine completed custom rules; 10 source POSTs + six transformation POSTs, zero source repair calls; 182.1 seconds warm click-to-observed completion. All 33 composed results compiled, returned checked preview values and survived save/reopen; reducer replay verified blank/existing/partial application and Undo. This is one 33-target sample, not a three-run 40-target SPCS guarantee. Packet packing was 14.46 seconds and first model phase still exceeded the 20-second startup target.
+
+Deep bootstrap's 12 migrations applied twice to isolated DEV metadata in 69.84 seconds. Five procedures/two stages verified; lease generation, lock revision, published receipt and pinned conversation values survived. Zero-event fenced call verified; no model/client changes or capacity-slot rows created.
+
+Not verified live in the client: full SPCS deployment/browser acceptance, mounted service-token rotation, every client grant/model, and three representative 40-target timing runs. DEV FIR search CSS_AUTOMAP_RECIPES_V1 was unavailable/not authorized; full live FIR search acceptance is NOT claimed. The latest team additions were frontend-tested, not followed by another native/SPCS run.
+
+Current evidence: files/docs/combined-release-20261113/V19-RESULTS.json and V19-RELEASE.md. The latest_team_integration section and final native run supersede historical sections. Older INSTALL/Deep notes may describe manual migration steps, old slots or earlier review language: use the current V19 instructions and code rather than reapplying historical setup blindly.
+
+Return a deployment report with actual source commit/image tags, files merged/conflicts, preserved configuration, any missing existing flag/secret mapping found, bootstrap/agent verification, worker readiness and isolated acceptance results. Report blockers explicitly; do not describe unrun checks as passed.
